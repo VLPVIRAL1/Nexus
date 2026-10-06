@@ -238,7 +238,7 @@ model SourceFormRecord {
   importBatch        ImportBatch?     @relation(fields: [importBatchId], references: [id])
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
-  @@unique([taxYearId, externalSourceId])
+  @@unique([taxYearId, externalSourceId, version])
   @@index([taxYearId, formType, effective])
 }
 
@@ -249,6 +249,9 @@ model Activity {
   name                 String
   ownerRole            String
   implementationStatus String
+  receiptBasis         String?
+  additionalReceipts   Decimal         @default(0) @db.Decimal(18, 2)
+  receiptNote          String?
   details              Json
   active               Boolean         @default(true)
   version              Int             @default(1)
@@ -272,6 +275,11 @@ model SourceMapping {
   reason           String?
   status           String
   version          Int       @default(1)
+  effective        Boolean   @default(true)
+  supersedesMappingId String? @db.Uuid
+  note             String?
+  createdById      String?   @db.Uuid
+  receivesRoundingResidual Boolean @default(false)
   taxYear          TaxYear   @relation(fields: [taxYearId], references: [id])
   targetActivity   Activity? @relation(fields: [targetActivityId], references: [id])
   createdAt        DateTime  @default(now())

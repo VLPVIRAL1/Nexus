@@ -9,6 +9,7 @@ import template from "../../examples/2025/blank-taxpayer-template.json";
 import { commitPersistedImport, rollbackPersistedImport, stageCanonicalImport } from "../../src/server/import-persistence-service";
 import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAnswers } from "../../src/server/intake-service";
 import { phase1IntakeQuestions } from "../../src/domain/intake";
+import { createActivity, getMappingState, saveAllocations } from "../../src/server/mapping-persistence-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -23,6 +24,8 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0003_import_history.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0004_source_form_lineage.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0005_intake_completeness.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0006_mapping_integrity.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0007_mapping_residual_disclosure.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]).toEqual({ tax_year: 2025, preparation_status: "in_preparation" });
     } finally { await client.end(); }
@@ -157,5 +160,61 @@ suite("PostgreSQL foundation", () => {
     const changed = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(changed.blockingQuestionIds).toContain("income.investment_sales");
     expect(changed.attestation?.current).toBe(false);
+  });
+
+  it("persists cent-perfect source allocations, receipt bases, unsupported blockers, and immutable mapping revisions", async () => {
+    const context: AuthorizationContext = {
+      userId: "20000000-0000-4000-8000-000000000001",
+      firmId: "10000000-0000-4000-8000-000000000001",
+      role: "preparer",
+      assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]),
+    };
+    const sourceRecordId = randomUUID();
+    const externalSourceId = `mapping-${randomUUID()}`;
+    const database = new pg.Client({ connectionString });
+    await database.connect();
+    await database.query(
+      `INSERT INTO source_form_records(id,tax_year_id,form_type,form_year,external_source_id,owner_role,normalized_data,raw_fields,unmapped_fields)
+       VALUES($1,'40000000-0000-4000-8000-000000000001','1099-NEC',2025,$2,'taxpayer',$3::jsonb,'[]'::jsonb,'[]'::jsonb)`,
+      [sourceRecordId, externalSourceId, JSON.stringify({ payer: { name: "Synthetic mapping payer" }, boxes: { nonemployeeCompensation: "100.00" } })],
+    );
+    await database.end();
+
+    let state = await getMappingState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    const supported = await createActivity(context, "30000000-0000-4000-8000-000000000001", 2025, state.revision, {
+      type: "schedule_c", name: `Synthetic consulting ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "supported",
+      receiptBasis: "source_plus_additional_receipts", additionalReceipts: "25.00", receiptNote: "Synthetic cash receipts exclude all information returns",
+    });
+    const mapped = await saveAllocations(context, "30000000-0000-4000-8000-000000000001", 2025, sourceRecordId, "boxes.nonemployeeCompensation", supported.revision, [
+      { targetType: "schedule_c", targetActivityId: supported.id, allocationMethod: "percentage", allocatedAmount: null, percentage: "33.33", reason: null, note: "Synthetic split A", status: "accepted" },
+      { targetType: "schedule_c", targetActivityId: supported.id, allocationMethod: "percentage", allocatedAmount: null, percentage: "33.33", reason: null, note: "Synthetic split B", status: "accepted" },
+      { targetType: "schedule_c", targetActivityId: supported.id, allocationMethod: "percentage", allocatedAmount: null, percentage: "33.34", reason: null, note: "Synthetic residual row", status: "accepted", residualRecipient: true },
+    ]);
+    expect(mapped.reconciliation).toMatchObject({ allocatedAmount: "100.00", unresolvedAmount: "0.00", status: "fully_mapped" });
+    expect(mapped.residualRecipientIndex).toBe(2);
+
+    const unsupported = await createActivity(context, "30000000-0000-4000-8000-000000000001", 2025, mapped.revision, {
+      type: "schedule_e", name: `Synthetic rental ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "mapping_only",
+      receiptBasis: null, additionalReceipts: "0.00", receiptNote: null,
+    });
+    const partial = await saveAllocations(context, "30000000-0000-4000-8000-000000000001", 2025, sourceRecordId, "boxes.nonemployeeCompensation", unsupported.revision, [
+      { targetType: "schedule_e", targetActivityId: unsupported.id, allocationMethod: "amount", allocatedAmount: "100.00", percentage: null, reason: null, note: "Synthetic unsupported destination", status: "accepted" },
+    ]);
+    expect(partial.blockerCount).toBeGreaterThan(0);
+    await expect(saveAllocations(context, "30000000-0000-4000-8000-000000000001", 2025, sourceRecordId, "boxes.nonemployeeCompensation", partial.revision, [
+      { targetType: "schedule_c", targetActivityId: supported.id, allocationMethod: "amount", allocatedAmount: "100.01", percentage: null, reason: null, note: null, status: "accepted" },
+    ])).rejects.toMatchObject({ code: "invalid" });
+    const restored = await saveAllocations(context, "30000000-0000-4000-8000-000000000001", 2025, sourceRecordId, "boxes.nonemployeeCompensation", partial.revision, [
+      { targetType: "schedule_c", targetActivityId: supported.id, allocationMethod: "amount", allocatedAmount: "100.00", percentage: null, reason: null, note: "Synthetic supported restoration", status: "accepted" },
+    ]);
+    expect(restored.reconciliation.status).toBe("fully_mapped");
+    state = await getMappingState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.sources.find(({ id }) => id === sourceRecordId)?.reconciliation.status).toBe("fully_mapped");
+    const historyDatabase = new pg.Client({ connectionString });
+    await historyDatabase.connect();
+    const history = await historyDatabase.query<{ effective: boolean }>("SELECT effective FROM source_mappings WHERE source_record_id=$1 ORDER BY version", [sourceRecordId]);
+    await historyDatabase.end();
+    expect(history.rows.filter(({ effective }) => effective)).toHaveLength(1);
+    expect(history.rows.some(({ effective }) => !effective)).toBe(true);
   });
 });

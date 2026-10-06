@@ -11,6 +11,7 @@ import {
   type ImportPreview,
 } from "@/services/import-service";
 import { databasePool } from "./database";
+import { refreshMappingDiagnosticsForTaxYear } from "./mapping-persistence-service";
 import { WorkflowError } from "./client-workflow-service";
 
 export interface PersistedImportPreview {
@@ -111,13 +112,14 @@ export async function commitPersistedImport(
       [scope.taxYearId, JSON.stringify(committed.result), nextRevision],
     );
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, committed.result);
+    const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query(
       `UPDATE import_batches SET import_status='committed',result_revision=$2,previous_snapshot=$3::jsonb,committed_snapshot=$4::jsonb,committed_by=$5,committed_at=now()
        WHERE id=$1`,
       [batchId, nextRevision, JSON.stringify(scope.snapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -144,6 +146,7 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
       "UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale' WHERE id=$1",
       [scope.taxYearId, JSON.stringify(row.previous_snapshot), nextRevision],
     );
+    await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query("UPDATE import_batches SET rolled_back_at=now(),rolled_back_by=$2 WHERE id=$1", [row.id, context.userId]);
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "rolled_back");
     await appendAuditEvent(client, context, scope.taxYearId, "import.rolled_back", "import_batch", row.id, { batchHash: row.batch_hash, importedRevision: row.result_revision, compensatingRevision: nextRevision });
@@ -261,7 +264,10 @@ async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: st
       const supersedesExternalId = typeof record.supersedes_external_source_id === "string" ? record.supersedes_external_source_id : null;
       const explicitPrior = supersedesExternalId ? latestByExternalId.get(supersedesExternalId) : undefined;
       const prior = explicitPrior ?? latest;
-      if (prior) await client.query("UPDATE source_form_records SET effective=false WHERE id=$1", [prior.id]);
+      if (prior) {
+        await client.query("UPDATE source_form_records SET effective=false WHERE id=$1", [prior.id]);
+        await client.query("UPDATE source_mappings SET effective=false WHERE source_record_id=$1 AND effective", [prior.id]);
+      }
       const ownerRole = typeof record.recipient_role === "string" ? record.recipient_role : "unknown";
       const sourceDocumentId = typeof record.source_document_id === "string" && documentIds.has(record.source_document_id) ? record.source_document_id : null;
       const inserted = await client.query<{ id: string; external_source_id: string; normalized_data: Record<string, unknown>; corrected: boolean; void: boolean; effective: boolean; version: number }>(

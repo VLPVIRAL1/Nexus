@@ -33,6 +33,7 @@
 - [x] Archive and hash the official 2025 IRS research sources; generate the exact 2,062-band tax table; implement deterministic supported-profile Schedule B/C/SE, Schedules 1/2, simplified Form 8995, qualified-dividend worksheet and Form 1040 calculation outputs with owner-level wage interaction, dependency traces, cycle detection and explicit unsupported-treatment blockers. The package remains gated as `research_unapproved` pending independent tax review.
 - [x] Add project documentation, decision register, traceability matrix, environment setup and development-server instructions.
 - [x] Pass strict type checking, production build, current automated tests, route smoke checks and dependency audit for the implemented scope.
+- [x] Persist firm-scoped activities and versioned source allocations with server-derived effective amounts, optimistic revisions, immutable supersession history, cent-perfect amount/percentage reconciliation, disclosed residual recipients, Schedule C receipt-basis safeguards, reviewer-only exclusions, unsupported-destination blockers, import-driven invalidation, chained audit events, guarded APIs and a database-backed mapping center.
 
 ### In progress / not complete
 
