@@ -1,0 +1,21 @@
+{
+  "form": "1099-MISC", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "fields": [
+    { "key": "box1", "label": "Rents", "type": "money", "calculation": "future" },
+    { "key": "box2", "label": "Royalties", "type": "money", "calculation": "conditional" },
+    { "key": "box3", "label": "Other income", "type": "money", "calculation": "conditional" },
+    { "key": "box4", "label": "Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "box5", "label": "Fishing boat proceeds", "type": "money", "calculation": "future" },
+    { "key": "box6", "label": "Medical and health care payments", "type": "money", "calculation": "conditional" },
+    { "key": "box7", "label": "Direct sales indicator", "type": "boolean", "calculation": "future" },
+    { "key": "box8", "label": "Substitute payments", "type": "money", "calculation": "future" },
+    { "key": "box9", "label": "Crop insurance proceeds", "type": "money", "calculation": "future" },
+    { "key": "box10", "label": "Gross proceeds paid to an attorney", "type": "money", "calculation": "future" },
+    { "key": "box11", "label": "Year-specific fish/resale field", "type": "string", "calculation": "future" },
+    { "key": "box12", "label": "Section 409A deferrals", "type": "money", "calculation": "future" },
+    { "key": "box13", "label": "FATCA filing requirement", "type": "boolean", "calculation": "future" },
+    { "key": "box14", "label": "Nonqualified deferred compensation", "type": "money", "calculation": "future" },
+    { "key": "stateRows", "label": "State information", "type": "repeatable_state", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "conditional", "integration": "future"
+}

@@ -1,0 +1,11 @@
+{
+  "form": "1099-NEC", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "fields": [
+    { "key": "box1", "label": "Box 1 — Nonemployee compensation", "type": "money", "calculation": "conditional" },
+    { "key": "box2", "label": "Box 2 — Payer made direct sales", "type": "boolean", "calculation": "future" },
+    { "key": "box3", "label": "Box 3 — Excess golden parachute payments", "type": "money", "calculation": "future" },
+    { "key": "box4", "label": "Box 4 — Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "stateRows", "label": "State information", "type": "repeatable_state", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "conditional", "integration": "future"
+}

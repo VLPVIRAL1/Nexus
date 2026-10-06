@@ -1,0 +1,22 @@
+{
+  "form": "W-2", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "fields": [
+    { "key": "box1", "label": "Box 1 — Wages, tips, other compensation", "type": "money", "calculation": "supported" },
+    { "key": "box2", "label": "Box 2 — Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "box3", "label": "Box 3 — Social Security wages", "type": "money", "calculation": "conditional" },
+    { "key": "box4", "label": "Box 4 — Social Security tax withheld", "type": "money", "calculation": "conditional" },
+    { "key": "box5", "label": "Box 5 — Medicare wages and tips", "type": "money", "calculation": "conditional" },
+    { "key": "box6", "label": "Box 6 — Medicare tax withheld", "type": "money", "calculation": "conditional" },
+    { "key": "box7", "label": "Box 7 — Social Security tips", "type": "money", "calculation": "future" },
+    { "key": "box8", "label": "Box 8 — Allocated tips", "type": "money", "calculation": "future" },
+    { "key": "box9", "label": "Box 9 — Reserved/year-defined", "type": "string", "calculation": "future" },
+    { "key": "box10", "label": "Box 10 — Dependent care benefits", "type": "money", "calculation": "future" },
+    { "key": "box11", "label": "Box 11 — Nonqualified plans", "type": "money", "calculation": "future" },
+    { "key": "box12", "label": "Box 12 — Codes", "type": "repeatable_code_money", "calculation": "conditional" },
+    { "key": "box13", "label": "Box 13 — Checkboxes", "type": "checkbox_group", "calculation": "conditional" },
+    { "key": "box14", "label": "Box 14 — Other", "type": "repeatable_open_label_money", "calculation": "conditional" },
+    { "key": "stateRows", "label": "Boxes 15–17 — State and state wages/withholding", "type": "repeatable_state", "calculation": "not_applicable" },
+    { "key": "localRows", "label": "Boxes 18–20 — Local wages/withholding/locality", "type": "repeatable_local", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "supported_draft", "integration": "future"
+}

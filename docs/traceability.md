@@ -8,5 +8,5 @@
 | W-2 entry pattern | `workspace.tsx` | Visual/keyboard tests pending | Synthetic UI slice |
 | Tax calculation | — | Approved rules/fixtures absent | Disabled |
 | Reviewed Draft approval | — | Completeness/security gates absent | Disabled |
-| PDF/XLSX output | — | Renderer tests absent | Not implemented |
-| Filing/vendor sync | — | Outside Phase 1 | Unavailable |
+| PDF/XLSX output foundation | `src/services/outputs` | PDF/XLSX/JSON service tests | Foundation implemented; full forms pending |
+| Filing/vendor sync | `src/integrations` | Planned-adapter test | Correctly unavailable |

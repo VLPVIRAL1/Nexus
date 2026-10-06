@@ -1,0 +1,24 @@
+{
+  "form": "1099-DIV", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "fields": [
+    { "key": "ordinaryDividends", "label": "Total ordinary dividends", "type": "money", "calculation": "supported" },
+    { "key": "qualifiedDividends", "label": "Qualified dividends", "type": "money", "calculation": "conditional" },
+    { "key": "capitalGainDistributions", "label": "Total capital gain distributions", "type": "money", "calculation": "future" },
+    { "key": "unrecaptured1250Gain", "label": "Unrecaptured Section 1250 gain", "type": "money", "calculation": "future" },
+    { "key": "section1202Gain", "label": "Section 1202 gain", "type": "money", "calculation": "future" },
+    { "key": "collectiblesGain", "label": "Collectibles gain", "type": "money", "calculation": "future" },
+    { "key": "section897OrdinaryDividends", "label": "Section 897 ordinary dividends", "type": "money", "calculation": "future" },
+    { "key": "section897CapitalGain", "label": "Section 897 capital gain", "type": "money", "calculation": "future" },
+    { "key": "nondividendDistributions", "label": "Nondividend distributions", "type": "money", "calculation": "future" },
+    { "key": "federalWithholding", "label": "Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "section199ADividends", "label": "Section 199A dividends", "type": "money", "calculation": "conditional" },
+    { "key": "foreignTaxPaid", "label": "Foreign tax paid", "type": "money", "calculation": "future" },
+    { "key": "foreignCountry", "label": "Foreign country or U.S. possession", "type": "string", "calculation": "conditional" },
+    { "key": "cashLiquidationDistributions", "label": "Cash liquidation distributions", "type": "money", "calculation": "future" },
+    { "key": "noncashLiquidationDistributions", "label": "Noncash liquidation distributions", "type": "money", "calculation": "future" },
+    { "key": "exemptInterestDividends", "label": "Exempt-interest dividends", "type": "money", "calculation": "supported" },
+    { "key": "privateActivityBondInterestDividends", "label": "Specified private activity bond interest dividends", "type": "money", "calculation": "conditional" },
+    { "key": "stateRows", "label": "State information", "type": "repeatable_state", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "conditional", "integration": "future"
+}
