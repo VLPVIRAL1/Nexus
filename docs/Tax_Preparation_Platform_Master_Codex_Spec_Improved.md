@@ -34,6 +34,7 @@
 - [x] Add project documentation, decision register, traceability matrix, environment setup and development-server instructions.
 - [x] Pass strict type checking, production build, current automated tests, route smoke checks and dependency audit for the implemented scope.
 - [x] Persist firm-scoped activities and versioned source allocations with server-derived effective amounts, optimistic revisions, immutable supersession history, cent-perfect amount/percentage reconciliation, disclosed residual recipients, Schedule C receipt-basis safeguards, reviewer-only exclusions, unsupported-destination blockers, import-driven invalidation, chained audit events, guarded APIs and a database-backed mapping center.
+- [x] Persist assigned human review points separately from machine diagnostics; enforce tax-year revisions, record versions, same-client references, reviewer-only resolution and assigned-reviewer change requests; surface conservative changed-after-review state and redacted append-only hash-chained audit history in a database-backed review screen.
 
 ### In progress / not complete
 

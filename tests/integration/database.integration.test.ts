@@ -10,6 +10,7 @@ import { commitPersistedImport, rollbackPersistedImport, stageCanonicalImport } 
 import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAnswers } from "../../src/server/intake-service";
 import { phase1IntakeQuestions } from "../../src/domain/intake";
 import { createActivity, getMappingState, saveAllocations } from "../../src/server/mapping-persistence-service";
+import { createReviewPoint, getReviewState, requestChanges, updateReviewPointStatus } from "../../src/server/review-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -26,8 +27,10 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0005_intake_completeness.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0006_mapping_integrity.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0007_mapping_residual_disclosure.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0008_review_workflow.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
-      expect(result.rows[0]).toEqual({ tax_year: 2025, preparation_status: "in_preparation" });
+      expect(result.rows[0]?.tax_year).toBe(2025);
+      expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
     } finally { await client.end(); }
   });
 
@@ -216,5 +219,36 @@ suite("PostgreSQL foundation", () => {
     await historyDatabase.end();
     expect(history.rows.filter(({ effective }) => effective)).toHaveLength(1);
     expect(history.rows.some(({ effective }) => !effective)).toBe(true);
+  });
+
+  it("persists assigned review points, guarded resolutions, request-changes status, audit history, and changed-after-review state", async () => {
+    const preparer: AuthorizationContext = {
+      userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer",
+      assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]),
+    };
+    const reviewer: AuthorizationContext = {
+      userId: "20000000-0000-4000-8000-000000000002", firmId: "10000000-0000-4000-8000-000000000001", role: "reviewer",
+      assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]),
+    };
+    let state = await getReviewState(preparer, "30000000-0000-4000-8000-000000000001", 2025);
+    const created = await createReviewPoint(preparer, "30000000-0000-4000-8000-000000000001", 2025, state.revision, {
+      category: "confirm", subject: `Synthetic review ${randomUUID()}`, description: "Confirm the synthetic mapping evidence.", sourceRecordId: null,
+      relatedForm: "Schedule C", relatedActivityId: null, ownerRole: "return", assignedUserId: reviewer.userId, dueDate: "2026-10-31",
+    });
+    await expect(updateReviewPointStatus(preparer, "30000000-0000-4000-8000-000000000001", 2025, created.id, created.revision, created.version, "resolved", "Preparer cannot approve this point")).rejects.toMatchObject({ code: "forbidden" });
+    const changes = await requestChanges(reviewer, "30000000-0000-4000-8000-000000000001", 2025, created.id, created.revision, created.version);
+    expect(changes.status).toBe("changes_requested");
+    const resolved = await updateReviewPointStatus(reviewer, "30000000-0000-4000-8000-000000000001", 2025, created.id, created.revision, created.version, "resolved", "Synthetic evidence reviewed independently.");
+    state = await getReviewState(reviewer, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.points.find(({ id }) => id === created.id)).toMatchObject({ status: "resolved", current: true, changedAfterReview: false, version: resolved.version });
+    const activity = await createActivity(preparer, "30000000-0000-4000-8000-000000000001", 2025, state.revision, {
+      type: "schedule_c", name: `Post-review change ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "supported",
+      receiptBasis: "source_plus_additional_receipts", additionalReceipts: "0.00", receiptNote: null,
+    });
+    const changed = await getReviewState(reviewer, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(changed.revision).toBe(activity.revision);
+    expect(changed.points.find(({ id }) => id === created.id)).toMatchObject({ current: false, changedAfterReview: true });
+    expect(changed.auditEvents.some(({ eventType }) => eventType === "review_point.resolved")).toBe(true);
+    expect(changed.auditEvents.some(({ eventType }) => eventType === "review.changes_requested")).toBe(true);
   });
 });

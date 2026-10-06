@@ -379,6 +379,10 @@ model ReviewPoint {
   resolution    String?
   resolvedById  String?  @db.Uuid
   creationRevision Int
+  ownerRole     String?
+  version       Int      @default(1)
+  resolutionRevision Int?
+  dependencyHash String  @default("")
   taxYear       TaxYear  @relation(fields: [taxYearId], references: [id])
   createdAt     DateTime @default(now())
   resolvedAt    DateTime?
