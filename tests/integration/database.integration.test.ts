@@ -2,6 +2,7 @@ import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createTaxYear, upsertPerson } from "../../src/server/client-workflow-service";
+import { getClientProfile } from "../../src/server/client-repository";
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
 
@@ -70,6 +71,7 @@ suite("PostgreSQL foundation", () => {
     try {
       await client.query("INSERT INTO firms(id,name) VALUES($1,'Isolation fixture')", [otherFirmId]);
       await client.query("INSERT INTO clients(id,firm_id,client_code,display_name) VALUES($1,$2,$3,'Other firm client')", [otherClientId, otherFirmId, randomUUID()]);
+      expect(await getClientProfile(context, otherClientId)).toBeNull();
       await expect(createTaxYear(context, otherClientId, { year: 2025 })).rejects.toMatchObject({ code: "not_found" });
       await expect(upsertPerson(context, "30000000-0000-4000-8000-000000000001", 2025, {
         role: "taxpayer", legalName: "Stale write", dateOfBirth: null, address: {}, facts: {}, expectedVersion: 999,

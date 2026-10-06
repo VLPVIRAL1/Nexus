@@ -17,7 +17,7 @@ export function Dashboard({ clients = syntheticClients }: { clients?: ClientSumm
     <>
       <div className="page-header">
         <div><p className="eyebrow">Tuesday, October 6</p><h1>Preparation dashboard</h1><p>2025 individual returns across your firm workspace.</p></div>
-        <div className="header-actions"><button className="button secondary">Import client JSON</button><Link className="button primary" href="/clients">New client</Link></div>
+        <div className="header-actions"><Link className="button secondary" href="/imports/new">Import client JSON</Link><Link className="button primary" href="/clients/new">New client</Link></div>
       </div>
       <section className="metrics-strip" aria-label="Preparation summary">
         {metrics.map(({ label, value, detail, icon: Icon, tone }) => (
@@ -38,7 +38,7 @@ export function Dashboard({ clients = syntheticClients }: { clients?: ClientSumm
             <tbody>
               {clients.map((client) => (
                 <tr key={client.id}>
-                  <td><Link className="client-link" href={`/clients/${client.id === "sample" ? "sample" : "sample"}/years/2025`}><span className="initials">{client.taxpayer.split(" ").map((n) => n[0]).join("")}</span><span><strong>{client.taxpayer}{client.spouse ? ` & ${client.spouse.split(" ")[0]}` : ""}</strong><small>{client.code} · {client.maskedTin}</small></span></Link></td>
+                  <td><Link className="client-link" href={`/clients/${isUuid(client.id) ? client.id : "sample"}/years/${client.taxYear}`}><span className="initials">{client.taxpayer.split(" ").map((n) => n[0]).join("")}</span><span><strong>{client.taxpayer}{client.spouse ? ` & ${client.spouse.split(" ")[0]}` : ""}</strong><small>{client.code} · {client.maskedTin}</small></span></Link></td>
                   <td><strong>{client.taxYear}</strong><small className="cell-subtext">{client.returnType}</small></td>
                   <td><StatusPill status={client.status} /></td>
                   <td>{client.preparer}</td><td>{client.reviewer}</td>
@@ -53,4 +53,8 @@ export function Dashboard({ clients = syntheticClients }: { clients?: ClientSumm
       </section>
     </>
   );
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

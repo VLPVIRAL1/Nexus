@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { diagnostics, money, w2Records } from "@/domain/demo-data";
 import { SeverityIcon, StatusPill } from "./status";
+import type { TaxYearWorkspaceRecord } from "@/server/client-repository";
 
 const sections = [
   { label: "Overview", items: [{ name: "Return overview", count: "" }] },
@@ -33,7 +34,7 @@ const sections = [
   { label: "Review", items: [{ name: "Validation", count: "5", warn: true }, { name: "Open points", count: "4" }, { name: "Reconciliation", count: "2", warn: true }] },
 ];
 
-export function TaxWorkspace() {
+export function TaxWorkspace({ context }: { context?: TaxYearWorkspaceRecord }) {
   const [selectedId, setSelectedId] = useState(w2Records[0].id);
   const [comfortable, setComfortable] = useState(false);
   const [saved, setSaved] = useState(true);
@@ -49,15 +50,15 @@ export function TaxWorkspace() {
         <div className="workspace-title-row">
           <Link href="/dashboard" className="back-link"><ArrowLeft size={15} /> Work queue</Link>
           <span className="workspace-divider" />
-          <div><h1>John Sample <span>&amp; Jane Sample</span></h1><p>Client 000123 · {"***-**-6789"}</p></div>
-          <span className="year-chip">TAX YEAR <strong>2025</strong><ChevronDown size={13} /></span>
+          <div><h1>{context?.taxpayer ?? "John Sample"} <span>{context?.spouse ? `& ${context.spouse}` : context ? "" : "& Jane Sample"}</span></h1><p>Client {context?.code ?? "000123"} · {"***-**-6789"}</p></div>
+          <span className="year-chip">TAX YEAR <strong>{context?.year ?? 2025}</strong><ChevronDown size={13} /></span>
           <span className="filing-chip">Married filing jointly</span>
         </div>
         <div className="workspace-meta">
-          <span><small>Preparation</small><StatusPill status="In Preparation" /></span>
-          <span><small>Calculation</small><strong className="stale-text">Partial · stale</strong></span>
+          <span><small>Preparation</small><StatusPill status={context?.status ?? "In Preparation"} /></span>
+          <span><small>Calculation</small><strong className="stale-text">{context?.calculationStatus.replaceAll("_", " ") ?? "Partial · stale"}</strong></span>
           <span><small>Blockers</small><strong className="blocker-text">2 blocking</strong></span>
-          <span><small>Reviewer</small><strong>David Ross</strong></span>
+          <span><small>Reviewer</small><strong>{context?.reviewer ?? "David Ross"}</strong></span>
         </div>
       </header>
       <div className="command-bar">
@@ -147,7 +148,7 @@ export function TaxWorkspace() {
           <section className="context-section"><h3>Record issue</h3><div className="issue-card warning"><SeverityIcon severity="warning" /><div><strong>Box 14 classification</strong><p>UT SDI has been preserved but needs a disposition.</p><button>Review field</button></div></div></section>
         </aside>
       </div>
-      <footer className="workspace-footer"><span><Check size={13} /> Saved revision 28</span><span>Calculation: <strong>Partial · stale</strong></span><span>Engine: 2025 rules not approved</span><button><Keyboard size={14} /> Keyboard shortcuts</button></footer>
+      <footer className="workspace-footer"><span><Check size={13} /> Saved revision {context?.revision ?? 28}</span><span>Calculation: <strong>{context?.calculationStatus.replaceAll("_", " ") ?? "Partial · stale"}</strong></span><span>Engine: 2025 rules not approved</span><button><Keyboard size={14} /> Keyboard shortcuts</button></footer>
     </div>
   );
 }
