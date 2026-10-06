@@ -5,7 +5,7 @@
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
 **Last updated:** October 6, 2026  
-**Overall Phase 1 status:** In progress — foundation and early domain controls only; not production-ready, filing-ready, or tax-engine certified.
+**Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards and an unapproved calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
 
 ### Completed and verified
 
@@ -27,6 +27,7 @@
 - [x] Implement vendor-neutral tax-software adapter contracts and CCH/Drake planned adapters that advertise no unverified capability.
 - [x] Add repeatable PostgreSQL 16 development provisioning, transactional SQL migration tracking, synthetic seed data, append-only audit enforcement, database integration tests and a database-backed work-queue read path with production fallback protection.
 - [x] Implement source-file intake guards for 25 MiB limits, filename sanitization, MIME/signature verification, SHA-256 hashing, quarantine-first storage, scanner approval and explicit promotion through storage/scanner interfaces.
+- [x] Archive and hash the official 2025 IRS research sources; generate the exact 2,062-band tax table; implement deterministic supported-profile Schedule B/C/SE, Schedules 1/2, simplified Form 8995, qualified-dividend worksheet and Form 1040 calculation outputs with owner-level wage interaction, dependency traces, cycle detection and explicit unsupported-treatment blockers. The package remains gated as `research_unapproved` pending independent tax review.
 - [x] Add project documentation, decision register, traceability matrix, environment setup and development-server instructions.
 - [x] Pass strict type checking, production build, current automated tests, route smoke checks and dependency audit for the implemented scope.
 
