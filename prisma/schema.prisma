@@ -7,14 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum RoleName { ADMIN PREPARER REVIEWER READ_ONLY }
-enum PreparationStatus { NOT_STARTED DOCUMENTS_PENDING IN_PREPARATION READY_FOR_REVIEW CHANGES_REQUESTED REVIEWED_DRAFT ARCHIVED }
+enum RoleName {
+  ADMIN
+  PREPARER
+  REVIEWER
+  READ_ONLY
+}
+
+enum PreparationStatus {
+  NOT_STARTED
+  DOCUMENTS_PENDING
+  IN_PREPARATION
+  READY_FOR_REVIEW
+  CHANGES_REQUESTED
+  REVIEWED_DRAFT
+  ARCHIVED
+}
 
 model Firm {
   id          String       @id @default(uuid()) @db.Uuid
   name        String
   memberships Membership[]
   clients     Client[]
+  authSessions AuthSession[]
   createdAt   DateTime     @default(now())
 }
 
@@ -25,6 +40,7 @@ model User {
   memberships Membership[]
   assignments ClientAssignment[]
   auditEvents AuditEvent[]
+  authSessions AuthSession[]
   createdAt   DateTime     @default(now())
 }
 
@@ -39,12 +55,31 @@ model Membership {
   @@unique([firmId, userId])
 }
 
+model AuthSession {
+  id                String    @id @default(uuid()) @db.Uuid
+  tokenHash         String    @unique
+  userId            String    @db.Uuid
+  activeFirmId      String    @db.Uuid
+  mfaVerifiedAt     DateTime
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  idleExpiresAt     DateTime
+  absoluteExpiresAt DateTime
+  revokedAt         DateTime?
+  revocationReason  String?
+  userAgentHash     String?
+  user              User      @relation(fields: [userId], references: [id])
+  activeFirm        Firm      @relation(fields: [activeFirmId], references: [id])
+  @@index([userId, activeFirmId, absoluteExpiresAt])
+}
+
 model Client {
   id          String    @id @default(uuid()) @db.Uuid
   firmId      String    @db.Uuid
   clientCode  String
   displayName String
   archivedAt  DateTime?
+  version     Int       @default(1)
   firm        Firm      @relation(fields: [firmId], references: [id])
   taxYears    TaxYear[]
   assignments ClientAssignment[]

@@ -1,6 +1,6 @@
 # Nexus Tax
 
-Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation establishes the Phase 1 foundation and a synthetic W-2 vertical slice. It does not calculate, file, transmit, or claim production readiness.
+Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation includes a PostgreSQL-backed work queue, guarded client/year/person APIs, secure-intake foundations, canonical import/output services, and an unapproved deterministic 2025 calculation research package. It does not file, transmit, or claim production readiness.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open `http://localhost:3000`. The current UI uses synthetic in-memory data, so the workstation can be reviewed before a database is connected.
+Open `http://localhost:3000`. Development uses the seeded synthetic firm and assigned preparer when no session cookie exists. Production has no identity fallback and requires an MFA-verified session.
 
 ## Commands
 
@@ -33,7 +33,7 @@ npm run db:migrate # apply pending PostgreSQL migrations transactionally
 npm run test:integration # verify live PostgreSQL constraints and seed state
 ```
 
-The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Tax calculation, PDF generation, XLSX workpapers, imports, and database seeding are planned capabilities and must not be represented as working until their acceptance evidence passes.
+The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF/XLSX/JSON services and tax calculations are draft foundations. The 2025 tax package remains `research_unapproved` until qualified independent review; full form rendering, persisted imports, production identity/storage and acceptance gates remain open.
 
 ## Safety boundary
 

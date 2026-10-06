@@ -2,13 +2,14 @@ import "server-only";
 import type { ClientSummary } from "@/domain/types";
 import { clients as syntheticClients } from "@/domain/demo-data";
 import { databasePool } from "./database";
+import type { AuthorizationContext } from "@/services/authorization";
 
 interface ClientRow {
   id: string; client_code: string; display_name: string; tax_year: number; preparation_status: string;
   preparer: string | null; reviewer: string | null; open_points: string; blockers: string; updated_at: Date;
 }
 
-export async function listDashboardClients(firmId: string): Promise<ClientSummary[]> {
+export async function listDashboardClients(context: AuthorizationContext): Promise<ClientSummary[]> {
   if (!process.env.DATABASE_URL) {
     if (process.env.APP_ENV === "production") throw new Error("Production cannot use synthetic client fallback data.");
     return syntheticClients;
@@ -27,7 +28,8 @@ export async function listDashboardClients(firmId: string): Promise<ClientSummar
     LEFT JOIN review_points rp ON rp.tax_year_id=ty.id
     LEFT JOIN validation_issues vi ON vi.tax_year_id=ty.id
     WHERE c.firm_id=$1 AND c.archived_at IS NULL
-    GROUP BY c.id,ty.id ORDER BY ty.updated_at DESC`, [firmId]);
+      AND ($2::boolean OR EXISTS (SELECT 1 FROM client_assignments scope_ca WHERE scope_ca.client_id=c.id AND scope_ca.user_id=$3))
+    GROUP BY c.id,ty.id ORDER BY ty.updated_at DESC`, [context.firmId, context.role === "admin", context.userId]);
   return result.rows.map((row) => ({
     id: row.id, code: row.client_code, taxpayer: row.display_name, maskedTin: "***-**-••••", returnType: "1040", taxYear: 2025,
     status: displayStatus(row.preparation_status), preparer: row.preparer ?? "Unassigned", reviewer: row.reviewer ?? "Unassigned",
