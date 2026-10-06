@@ -1,0 +1,392 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName { ADMIN PREPARER REVIEWER READ_ONLY }
+enum PreparationStatus { NOT_STARTED DOCUMENTS_PENDING IN_PREPARATION READY_FOR_REVIEW CHANGES_REQUESTED REVIEWED_DRAFT ARCHIVED }
+
+model Firm {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  memberships Membership[]
+  clients     Client[]
+  createdAt   DateTime     @default(now())
+}
+
+model User {
+  id          String       @id @default(uuid()) @db.Uuid
+  email       String       @unique
+  displayName String
+  memberships Membership[]
+  assignments ClientAssignment[]
+  auditEvents AuditEvent[]
+  createdAt   DateTime     @default(now())
+}
+
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  firmId    String   @db.Uuid
+  userId    String   @db.Uuid
+  role      RoleName
+  firm      Firm     @relation(fields: [firmId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  @@unique([firmId, userId])
+}
+
+model Client {
+  id          String    @id @default(uuid()) @db.Uuid
+  firmId      String    @db.Uuid
+  clientCode  String
+  displayName String
+  archivedAt  DateTime?
+  firm        Firm      @relation(fields: [firmId], references: [id])
+  taxYears    TaxYear[]
+  assignments ClientAssignment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@unique([firmId, clientCode])
+  @@index([firmId, displayName])
+}
+
+model TaxYear {
+  id                String            @id @default(uuid()) @db.Uuid
+  clientId          String            @db.Uuid
+  year              Int
+  revision          Int               @default(1)
+  status            PreparationStatus @default(NOT_STARTED)
+  canonicalSnapshot Json
+  client            Client            @relation(fields: [clientId], references: [id])
+  sourceDocuments   SourceDocument[]
+  people            Person[]
+  dependents        Dependent[]
+  sourceForms       SourceFormRecord[]
+  activities        Activity[]
+  sourceMappings    SourceMapping[]
+  importBatches     ImportBatch[]
+  validationIssues  ValidationIssue[]
+  reviewPoints      ReviewPoint[]
+  manualOverrides   ManualOverride[]
+  generatedForms    GeneratedForm[]
+  returnPackages    GeneratedReturnPackage[]
+  workpaperRuns     WorkpaperRun[]
+  calculationRuns   CalculationRun[]
+  auditEvents       AuditEvent[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  @@unique([clientId, year])
+}
+
+model SourceDocument {
+  id              String   @id @default(uuid()) @db.Uuid
+  taxYearId       String   @db.Uuid
+  fileName        String
+  storageId       String
+  mimeType        String
+  byteLength      Int
+  checksum        String
+  duplicateHash   String
+  scanState       String
+  sourceRevision  Int      @default(1)
+  supersededById  String?  @db.Uuid
+  taxYear         TaxYear  @relation(fields: [taxYearId], references: [id])
+  sourceForms     SourceFormRecord[]
+  createdAt       DateTime @default(now())
+  @@index([taxYearId, duplicateHash])
+}
+
+model ClientAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  clientId  String   @db.Uuid
+  userId    String   @db.Uuid
+  kind      String
+  client    Client   @relation(fields: [clientId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  @@unique([clientId, userId, kind])
+}
+
+model Person {
+  id             String   @id @default(uuid()) @db.Uuid
+  taxYearId      String   @db.Uuid
+  role           String
+  legalName      String
+  tinEncrypted   String?
+  dateOfBirth    DateTime? @db.Date
+  address        Json
+  facts          Json
+  version        Int      @default(1)
+  taxYear        TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@unique([taxYearId, role])
+}
+
+model Dependent {
+  id             String   @id @default(uuid()) @db.Uuid
+  taxYearId      String   @db.Uuid
+  legalName      String
+  tinEncrypted   String?
+  facts          Json
+  version        Int      @default(1)
+  taxYear        TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SourceFormRecord {
+  id                 String          @id @default(uuid()) @db.Uuid
+  taxYearId          String          @db.Uuid
+  sourceDocumentId   String?         @db.Uuid
+  formType           String
+  formYear           Int
+  externalSourceId   String?
+  ownerRole          String
+  ownerPersonId      String?         @db.Uuid
+  normalizedData     Json
+  rawFields          Json
+  unmappedFields     Json
+  corrected          Boolean         @default(false)
+  void               Boolean         @default(false)
+  effective          Boolean         @default(true)
+  supersedesRecordId String?         @db.Uuid
+  version            Int             @default(1)
+  taxYear            TaxYear         @relation(fields: [taxYearId], references: [id])
+  sourceDocument     SourceDocument? @relation(fields: [sourceDocumentId], references: [id])
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  @@unique([taxYearId, externalSourceId])
+  @@index([taxYearId, formType, effective])
+}
+
+model Activity {
+  id                   String          @id @default(uuid()) @db.Uuid
+  taxYearId            String          @db.Uuid
+  type                 String
+  name                 String
+  ownerRole            String
+  implementationStatus String
+  details              Json
+  active               Boolean         @default(true)
+  version              Int             @default(1)
+  taxYear              TaxYear         @relation(fields: [taxYearId], references: [id])
+  mappings             SourceMapping[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+}
+
+model SourceMapping {
+  id               String    @id @default(uuid()) @db.Uuid
+  taxYearId        String    @db.Uuid
+  sourceRecordId   String    @db.Uuid
+  sourceField      String
+  sourceAmount     Decimal   @db.Decimal(18, 2)
+  targetType       String
+  targetActivityId String?   @db.Uuid
+  allocationMethod String
+  allocatedAmount  Decimal   @db.Decimal(18, 2)
+  percentage       Decimal?  @db.Decimal(7, 4)
+  reason           String?
+  status           String
+  version          Int       @default(1)
+  taxYear          TaxYear   @relation(fields: [taxYearId], references: [id])
+  targetActivity   Activity? @relation(fields: [targetActivityId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  @@index([taxYearId, sourceRecordId, sourceField])
+}
+
+model ImportBatch {
+  id             String               @id @default(uuid()) @db.Uuid
+  taxYearId      String               @db.Uuid
+  fileName       String
+  schemaVersion  String
+  batchHash      String
+  baseRevision   Int
+  status         String
+  rawStorageId   String?
+  resultRevision Int?
+  summary        Json
+  taxYear        TaxYear              @relation(fields: [taxYearId], references: [id])
+  changes        ImportRecordChange[]
+  createdAt      DateTime             @default(now())
+  committedAt    DateTime?
+  @@unique([taxYearId, batchHash])
+}
+
+model ImportRecordChange {
+  id            String      @id @default(uuid()) @db.Uuid
+  importBatchId String      @db.Uuid
+  fieldPath     String
+  changeKind    String
+  existingValue Json?
+  importedValue Json?
+  decision      String
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id])
+}
+
+model ValidationIssue {
+  id               String   @id @default(uuid()) @db.Uuid
+  taxYearId        String   @db.Uuid
+  code             String
+  severity         String
+  category         String
+  recordId         String?
+  fieldPath        String?
+  message          String
+  resolutionAction String
+  creationRevision Int
+  resolvedRevision Int?
+  resolution       String?
+  taxYear          TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt        DateTime @default(now())
+  resolvedAt       DateTime?
+  @@index([taxYearId, severity, resolvedAt])
+}
+
+model ReviewPoint {
+  id            String   @id @default(uuid()) @db.Uuid
+  taxYearId     String   @db.Uuid
+  category      String
+  subject       String
+  description   String
+  status        String
+  sourceRecordId String?
+  relatedForm   String?
+  relatedActivityId String?
+  assignedUserId String? @db.Uuid
+  createdById   String   @db.Uuid
+  dueDate       DateTime? @db.Date
+  resolution    String?
+  resolvedById  String?  @db.Uuid
+  creationRevision Int
+  taxYear       TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt     DateTime @default(now())
+  resolvedAt    DateTime?
+}
+
+model ManualOverride {
+  id              String   @id @default(uuid()) @db.Uuid
+  taxYearId       String   @db.Uuid
+  overridePoint   String
+  engineValue     Decimal  @db.Decimal(18, 2)
+  overrideValue   Decimal  @db.Decimal(18, 2)
+  unit            String
+  reason          String
+  evidence        String
+  actorId         String   @db.Uuid
+  approvedById    String?  @db.Uuid
+  active          Boolean  @default(true)
+  creationRevision Int
+  taxYear         TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+model CalculationRun {
+  id                  String   @id @default(uuid()) @db.Uuid
+  taxYearId           String   @db.Uuid
+  inputRevision       Int
+  inputHash           String
+  engineVersion       String
+  ruleVersion         String
+  formRegistryVersion String
+  status              String
+  result              Json
+  taxYear             TaxYear  @relation(fields: [taxYearId], references: [id])
+  createdAt           DateTime @default(now())
+  generatedForms      GeneratedForm[]
+  returnPackages      GeneratedReturnPackage[]
+  workpapers          WorkpaperRun[]
+  @@index([taxYearId, createdAt])
+}
+
+model GeneratedForm {
+  id              String          @id @default(uuid()) @db.Uuid
+  taxYearId       String          @db.Uuid
+  calculationRunId String         @db.Uuid
+  formKey         String
+  taxYearRevision String
+  templateVersion String
+  status          String
+  completeness    String
+  storageId       String?
+  contentHash     String?
+  manifest        Json
+  staleAt         DateTime?
+  taxYear         TaxYear         @relation(fields: [taxYearId], references: [id])
+  calculationRun  CalculationRun  @relation(fields: [calculationRunId], references: [id])
+  createdAt       DateTime        @default(now())
+  @@index([taxYearId, formKey, createdAt])
+}
+
+model GeneratedReturnPackage {
+  id               String         @id @default(uuid()) @db.Uuid
+  taxYearId        String         @db.Uuid
+  calculationRunId String         @db.Uuid
+  status           String
+  completeness     String
+  storageId        String?
+  contentHash      String?
+  manifest         Json
+  staleAt          DateTime?
+  taxYear          TaxYear        @relation(fields: [taxYearId], references: [id])
+  calculationRun   CalculationRun @relation(fields: [calculationRunId], references: [id])
+  createdAt        DateTime       @default(now())
+}
+
+model WorkpaperRun {
+  id               String         @id @default(uuid()) @db.Uuid
+  taxYearId        String         @db.Uuid
+  calculationRunId String         @db.Uuid
+  status           String
+  storageId        String?
+  contentHash      String?
+  manifest         Json
+  staleAt          DateTime?
+  taxYear          TaxYear        @relation(fields: [taxYearId], references: [id])
+  calculationRun   CalculationRun @relation(fields: [calculationRunId], references: [id])
+  createdAt        DateTime       @default(now())
+}
+
+model IntegrationConnection {
+  id           String   @id @default(uuid()) @db.Uuid
+  firmId       String   @db.Uuid
+  vendor       String
+  status       String
+  capabilities Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@unique([firmId, vendor])
+}
+
+model IntegrationSyncRun {
+  id              String   @id @default(uuid()) @db.Uuid
+  connectionId    String   @db.Uuid
+  taxYearId       String   @db.Uuid
+  direction       String
+  status          String
+  previewManifest Json
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  taxYearId  String?  @db.Uuid
+  actorId    String   @db.Uuid
+  eventType  String
+  recordType String
+  recordId   String
+  metadata   Json
+  prevHash   String?
+  eventHash  String
+  taxYear    TaxYear? @relation(fields: [taxYearId], references: [id])
+  actor      User     @relation(fields: [actorId], references: [id])
+  createdAt  DateTime @default(now())
+  @@index([taxYearId, createdAt])
+}

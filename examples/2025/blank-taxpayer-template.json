@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "tax_year": 2025,
+  "return_type": "1040",
+  "_instructions": {
+    "purpose": "Populate this JSON from all source documents provided by the user.",
+    "critical_rules": [
+      "Review all source documents before returning the completed JSON.",
+      "Do not estimate missing values.",
+      "Do not combine separate tax forms.",
+      "Preserve every visible supported box even if uncommon.",
+      "Use null when a value cannot be determined.",
+      "Do not calculate tax.",
+      "Do not modify schema_version."
+    ]
+  },
+  "client": {}, "taxpayer": {}, "spouse": null, "dependents": [],
+  "source_documents": [],
+  "forms": { "w2": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [] },
+  "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
+  "mappings": [], "payments": {}, "review_points": [], "metadata": {}
+}

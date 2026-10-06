@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus-tax.local/schemas/2025/taxpayer-import-v1.schema.json",
+  "title": "Nexus Tax 2025 Canonical Import",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tax_year", "return_type", "client", "taxpayer", "source_documents", "forms", "activities", "mappings", "payments", "review_points", "metadata"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "tax_year": { "const": 2025 },
+    "return_type": { "const": "1040" },
+    "_instructions": { "type": "object" },
+    "client": { "type": "object" },
+    "taxpayer": { "type": "object" },
+    "spouse": { "type": ["object", "null"] },
+    "dependents": { "type": "array" },
+    "source_documents": { "type": "array" },
+    "forms": {
+      "type": "object",
+      "required": ["w2", "form_1099_nec", "form_1099_misc", "form_1099_int", "form_1099_div"],
+      "properties": {
+        "w2": { "type": "array" },
+        "form_1099_nec": { "type": "array" },
+        "form_1099_misc": { "type": "array" },
+        "form_1099_int": { "type": "array" },
+        "form_1099_div": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "activities": { "type": "object" },
+    "mappings": { "type": "array" },
+    "payments": { "type": "object" },
+    "review_points": { "type": "array" },
+    "metadata": { "type": "object" }
+  }
+}
