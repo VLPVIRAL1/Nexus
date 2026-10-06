@@ -22,6 +22,7 @@
 - [x] Implement optimistic-concurrency conflict results containing base, current and proposed values.
 - [x] Implement firm/client authorization checks, TIN masking, structured-log redaction and spreadsheet-formula neutralization utilities.
 - [x] Implement staged import preview, explicit per-change decisions, stale-preview rejection and exact-replay idempotency service foundations.
+- [x] Persist authorized JSON import previews, raw bytes, stable-ID paths, decisions, every replay attempt, pre/post snapshots and commits; materialize all five form families with internal IDs, effective revisions and supersession lineage; add atomic tax-year invalidation, chained audit events and guarded compensating rollback. Empty arrays do not delete records and imported review claims cannot grant authority.
 - [x] Add year-specific capture/support registries for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV, including repeatable/open-ended fields and 2025 NEC Box 3 treatment status.
 - [x] Implement draft PDF cover/package manifest, XLSX source/review/mapping workpaper foundation and complete/source-only/blank JSON export services with hashes and injection-safe strings.
 - [x] Implement vendor-neutral tax-software adapter contracts and CCH/Drake planned adapters that advertise no unverified capability.

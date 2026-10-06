@@ -41,6 +41,9 @@ model User {
   assignments ClientAssignment[]
   auditEvents AuditEvent[]
   authSessions AuthSession[]
+  importAttempts ImportAttempt[]
+  committedImports ImportBatch[] @relation("CommittedImports")
+  rolledBackImports ImportBatch[] @relation("RolledBackImports")
   createdAt   DateTime     @default(now())
 }
 
@@ -104,6 +107,7 @@ model TaxYear {
   activities        Activity[]
   sourceMappings    SourceMapping[]
   importBatches     ImportBatch[]
+  importAttempts    ImportAttempt[]
   validationIssues  ValidationIssue[]
   reviewPoints      ReviewPoint[]
   manualOverrides   ManualOverride[]
@@ -178,6 +182,7 @@ model SourceFormRecord {
   id                 String          @id @default(uuid()) @db.Uuid
   taxYearId          String          @db.Uuid
   sourceDocumentId   String?         @db.Uuid
+  importBatchId      String?         @db.Uuid
   formType           String
   formYear           Int
   externalSourceId   String?
@@ -193,6 +198,7 @@ model SourceFormRecord {
   version            Int             @default(1)
   taxYear            TaxYear         @relation(fields: [taxYearId], references: [id])
   sourceDocument     SourceDocument? @relation(fields: [sourceDocumentId], references: [id])
+  importBatch        ImportBatch?     @relation(fields: [importBatchId], references: [id])
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   @@unique([taxYearId, externalSourceId])
@@ -245,10 +251,22 @@ model ImportBatch {
   baseRevision   Int
   status         String
   rawStorageId   String?
+  previewId      String?              @unique @db.Uuid
+  rawPayload     Bytes?
+  parsedPayload  Json?
+  previousSnapshot Json?
+  committedSnapshot Json?
+  committedById String?               @db.Uuid
+  rolledBackAt  DateTime?
+  rolledBackById String?              @db.Uuid
   resultRevision Int?
   summary        Json
   taxYear        TaxYear              @relation(fields: [taxYearId], references: [id])
   changes        ImportRecordChange[]
+  attempts       ImportAttempt[]
+  sourceForms    SourceFormRecord[]
+  committedBy    User?                @relation("CommittedImports", fields: [committedById], references: [id])
+  rolledBackBy   User?                @relation("RolledBackImports", fields: [rolledBackById], references: [id])
   createdAt      DateTime             @default(now())
   committedAt    DateTime?
   @@unique([taxYearId, batchHash])
@@ -258,11 +276,27 @@ model ImportRecordChange {
   id            String      @id @default(uuid()) @db.Uuid
   importBatchId String      @db.Uuid
   fieldPath     String
+  changeId      String?     @unique @db.Uuid
+  pathSegments  Json
   changeKind    String
   existingValue Json?
   importedValue Json?
   decision      String
   importBatch   ImportBatch @relation(fields: [importBatchId], references: [id])
+}
+
+model ImportAttempt {
+  id            String       @id @default(uuid()) @db.Uuid
+  taxYearId     String       @db.Uuid
+  importBatchId String?      @db.Uuid
+  batchHash     String
+  attemptedById String       @db.Uuid
+  outcome       String
+  taxYear       TaxYear      @relation(fields: [taxYearId], references: [id])
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+  attemptedBy   User         @relation(fields: [attemptedById], references: [id])
+  createdAt     DateTime     @default(now())
+  @@index([taxYearId, batchHash, createdAt])
 }
 
 model ValidationIssue {
