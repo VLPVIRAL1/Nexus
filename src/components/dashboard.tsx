@@ -1,6 +1,7 @@
 import { AlertCircle, ArrowRight, CheckCircle2, Clock3, FileWarning, Users } from "lucide-react";
 import Link from "next/link";
-import { clients } from "@/domain/demo-data";
+import { clients as syntheticClients } from "@/domain/demo-data";
+import type { ClientSummary } from "@/domain/types";
 import { StatusPill } from "./status";
 
 const metrics = [
@@ -11,7 +12,7 @@ const metrics = [
   { label: "Blocking errors", value: "5", detail: "Across 4 returns", icon: AlertCircle, tone: "red" },
 ];
 
-export function Dashboard() {
+export function Dashboard({ clients = syntheticClients }: { clients?: ClientSummary[] }) {
   return (
     <>
       <div className="page-header">

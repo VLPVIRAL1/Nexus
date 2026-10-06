@@ -12,8 +12,11 @@ Nexus Tax is a professional, draft-only U.S. individual tax preparation and revi
 
 ```bash
 cp .env.example .env
+docker compose up -d postgres
 npm install
 npm run db:generate
+npm run db:migrate
+npm run db:seed
 npm run dev
 ```
 
