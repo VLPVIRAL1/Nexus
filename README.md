@@ -29,7 +29,8 @@ npm run dev        # development server
 npm run typecheck  # strict TypeScript checks
 npm test           # unit tests
 npm run build      # production build
-npm run db:migrate # create/apply a PostgreSQL development migration
+npm run db:migrate # apply pending PostgreSQL migrations transactionally
+npm run test:integration # verify live PostgreSQL constraints and seed state
 ```
 
 The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Tax calculation, PDF generation, XLSX workpapers, imports, and database seeding are planned capabilities and must not be represented as working until their acceptance evidence passes.

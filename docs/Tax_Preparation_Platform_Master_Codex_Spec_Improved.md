@@ -10,6 +10,7 @@
 ### Completed and verified
 
 - [x] Initialize strict Next.js, React, TypeScript, Tailwind, Vitest, Prisma and PostgreSQL project foundation.
+- [x] Add GitHub Actions CI with PostgreSQL service, migration/seed, strict type checks, unit and database integration tests, production build, dependency audit and production-server route smoke tests.
 - [x] Implement the shared Drake-inspired design tokens, professional application shell and responsive compact/comfortable density behavior.
 - [x] Implement the synthetic dashboard and client work queue with masked identifiers, preparation status, open points and blockers.
 - [x] Implement the synthetic W-2 workstation pattern with repeatable records, box-aligned entry, Box 12/14 tables, provenance, source preview state and visible diagnostics.
