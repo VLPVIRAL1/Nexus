@@ -25,6 +25,7 @@
 - [x] Implement draft PDF cover/package manifest, XLSX source/review/mapping workpaper foundation and complete/source-only/blank JSON export services with hashes and injection-safe strings.
 - [x] Implement vendor-neutral tax-software adapter contracts and CCH/Drake planned adapters that advertise no unverified capability.
 - [x] Add repeatable PostgreSQL 16 development provisioning, transactional SQL migration tracking, synthetic seed data, append-only audit enforcement, database integration tests and a database-backed work-queue read path with production fallback protection.
+- [x] Implement source-file intake guards for 25 MiB limits, filename sanitization, MIME/signature verification, SHA-256 hashing, quarantine-first storage, scanner approval and explicit promotion through storage/scanner interfaces.
 - [x] Add project documentation, decision register, traceability matrix, environment setup and development-server instructions.
 - [x] Pass strict type checking, production build, current automated tests, route smoke checks and dependency audit for the implemented scope.
 
