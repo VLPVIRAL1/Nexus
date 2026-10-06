@@ -138,3 +138,7 @@ kbd { border: 1px solid #778ca4; border-radius: 2px; padding: 1px 5px; font-size
 .form-error, .inline-create p { margin: 0; color: var(--danger); font-size: 10px; }
 .inline-create { margin-bottom: 12px; padding: 12px; display: flex; align-items: end; gap: 8px; }
 .inline-create input { width: 120px; }
+.persisted-question > div { flex: 1; }
+.persisted-question > div > input { display: block; width: min(520px, 100%); height: 28px; margin-top: 6px; padding: 0 8px; border: 1px solid var(--border); font-size: 9px; }
+.expected-document-form { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.expected-document-form input, .expected-document-form select { height: 29px; padding: 0 7px; border: 1px solid var(--border); background: white; font-size: 9px; }

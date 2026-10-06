@@ -25,8 +25,9 @@ import { diagnostics, money, w2Records } from "@/domain/demo-data";
 import { SeverityIcon, StatusPill } from "./status";
 import type { TaxYearWorkspaceRecord } from "@/server/client-repository";
 
-const sections = [
-  { label: "Overview", items: [{ name: "Return overview", count: "" }] },
+interface WorkspaceTreeItem { name: string; count: string; active?: boolean; warn?: boolean; href?: string }
+const sections: Array<{ label: string; items: WorkspaceTreeItem[] }> = [
+  { label: "Overview", items: [{ name: "Return overview", count: "" }, { name: "Intake & completeness", count: "", href: "intake" }] },
   { label: "General", items: [{ name: "Taxpayer information", count: "" }, { name: "Spouse", count: "" }, { name: "Dependents", count: "0" }] },
   { label: "Source data", items: [{ name: "Source documents", count: "14" }, { name: "Imports", count: "2" }, { name: "Mapping center", count: "2", warn: true }] },
   { label: "Income", items: [{ name: "W-2", count: "2", active: true }, { name: "1099-INT", count: "3" }, { name: "1099-DIV", count: "2" }, { name: "1099-NEC", count: "2" }, { name: "1099-MISC", count: "2", warn: true }] },
@@ -77,7 +78,11 @@ export function TaxWorkspace({ context }: { context?: TaxYearWorkspaceRecord }) 
             {sections.map((section) => (
               <section key={section.label}>
                 <h2>{section.label}<ChevronDown size={13} /></h2>
-                {section.items.map((item) => (
+                {section.items.map((item) => item.href ? (
+                  <Link className="tree-item" href={`/clients/${context?.clientId ?? "sample"}/years/${context?.year ?? 2025}/${item.href}`} key={item.name}>
+                    <span>{item.name}</span>
+                  </Link>
+                ) : (
                   <button className={`tree-item ${item.active ? "active" : ""}`} key={item.name}>
                     <span>{item.warn ? <AlertCircle size={13} className="tree-warning" /> : null}{item.name}</span>
                     {item.count ? <span className="tree-count">{item.count}</span> : null}

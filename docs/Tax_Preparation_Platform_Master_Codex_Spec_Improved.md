@@ -18,6 +18,7 @@
 - [x] Implement decimal-safe amount utilities and cent-preserving percentage residual allocation.
 - [x] Implement allocation reconciliation with full, partial, excluded and over-allocation outcomes.
 - [x] Implement required-intake question registry and blocking unknown/unsupported-answer diagnostics.
+- [x] Persist evidence-backed intake answer revisions, expected-document dispositions and immutable completeness attestations; add optimistic revision checks, generated blockers, stale calculation/review invalidation, audit events, guarded APIs and a database-backed intake screen.
 - [x] Implement guarded Ready for Review / Reviewed Draft decisions, stale-revision checks and review invalidation after relevant edits.
 - [x] Implement optimistic-concurrency conflict results containing base, current and proposed values.
 - [x] Implement firm/client authorization checks, TIN masking, structured-log redaction and spreadsheet-formula neutralization utilities.

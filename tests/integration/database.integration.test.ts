@@ -7,6 +7,8 @@ import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256
 import type { AuthorizationContext } from "../../src/services/authorization";
 import template from "../../examples/2025/blank-taxpayer-template.json";
 import { commitPersistedImport, rollbackPersistedImport, stageCanonicalImport } from "../../src/server/import-persistence-service";
+import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAnswers } from "../../src/server/intake-service";
+import { phase1IntakeQuestions } from "../../src/domain/intake";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -19,6 +21,8 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0001_foundation.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0002_identity_and_workflows.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0003_import_history.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0004_source_form_lineage.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0005_intake_completeness.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]).toEqual({ tax_year: 2025, preparation_status: "in_preparation" });
     } finally { await client.end(); }
@@ -121,5 +125,37 @@ suite("PostgreSQL foundation", () => {
       const sourceRecord = await client.query("SELECT effective,version,import_batch_id FROM source_form_records WHERE tax_year_id='40000000-0000-4000-8000-000000000001' AND external_source_id=$1", [externalSourceId]);
       expect(sourceRecord.rows).toEqual([{ effective: false, version: 1, import_batch_id: preview.batchId }]);
     } finally { await client.end(); }
+  });
+
+  it("persists evidence-backed intake, document disposition, attestation, and revision invalidation", async () => {
+    const context: AuthorizationContext = {
+      userId: "20000000-0000-4000-8000-000000000001",
+      firmId: "10000000-0000-4000-8000-000000000001",
+      role: "preparer",
+      assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]),
+    };
+    const before = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    const answered = await saveIntakeAnswers(
+      context,
+      "30000000-0000-4000-8000-000000000001",
+      2025,
+      before.revision,
+      phase1IntakeQuestions.map((question) => ({ questionId: question.id, answer: question.supportedWhenYes ? "yes" as const : "no" as const, evidence: "Synthetic integration interview" })),
+    );
+    expect(answered.blockerCount).toBe(0);
+    const document = await saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, answered.revision, {
+      documentKey: `fixture.${randomUUID()}`, label: "Synthetic W-2", status: "received", evidence: "Synthetic source inventory", sourceDocumentId: null, expectedVersion: null,
+    });
+    const attestation = await attestCompleteness(context, "30000000-0000-4000-8000-000000000001", 2025, document.revision, "Synthetic preparer completeness review", null);
+    const complete = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true } });
+
+    const invalidated = await saveIntakeAnswers(context, "30000000-0000-4000-8000-000000000001", 2025, complete.revision, [{
+      questionId: "income.investment_sales", answer: "yes", evidence: "Synthetic unsupported fact",
+    }]);
+    expect(invalidated.blockerCount).toBe(1);
+    const changed = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(changed.blockingQuestionIds).toContain("income.investment_sales");
+    expect(changed.attestation?.current).toBe(false);
   });
 });

@@ -44,6 +44,8 @@ model User {
   importAttempts ImportAttempt[]
   committedImports ImportBatch[] @relation("CommittedImports")
   rolledBackImports ImportBatch[] @relation("RolledBackImports")
+  expectedDocuments ExpectedDocument[]
+  completenessAttestations CompletenessAttestation[]
   createdAt   DateTime     @default(now())
 }
 
@@ -108,6 +110,8 @@ model TaxYear {
   sourceMappings    SourceMapping[]
   importBatches     ImportBatch[]
   importAttempts    ImportAttempt[]
+  expectedDocuments ExpectedDocument[]
+  completenessAttestations CompletenessAttestation[]
   validationIssues  ValidationIssue[]
   reviewPoints      ReviewPoint[]
   manualOverrides   ManualOverride[]
@@ -135,8 +139,41 @@ model SourceDocument {
   supersededById  String?  @db.Uuid
   taxYear         TaxYear  @relation(fields: [taxYearId], references: [id])
   sourceForms     SourceFormRecord[]
+  expectedDocuments ExpectedDocument[]
   createdAt       DateTime @default(now())
   @@index([taxYearId, duplicateHash])
+}
+
+model ExpectedDocument {
+  id               String          @id @default(uuid()) @db.Uuid
+  taxYearId        String          @db.Uuid
+  documentKey      String
+  label            String
+  status           String
+  evidence         String?
+  sourceDocumentId String?         @db.Uuid
+  version          Int             @default(1)
+  updatedById      String          @db.Uuid
+  taxYear          TaxYear         @relation(fields: [taxYearId], references: [id])
+  sourceDocument   SourceDocument? @relation(fields: [sourceDocumentId], references: [id])
+  updatedBy        User            @relation(fields: [updatedById], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  @@unique([taxYearId, documentKey])
+}
+
+model CompletenessAttestation {
+  id                         String   @id @default(uuid()) @db.Uuid
+  taxYearId                  String   @db.Uuid
+  taxYearRevision            Int
+  attestedById               String   @db.Uuid
+  evidence                   String
+  missingDocumentExplanation String?
+  taxYear                    TaxYear  @relation(fields: [taxYearId], references: [id])
+  attestedBy                 User     @relation(fields: [attestedById], references: [id])
+  createdAt                  DateTime @default(now())
+  @@unique([taxYearId, taxYearRevision])
+  @@index([taxYearId, taxYearRevision])
 }
 
 model ClientAssignment {
