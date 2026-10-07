@@ -13,6 +13,7 @@ import { createActivity, getMappingState, saveAllocations } from "../../src/serv
 import { createReviewPoint, getReviewState, requestChanges, updateReviewPointStatus } from "../../src/server/review-service";
 import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride } from "../../src/server/override-service";
 import { getCalculationState, runPersistedCalculation } from "../../src/server/calculation-service";
+import { downloadPersistedArtifact, generatePersistedArtifact, getArtifactState } from "../../src/server/output-persistence-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -32,6 +33,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0008_review_workflow.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0009_override_governance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0010_calculation_snapshots.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0011_persisted_artifacts.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -294,5 +296,33 @@ suite("PostgreSQL foundation", () => {
     await database.end();
     expect(stored.rows[0]?.input_snapshot).toMatchObject({ calculationId: expect.any(String), inputRevision: before.revision });
     expect(stored.rows[0]?.result_hash).toBe(run.resultHash);
+  });
+
+  it("persists content-addressed output bytes, enforces sensitive exports, replays identical jobs, and stales artifacts on change", async () => {
+    const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const calculation = await getCalculationState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(calculation.latestRun?.current).toBe(true);
+    const pdf = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
+    const workbook = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "workpaper_xlsx");
+    const sourceJson = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "source_only_json");
+    expect(pdf).toMatchObject({ status: "succeeded", replayed: false, contentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(workbook).toMatchObject({ status: "succeeded", replayed: false });
+    expect(sourceJson).toMatchObject({ status: "succeeded", replayed: false });
+    const replay = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
+    expect(replay).toMatchObject({ id: pdf.id, replayed: true, contentHash: pdf.contentHash });
+    await expect(generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "complete_json")).rejects.toMatchObject({ code: "forbidden" });
+    const downloaded = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, pdf.id);
+    expect(downloaded.mimeType).toBe("application/pdf");
+    expect(downloaded.bytes.subarray(0, 4).toString()).toBe("%PDF");
+    expect(downloaded.contentHash).toBe(pdf.contentHash);
+    let state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.canExportComplete).toBe(false);
+    expect(state.artifacts.filter(({ stale }) => !stale).map(({ id }) => id)).toEqual(expect.arrayContaining([pdf.id, workbook.id, sourceJson.id]));
+    await createActivity(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, {
+      type: "schedule_c", name: `Artifact invalidation ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "supported",
+      receiptBasis: "source_plus_additional_receipts", additionalReceipts: "0.00", receiptNote: null,
+    });
+    state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.artifacts.find(({ id }) => id === pdf.id)?.stale).toBe(true);
   });
 });

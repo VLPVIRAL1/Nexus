@@ -119,6 +119,7 @@ model TaxYear {
   returnPackages    GeneratedReturnPackage[]
   workpaperRuns     WorkpaperRun[]
   calculationRuns   CalculationRun[]
+  generatedArtifacts GeneratedArtifact[]
   auditEvents       AuditEvent[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -436,7 +437,34 @@ model CalculationRun {
   generatedForms      GeneratedForm[]
   returnPackages      GeneratedReturnPackage[]
   workpapers          WorkpaperRun[]
+  generatedArtifacts GeneratedArtifact[]
   @@index([taxYearId, createdAt])
+}
+
+model GeneratedArtifact {
+  id               String         @id @default(uuid()) @db.Uuid
+  taxYearId        String         @db.Uuid
+  calculationRunId String?        @db.Uuid
+  artifactType     String
+  artifactKey      String
+  templateVersion  String?
+  status           String
+  completeness     String
+  storageId        String?
+  contentHash      String?
+  manifest         Json
+  artifactBytes    Bytes?
+  mimeType         String?
+  fileName         String?
+  createdById      String?        @db.Uuid
+  idempotencyKey   String?        @unique
+  errorMessage     String?
+  attemptCount     Int            @default(1)
+  staleAt          DateTime?
+  taxYear          TaxYear        @relation(fields: [taxYearId], references: [id])
+  calculationRun   CalculationRun? @relation(fields: [calculationRunId], references: [id])
+  createdAt        DateTime       @default(now())
+  @@index([taxYearId, artifactType, createdAt])
 }
 
 model GeneratedForm {

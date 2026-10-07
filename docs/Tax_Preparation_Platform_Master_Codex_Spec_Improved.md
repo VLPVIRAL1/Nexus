@@ -4,7 +4,7 @@
 
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
-**Last updated:** October 6, 2026  
+**Last updated:** October 7, 2026
 **Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards and an unapproved calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
 
 ### Completed and verified
@@ -37,6 +37,7 @@
 - [x] Persist assigned human review points separately from machine diagnostics; enforce tax-year revisions, record versions, same-client references, reviewer-only resolution and assigned-reviewer change requests; surface conservative changed-after-review state and redacted append-only hash-chained audit history in a database-backed review screen.
 - [x] Add a registered calculation-trace override workflow that derives engine values from a current immutable calculation run, requires reason and evidence, forbids requester self-approval, records independent approve/reject/revert history, exposes downstream impact, versions every decision and forces a blocking new revision/recalculation instead of directly rewriting output lines or clearing unsupported-treatment blockers.
 - [x] Assemble effective persisted source records, owner-specific withholding, accepted Schedule C mappings, additional receipts, expenses, current intake/attestation facts and approved registered overrides into hashed immutable 2025 calculation inputs; persist idempotent run snapshots, result hashes, version manifests, engine diagnostics and audit events; render a database-backed current/stale calculation summary while keeping unapproved rules and unresolved dependencies explicitly partial.
+- [x] Persist calculation-run-bound draft PDF, XLSX and canonical/source-only/blank JSON artifact bytes with content hashes, version manifests, creator identity and deterministic idempotency keys; verify hashes on authorized download, separately gate complete sensitive JSON, mark historical artifacts stale on any tax-year revision, and expose generation/history/download APIs plus a database-backed outputs screen. PDF form filling, complete workpaper depth and asynchronous retry infrastructure remain open.
 
 ### In progress / not complete
 
