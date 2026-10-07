@@ -32,7 +32,7 @@ const sections: Array<{ label: string; items: WorkspaceTreeItem[] }> = [
   { label: "Source data", items: [{ name: "Source documents", count: "14" }, { name: "Imports", count: "2" }, { name: "Mapping center", count: "2", warn: true, href: "mapping" }] },
   { label: "Income", items: [{ name: "W-2", count: "2", active: true }, { name: "1099-INT", count: "3" }, { name: "1099-DIV", count: "2" }, { name: "1099-NEC", count: "2" }, { name: "1099-MISC", count: "2", warn: true }] },
   { label: "Calculation", items: [{ name: "Tax summary", count: "" }, { name: "Form 1040", count: "" }, { name: "Forms & schedules", count: "3" }] },
-  { label: "Review", items: [{ name: "Validation & open points", count: "5", warn: true, href: "review" }, { name: "Reconciliation", count: "2", warn: true }] },
+  { label: "Review", items: [{ name: "Validation & open points", count: "5", warn: true, href: "review" }, { name: "Manual overrides", count: "", href: "overrides" }, { name: "Reconciliation", count: "2", warn: true }] },
 ];
 
 export function TaxWorkspace({ context }: { context?: TaxYearWorkspaceRecord }) {

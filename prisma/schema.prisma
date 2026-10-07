@@ -399,8 +399,20 @@ model ManualOverride {
   evidence        String
   actorId         String   @db.Uuid
   approvedById    String?  @db.Uuid
-  active          Boolean  @default(true)
+  active          Boolean  @default(false)
   creationRevision Int
+  calculationRunId String? @db.Uuid
+  status          String   @default("pending_review")
+  version         Int      @default(1)
+  dependencyHash  String   @default("")
+  downstreamPaths Json
+  approvedAt      DateTime?
+  rejectedById    String?  @db.Uuid
+  rejectedAt      DateTime?
+  reviewNote      String?
+  revertedById    String?  @db.Uuid
+  revertedAt      DateTime?
+  supersedesOverrideId String? @db.Uuid
   taxYear         TaxYear  @relation(fields: [taxYearId], references: [id])
   createdAt       DateTime @default(now())
 }

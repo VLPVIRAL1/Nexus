@@ -11,6 +11,7 @@ import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAns
 import { phase1IntakeQuestions } from "../../src/domain/intake";
 import { createActivity, getMappingState, saveAllocations } from "../../src/server/mapping-persistence-service";
 import { createReviewPoint, getReviewState, requestChanges, updateReviewPointStatus } from "../../src/server/review-service";
+import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride } from "../../src/server/override-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -28,6 +29,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0006_mapping_integrity.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0007_mapping_residual_disclosure.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0008_review_workflow.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0009_override_governance.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -250,5 +252,28 @@ suite("PostgreSQL foundation", () => {
     expect(changed.points.find(({ id }) => id === created.id)).toMatchObject({ current: false, changedAfterReview: true });
     expect(changed.auditEvents.some(({ eventType }) => eventType === "review_point.resolved")).toBe(true);
     expect(changed.auditEvents.some(({ eventType }) => eventType === "review.changes_requested")).toBe(true);
+  });
+
+  it("governs registered overrides through independent approval, forced recalculation, and auditable revert", async () => {
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const reviewer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000002", firmId: "10000000-0000-4000-8000-000000000001", role: "reviewer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const before = await getOverrideState(preparer, "30000000-0000-4000-8000-000000000001", 2025);
+    const calculationRunId = randomUUID();
+    const database = new pg.Client({ connectionString }); await database.connect();
+    await database.query(`INSERT INTO calculation_runs(id,tax_year_id,input_revision,input_hash,engine_version,rule_version,form_registry_version,calculation_status,result) VALUES($1,'40000000-0000-4000-8000-000000000001',$2,$3,'integration-engine','integration-rules','integration-forms','partial',$4::jsonb)`, [calculationRunId, before.revision, randomUUID(), JSON.stringify({ trace: [{ nodeId: "form-1040.income-tax", result: "1234" }] })]);
+    await database.end();
+    const requested = await createOverrideRequest(preparer, "30000000-0000-4000-8000-000000000001", 2025, before.revision, "form-1040.income-tax", "1200.00", "Synthetic worksheet exception", "Synthetic reviewer workpaper reference");
+    await expect(reviewOverride(preparer, "30000000-0000-4000-8000-000000000001", 2025, requested.id, requested.revision, requested.version, "approved", "Self approval is forbidden")).rejects.toMatchObject({ code: "forbidden" });
+    const approved = await reviewOverride(reviewer, "30000000-0000-4000-8000-000000000001", 2025, requested.id, requested.revision, requested.version, "approved", "Synthetic independent recalculation review");
+    let state = await getOverrideState(reviewer, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.overrides.find(({ id }) => id === requested.id)).toMatchObject({ status: "approved", active: true, engineValue: "1234.00", overrideValue: "1200.00", version: approved.version });
+    expect(state.currentCalculation?.current).toBe(false);
+    const reverted = await revertOverride(reviewer, "30000000-0000-4000-8000-000000000001", 2025, requested.id, approved.revision, approved.version, "Synthetic revert to calculated value");
+    state = await getOverrideState(reviewer, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.revision).toBe(reverted.revision);
+    expect(state.overrides.find(({ id }) => id === requested.id)).toMatchObject({ status: "reverted", active: false });
+    const verification = new pg.Client({ connectionString }); await verification.connect();
+    const blockers = await verification.query("SELECT 1 FROM validation_issues WHERE tax_year_id='40000000-0000-4000-8000-000000000001' AND code='OVERRIDE_RECALCULATION_REQUIRED' AND resolved_at IS NULL");
+    await verification.end(); expect(blockers.rowCount).toBeGreaterThan(0);
   });
 });

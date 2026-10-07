@@ -35,6 +35,7 @@
 - [x] Pass strict type checking, production build, current automated tests, route smoke checks and dependency audit for the implemented scope.
 - [x] Persist firm-scoped activities and versioned source allocations with server-derived effective amounts, optimistic revisions, immutable supersession history, cent-perfect amount/percentage reconciliation, disclosed residual recipients, Schedule C receipt-basis safeguards, reviewer-only exclusions, unsupported-destination blockers, import-driven invalidation, chained audit events, guarded APIs and a database-backed mapping center.
 - [x] Persist assigned human review points separately from machine diagnostics; enforce tax-year revisions, record versions, same-client references, reviewer-only resolution and assigned-reviewer change requests; surface conservative changed-after-review state and redacted append-only hash-chained audit history in a database-backed review screen.
+- [x] Add a registered calculation-trace override workflow that derives engine values from a current immutable calculation run, requires reason and evidence, forbids requester self-approval, records independent approve/reject/revert history, exposes downstream impact, versions every decision and forces a blocking new revision/recalculation instead of directly rewriting output lines or clearing unsupported-treatment blockers.
 
 ### In progress / not complete
 
