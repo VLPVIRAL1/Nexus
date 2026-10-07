@@ -11,12 +11,15 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots",
     "db:generate": "prisma generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:prisma:migrate": "prisma migrate dev",
     "worker:artifacts": "node --conditions=react-server --import tsx scripts/artifact-worker.ts",
-    "recovery:exercise": "tsx scripts/recovery-exercise.ts"
+    "recovery:exercise": "tsx scripts/recovery-exercise.ts",
+    "performance:exercise": "tsx scripts/performance-exercise.ts"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",
@@ -34,6 +37,8 @@
     "zod": "4.1.11"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.1.14",
     "@types/node": "24.7.0",
     "@types/pg": "8.15.5",

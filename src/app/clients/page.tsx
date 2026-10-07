@@ -5,7 +5,8 @@ import { requestAuthorizationContext } from "@/server/request-auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClientsPage() {
+export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ fixture?: string }> }) {
+  if ((await searchParams).fixture === "visual" && process.env.APP_ENV !== "production") return <AppShell><Dashboard /></AppShell>;
   const clients = await listDashboardClients(await requestAuthorizationContext());
   return <AppShell><Dashboard clients={clients} /></AppShell>;
 }

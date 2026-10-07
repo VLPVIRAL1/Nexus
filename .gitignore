@@ -6,3 +6,5 @@ coverage/
 *.log
 *.tsbuildinfo
 generated/
+test-results/
+playwright-report/

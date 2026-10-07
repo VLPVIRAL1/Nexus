@@ -41,11 +41,13 @@ export interface TaxYearWorkspaceRecord {
   calculationStatus: string;
 }
 
-export async function listDashboardClients(context: AuthorizationContext): Promise<ClientSummary[]> {
+export async function listDashboardClients(context: AuthorizationContext, options: { query?: string; limit?: number } = {}): Promise<ClientSummary[]> {
   if (!process.env.DATABASE_URL) {
     if (process.env.APP_ENV === "production") throw new Error("Production cannot use synthetic client fallback data.");
     return syntheticClients;
   }
+  const query = options.query?.trim().slice(0, 100) || null;
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 200));
   const result = await databasePool().query<ClientRow>(`
     SELECT c.id, c.client_code, c.display_name, ty.tax_year, ty.preparation_status,
       MAX(u.display_name) FILTER (WHERE ca.kind='preparer') AS preparer,
@@ -61,7 +63,8 @@ export async function listDashboardClients(context: AuthorizationContext): Promi
     LEFT JOIN validation_issues vi ON vi.tax_year_id=ty.id
     WHERE c.firm_id=$1 AND c.archived_at IS NULL
       AND ($2::boolean OR EXISTS (SELECT 1 FROM client_assignments scope_ca WHERE scope_ca.client_id=c.id AND scope_ca.user_id=$3))
-    GROUP BY c.id,ty.id ORDER BY ty.updated_at DESC`, [context.firmId, context.role === "admin", context.userId]);
+      AND ($4::text IS NULL OR lower(c.client_code) LIKE lower($4)||'%' OR lower(c.display_name) LIKE lower($4)||'%')
+    GROUP BY c.id,ty.id ORDER BY ty.updated_at DESC LIMIT $5`, [context.firmId, context.role === "admin", context.userId, query, limit]);
   return result.rows.map((row) => ({
     id: row.id, code: row.client_code, taxpayer: row.display_name, maskedTin: "***-**-••••", returnType: "1040", taxYear: 2025,
     status: displayStatus(row.preparation_status), preparer: row.preparer ?? "Unassigned", reviewer: row.reviewer ?? "Unassigned",

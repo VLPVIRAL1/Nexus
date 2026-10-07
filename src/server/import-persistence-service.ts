@@ -273,8 +273,8 @@ async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: st
       const ownerRole = typeof record.recipient_role === "string" ? record.recipient_role : "unknown";
       const sourceDocumentId = typeof record.source_document_id === "string" && documentIds.has(record.source_document_id) ? record.source_document_id : null;
       const inserted = await client.query<{ id: string; external_source_id: string; normalized_data: Record<string, unknown>; corrected: boolean; void: boolean; effective: boolean; version: number }>(
-        `INSERT INTO source_form_records(tax_year_id,source_document_id,form_type,form_year,external_source_id,owner_role,owner_person_id,normalized_data,raw_fields,unmapped_fields,corrected,void,effective,supersedes_record_id,version,import_batch_id,record_disposition,change_reason,created_by_id)
-         VALUES($1,$2,$3,2025,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        `INSERT INTO source_form_records(tax_year_id,source_document_id,form_type,form_year,external_source_id,owner_role,owner_person_id,normalized_data,raw_fields,unmapped_fields,corrected,void,effective,supersedes_record_id,version,import_batch_id,record_disposition,change_reason,created_by_id,correction_evidence_mode,correction_evidence_note)
+         VALUES($1,$2,$3,2025,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          RETURNING id,external_source_id,normalized_data,corrected,void,effective,version`,
         [
           taxYearId, sourceDocumentId, formType, externalId, ownerRole, personByRole.get(ownerRole) ?? null,
@@ -282,6 +282,8 @@ async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: st
           JSON.stringify(Array.isArray(record.unmapped_source_fields) ? record.unmapped_source_fields : []),
           corrected, voided, !voided, prior?.id ?? null, (latest?.version ?? 0) + 1, importBatchId,
           voided ? "void" : corrected ? "corrected" : "original", voided ? "Canonical import marked this record void." : corrected ? "Canonical import supplied a corrected version." : null, createdById,
+          corrected ? sourceDocumentId ? "attached_document" : "manual_attestation" : null,
+          corrected && !sourceDocumentId ? "Canonical import supplied a corrected version without an attached source document." : null,
         ],
       );
       const created = inserted.rows[0];

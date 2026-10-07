@@ -31,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
         <Link className="brand" href="/dashboard" aria-label="Nexus Tax dashboard">
           <span className="brand-mark">N</span>
@@ -76,7 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ChevronDown size={14} />
         </div>
       </aside>
-      <main className="main-content">{children}</main>
+      <main className="main-content" id="main-content" tabIndex={-1}>{children}</main>
     </div>
   );
 }

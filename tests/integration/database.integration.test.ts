@@ -2,7 +2,7 @@ import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createTaxYear, upsertPerson } from "../../src/server/client-workflow-service";
-import { getClientProfile } from "../../src/server/client-repository";
+import { getClientProfile, listDashboardClients } from "../../src/server/client-repository";
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
 import template from "../../examples/2025/blank-taxpayer-template.json";
@@ -20,6 +20,7 @@ import { getSourceRecordState, reviseSourceRecord } from "../../src/server/sourc
 import { getArtifactJobMetrics } from "../../src/server/operations-service";
 import { getAssignmentState, setClientAssignment } from "../../src/server/assignment-service";
 import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-service";
+import { getRetentionState, placeLegalHold, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -44,6 +45,9 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0013_source_record_lifecycle.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0014_artifact_jobs.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0015_api_rate_limits.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0016_correction_evidence.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0017_retention_governance.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0018_client_list_performance.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -58,6 +62,13 @@ suite("PostgreSQL foundation", () => {
       const inserted = await client.query<{ id: string }>("INSERT INTO audit_events(firm_id,tax_year_id,actor_id,event_type,record_type,record_id,event_hash) VALUES('10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','test','tax_year','synthetic','hash') RETURNING id");
       await expect(client.query("UPDATE audit_events SET event_type='changed' WHERE id=$1", [inserted.rows[0].id])).rejects.toThrow("append-only");
     } finally { await client.query("ROLLBACK"); await client.end(); }
+  });
+
+  it("bounds and prefix-filters the firm client list", async () => {
+    const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    expect(await listDashboardClients(context, { limit: 1 })).toHaveLength(1);
+    expect(await listDashboardClients(context, { query: "000123", limit: 10 })).toEqual([expect.objectContaining({ code: "000123" })]);
+    expect(await listDashboardClients(context, { query: "no-such-prefix", limit: 10 })).toEqual([]);
   });
 
   it("lets only administrators manage compatible firm assignments and audits every change", async () => {
@@ -79,6 +90,34 @@ suite("PostgreSQL foundation", () => {
     const audit = await database.query("SELECT 1 FROM audit_events WHERE firm_id=$1 AND event_type='client.assignment_changed' AND record_id=$2", [admin.firmId, clientId]);
     await database.end();
     expect(audit.rowCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("governs retention policies and legal holds with versions, scope, and audit history", async () => {
+    const clientId = "30000000-0000-4000-8000-000000000001";
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set([clientId]) };
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: preparer.firmId, role: "admin", assignedClientIds: new Set() };
+    expect(await getRetentionState(preparer)).toEqual({ canManage: false, policies: [], holds: [], scopes: [] });
+    await expect(saveRetentionPolicy(preparer, { category: "backups", retentionMonths: 12, disposition: "review", policyBasis: "Unauthorized", expectedVersion: null })).rejects.toMatchObject({ code: "forbidden" });
+
+    let state = await getRetentionState(admin);
+    const priorPolicy = state.policies.find((policy) => policy.category === "backups");
+    const saved = await saveRetentionPolicy(admin, { category: "backups", retentionMonths: 18, disposition: "review", policyBasis: "Synthetic approved backup-expiry review policy.", expectedVersion: priorPolicy?.version ?? null });
+    await expect(saveRetentionPolicy(admin, { category: "backups", retentionMonths: 19, disposition: "delete", policyBasis: "Stale update.", expectedVersion: priorPolicy?.version ?? null })).rejects.toMatchObject({ code: "conflict" });
+    state = await getRetentionState(admin);
+    expect(state.policies.find((policy) => policy.category === "backups")).toMatchObject({ retentionMonths: 18, disposition: "review", version: saved.version });
+
+    const scope = state.scopes.find((item) => item.clientId === clientId)!;
+    const existingHold = state.holds.find((hold) => hold.taxYearId === scope.taxYearId && !hold.releasedAt);
+    if (existingHold) await releaseLegalHold(admin, { holdId: existingHold.id, expectedVersion: existingHold.version, reason: "Reset repeatable synthetic integration fixture." });
+    const hold = await placeLegalHold(admin, { taxYearId: scope.taxYearId, reference: `TEST-${randomUUID()}`, reason: "Preserve this synthetic return during a test matter." });
+    await expect(placeLegalHold(admin, { taxYearId: scope.taxYearId, reference: "DUPLICATE", reason: "Must not overlap." })).rejects.toMatchObject({ code: "conflict" });
+    const released = await releaseLegalHold(admin, { holdId: hold.id, expectedVersion: hold.version, reason: "Synthetic matter closed." });
+    await expect(releaseLegalHold(admin, { holdId: hold.id, expectedVersion: hold.version, reason: "Stale release." })).rejects.toMatchObject({ code: "conflict" });
+    expect(released.version).toBe(2);
+    const verify = new pg.Client({ connectionString }); await verify.connect();
+    const audit = await verify.query("SELECT event_type FROM audit_events WHERE record_id=ANY($1::text[])", [[hold.id, saved.id]]);
+    await verify.end();
+    expect(audit.rows.map((row) => row.event_type)).toEqual(expect.arrayContaining(["retention.policy_saved", "retention.legal_hold_placed", "retention.legal_hold_released"]));
   });
 
   it("persists per-user sensitive-operation limits and returns a retry interval", async () => {
@@ -410,9 +449,57 @@ suite("PostgreSQL foundation", () => {
     await expect(uploadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,second.revision,{fileName:"active.pdf",mimeType:"application/pdf",bytes:new TextEncoder().encode("%PDF-1.4 /OpenAction"),documentType:"OTHER"})).rejects.toMatchObject({code:"invalid"});
   });
 
-  it("versions source corrections and duplicate exclusions without double-counting historical records", async()=>{
-    const context:AuthorizationContext={userId:"20000000-0000-4000-8000-000000000001",firmId:"10000000-0000-4000-8000-000000000001",role:"preparer",assignedClientIds:new Set(["30000000-0000-4000-8000-000000000001"])};
-    const externalSourceId=`lifecycle-${randomUUID()}`;const originalId=randomUUID();const database=new pg.Client({connectionString});await database.connect();await database.query(`INSERT INTO source_form_records(id,tax_year_id,form_type,form_year,external_source_id,owner_role,normalized_data,raw_fields,unmapped_fields,record_disposition) VALUES($1,'40000000-0000-4000-8000-000000000001','1099-INT',2025,$2,'taxpayer',$3::jsonb,'[]','[]','original')`,[originalId,externalSourceId,JSON.stringify({payer:{name:"Lifecycle Bank",tin:"12-3456789"},accountNumber:"ACCT-12345678",boxes:{interestIncome:"10.00"}})]);await database.end();
-    const before=await getSourceRecordState(context,"30000000-0000-4000-8000-000000000001",2025);const originalView=before.records.find(({id})=>id===originalId)!;expect(originalView.normalizedData).toMatchObject({payer:{tin:"***-**-6789"},accountNumber:"****5678"});const correctedData=structuredClone(originalView.normalizedData);(correctedData.boxes as Record<string,unknown>).interestIncome="11.00";await expect(reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,before.revision,1,"correct","Unsafe correction",JSON.parse('{"__proto__":{"polluted":true}}'))).rejects.toMatchObject({code:"invalid"});await expect(reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,before.revision,1,"correct","Unauthorized TIN change",{...correctedData,payer:{...(correctedData.payer as object),tin:"98-7654321"}})).rejects.toMatchObject({code:"forbidden"});const corrected=await reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,before.revision,1,"correct","Synthetic source correction",correctedData,"spouse");expect(corrected).toMatchObject({version:2,disposition:"corrected"});await expect(reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,corrected.revision,1,"void","Stale version attempt",null)).rejects.toMatchObject({code:"conflict"});const excluded=await reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,corrected.id,corrected.revision,2,"exclude_duplicate","Confirmed duplicate of another bank statement",null);expect(excluded).toMatchObject({version:3,disposition:"duplicate_excluded"});const state=await getSourceRecordState(context,"30000000-0000-4000-8000-000000000001",2025);const lineage=state.records.filter(record=>record.externalSourceId===externalSourceId);expect(lineage).toHaveLength(3);expect(lineage.find(record=>record.id===corrected.id)?.ownerRole).toBe("spouse");expect(lineage.filter(record=>record.effective)).toEqual([expect.objectContaining({id:excluded.id,disposition:"duplicate_excluded"})]);const verify=new pg.Client({connectionString});await verify.connect();const contributing=await verify.query("SELECT id FROM source_form_records WHERE external_source_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded')",[externalSourceId]);const persisted=await verify.query<{normalized_data:Record<string,any>;owner_role:string}>("SELECT normalized_data,owner_role FROM source_form_records WHERE id=$1",[corrected.id]);const audits=await verify.query("SELECT event_type FROM audit_events WHERE record_id=ANY($1::text[])",[[corrected.id,excluded.id]]);await verify.end();expect(contributing.rowCount).toBe(0);expect(persisted.rows[0]).toMatchObject({owner_role:"spouse",normalized_data:{payer:{tin:"12-3456789"},accountNumber:"ACCT-12345678"}});expect(audits.rows.map(row=>row.event_type)).toEqual(expect.arrayContaining(["source_record.corrected","source_record.duplicate_excluded"]));
+  it("reconciles correction evidence and versions source lineage without double-counting history", async () => {
+    const clientId = "30000000-0000-4000-8000-000000000001";
+    const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set([clientId]) };
+    const externalSourceId = `lifecycle-${randomUUID()}`;
+    const originalId = randomUUID();
+    const database = new pg.Client({ connectionString });
+    await database.connect();
+    await database.query(
+      `INSERT INTO source_form_records(id,tax_year_id,form_type,form_year,external_source_id,owner_role,normalized_data,raw_fields,unmapped_fields,record_disposition)
+       VALUES($1,'40000000-0000-4000-8000-000000000001','1099-INT',2025,$2,'taxpayer',$3::jsonb,'[]','[]','original')`,
+      [originalId, externalSourceId, JSON.stringify({ payer: { name: "Lifecycle Bank", tin: "12-3456789" }, accountNumber: "ACCT-12345678", boxes: { interestIncome: "10.00" } })],
+    );
+    await database.end();
+
+    const documentsBefore = await getSourceDocumentState(context, clientId, 2025);
+    const correctionDocument = await uploadSourceDocument(context, clientId, 2025, documentsBefore.revision, {
+      fileName: "Corrected 1099-INT.pdf",
+      mimeType: "application/pdf",
+      bytes: new TextEncoder().encode(`%PDF-1.4\nCorrected 1099-INT ${randomUUID()}\n%%EOF\n`),
+      documentType: "1099-INT",
+    });
+    const before = await getSourceRecordState(context, clientId, 2025);
+    expect(before.documents).toContainEqual(expect.objectContaining({ id: correctionDocument.id, scanState: "clean" }));
+    const originalView = before.records.find(({ id }) => id === originalId)!;
+    expect(originalView.normalizedData).toMatchObject({ payer: { tin: "***-**-6789" }, accountNumber: "****5678" });
+    const correctedData = structuredClone(originalView.normalizedData);
+    (correctedData.boxes as Record<string, unknown>).interestIncome = "11.00";
+
+    await expect(reviseSourceRecord(context, clientId, 2025, originalId, before.revision, 1, "correct", "Unsafe correction", JSON.parse('{"__proto__":{"polluted":true}}'))).rejects.toMatchObject({ code: "invalid" });
+    await expect(reviseSourceRecord(context, clientId, 2025, originalId, before.revision, 1, "correct", "Unauthorized TIN change", { ...correctedData, payer: { ...(correctedData.payer as object), tin: "98-7654321" } })).rejects.toMatchObject({ code: "forbidden" });
+    await expect(reviseSourceRecord(context, clientId, 2025, originalId, before.revision, 1, "correct", "Missing evidence", correctedData, "spouse")).rejects.toMatchObject({ code: "invalid" });
+    const corrected = await reviseSourceRecord(context, clientId, 2025, originalId, before.revision, 1, "correct", "Synthetic source correction", correctedData, "spouse", "attached_document", correctionDocument.id);
+    expect(corrected).toMatchObject({ version: 2, disposition: "corrected" });
+    await expect(reviseSourceRecord(context, clientId, 2025, originalId, corrected.revision, 1, "void", "Stale version attempt", null)).rejects.toMatchObject({ code: "conflict" });
+    const excluded = await reviseSourceRecord(context, clientId, 2025, corrected.id, corrected.revision, 2, "exclude_duplicate", "Confirmed duplicate of another bank statement", null);
+    expect(excluded).toMatchObject({ version: 3, disposition: "duplicate_excluded" });
+
+    const state = await getSourceRecordState(context, clientId, 2025);
+    const lineage = state.records.filter((record) => record.externalSourceId === externalSourceId);
+    expect(lineage).toHaveLength(3);
+    expect(lineage.find((record) => record.id === corrected.id)).toMatchObject({ ownerRole: "spouse", sourceDocumentId: correctionDocument.id, correctionEvidenceMode: "attached_document" });
+    expect(lineage.filter((record) => record.effective)).toEqual([expect.objectContaining({ id: excluded.id, disposition: "duplicate_excluded" })]);
+    const verify = new pg.Client({ connectionString });
+    await verify.connect();
+    const contributing = await verify.query("SELECT id FROM source_form_records WHERE external_source_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded')", [externalSourceId]);
+    const persisted = await verify.query<{ normalized_data: Record<string, any>; owner_role: string; source_document_id: string; correction_evidence_mode: string }>("SELECT normalized_data,owner_role,source_document_id,correction_evidence_mode FROM source_form_records WHERE id=$1", [corrected.id]);
+    const audits = await verify.query<{ event_type: string; metadata: Record<string, unknown> }>("SELECT event_type,metadata FROM audit_events WHERE record_id=ANY($1::text[])", [[corrected.id, excluded.id]]);
+    await verify.end();
+    expect(contributing.rowCount).toBe(0);
+    expect(persisted.rows[0]).toMatchObject({ owner_role: "spouse", source_document_id: correctionDocument.id, correction_evidence_mode: "attached_document", normalized_data: { payer: { tin: "12-3456789" }, accountNumber: "ACCT-12345678" } });
+    expect(audits.rows.map((row) => row.event_type)).toEqual(expect.arrayContaining(["source_record.corrected", "source_record.duplicate_excluded"]));
+    expect(audits.rows.find((row) => row.event_type === "source_record.corrected")?.metadata).toMatchObject({ correctionEvidenceMode: "attached_document", sourceDocumentId: correctionDocument.id });
   });
 });
