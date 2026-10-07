@@ -6,7 +6,7 @@ import { getClientProfile } from "../../src/server/client-repository";
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
 import template from "../../examples/2025/blank-taxpayer-template.json";
-import { commitPersistedImport, rollbackPersistedImport, stageCanonicalImport } from "../../src/server/import-persistence-service";
+import { commitPersistedImport, getImportState, rollbackPersistedImport, stageCanonicalImport } from "../../src/server/import-persistence-service";
 import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAnswers } from "../../src/server/intake-service";
 import { phase1IntakeQuestions } from "../../src/domain/intake";
 import { createActivity, getMappingState, saveAllocations } from "../../src/server/mapping-persistence-service";
@@ -130,6 +130,8 @@ suite("PostgreSQL foundation", () => {
     expect(replay).toMatchObject({ batchId: preview.batchId, replayed: true, status: "committed" });
     const rollback = await rollbackPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId);
     expect(rollback.rolledBackRevision).toBe(committed.committedRevision + 1);
+    const importState=await getImportState(context,"30000000-0000-4000-8000-000000000001",2025);
+    expect(importState.batches.find(({id})=>id===preview.batchId)).toMatchObject({status:"committed",resultRevision:committed.committedRevision,attemptCount:4,canRollback:false,rolledBackAt:expect.any(String)});
 
     const client = new pg.Client({ connectionString });
     await client.connect();

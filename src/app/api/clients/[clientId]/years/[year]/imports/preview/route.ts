@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, requireSameOrigin } from "@/server/api-guards";
-import { stageCanonicalImport } from "@/server/import-persistence-service";
+import { getImportState, stageCanonicalImport } from "@/server/import-persistence-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
 const maximumImportBytes = 10 * 1024 * 1024;
 const routeParams = z.object({ clientId: z.string().uuid(), year: z.coerce.number().int().min(2025).max(2200) });
 const fileNameSchema = z.string().trim().min(1).max(255).regex(/^[^/\\]+\.json$/i, "Use a .json filename without path separators");
+
+export async function GET(_request:Request,{params}:{params:Promise<{clientId:string;year:string}>}){try{const{clientId,year}=routeParams.parse(await params);return NextResponse.json(await getImportState(await requestAuthorizationContext(),clientId,year));}catch(error){return apiError(error);}}
 
 export async function POST(request: Request, { params }: { params: Promise<{ clientId: string; year: string }> }) {
   try {
