@@ -152,7 +152,11 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const preferential = qualifiedDividends.gt(0)
     ? qualifiedDividendTax2025(taxableIncome, qualifiedDividends, input.filingStatus)
     : null;
-  const incomeTax = preferential?.tax ?? ordinaryIncomeTax2025(taxableIncome, input.filingStatus);
+  const calculatedIncomeTax = preferential?.tax ?? ordinaryIncomeTax2025(taxableIncome, input.filingStatus);
+  const incomeTax = input.approvedOverrides?.form1040IncomeTax == null
+    ? calculatedIncomeTax
+    : whole(read(input.approvedOverrides.form1040IncomeTax, "approvedOverrides.form1040IncomeTax"));
+  if (input.approvedOverrides?.form1040IncomeTax != null) diagnostics.push({ code: "MANUAL_OVERRIDE_APPLIED", severity: "warning", message: `Approved income-tax override replaced the calculated ${calculatedIncomeTax.toFixed(0)} result.`, path: "form-1040.income-tax" });
   const totalTax = incomeTax.plus(selfEmploymentTax);
   const federalWithholding = whole(sum([
     ...wages.map(({ withholdingAmount }) => withholdingAmount),
@@ -173,7 +177,7 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   addTrace(trace, "schedule-1.se-deduction", "Schedule 1, line 15", "SCH-SE-DEDUCTIBLE-HALF", { selfEmploymentTax: selfEmploymentTax.toFixed(0) }, deductibleHalf);
   addTrace(trace, "form-8995.deduction", "Form 8995, line 15", "FORM-8995-SIMPLIFIED", { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0) }, qbiDeduction);
   addTrace(trace, "form-1040.taxable-income", "Form 1040, line 15", "FORM-1040-TAXABLE-INCOME", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0) }, taxableIncome);
-  addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0) }, incomeTax);
+  addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", input.approvedOverrides?.form1040IncomeTax != null ? "APPROVED-MANUAL-OVERRIDE" : preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0), calculatedIncomeTax: calculatedIncomeTax.toFixed(0) }, incomeTax);
   addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
   addTrace(trace, "form-1040.payments", "Form 1040, line 25d", "ACTIVE-SOURCE-WITHHOLDING", { sourceCount: String(wages.length + interest.length + dividends.length + businessWithholding.length) }, federalWithholding);
 

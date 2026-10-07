@@ -8,9 +8,6 @@ import { databasePool } from "./database";
 
 interface OverrideDefinition { label: string; traceNodeId: string; unit: "USD"; downstreamPaths: string[] }
 export const overrideRegistry: Record<string, OverrideDefinition> = {
-  "schedule-c.net-profit": { label: "Schedule C aggregate net profit", traceNodeId: "schedule-c.net-profit", unit: "USD", downstreamPaths: ["Schedule 1 business income", "Schedule SE", "Form 8995", "Form 1040 total income"] },
-  "schedule-se.tax": { label: "Schedule SE self-employment tax", traceNodeId: "schedule-se.tax", unit: "USD", downstreamPaths: ["Schedule 2 self-employment tax", "Schedule 1 deductible half", "Form 1040 total tax"] },
-  "form-8995.deduction": { label: "Simplified Form 8995 deduction", traceNodeId: "form-8995.deduction", unit: "USD", downstreamPaths: ["Form 1040 taxable income", "Income tax", "Refund or amount owed"] },
   "form-1040.income-tax": { label: "Form 1040 income-tax worksheet result", traceNodeId: "form-1040.income-tax", unit: "USD", downstreamPaths: ["Form 1040 total tax", "Refund or amount owed"] },
 };
 

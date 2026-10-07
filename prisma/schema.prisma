@@ -427,6 +427,10 @@ model CalculationRun {
   formRegistryVersion String
   status              String
   result              Json
+  inputSnapshot       Json
+  requestedById       String?  @db.Uuid
+  resultHash          String?
+  completedAt         DateTime?
   taxYear             TaxYear  @relation(fields: [taxYearId], references: [id])
   createdAt           DateTime @default(now())
   generatedForms      GeneratedForm[]

@@ -12,6 +12,7 @@ import { phase1IntakeQuestions } from "../../src/domain/intake";
 import { createActivity, getMappingState, saveAllocations } from "../../src/server/mapping-persistence-service";
 import { createReviewPoint, getReviewState, requestChanges, updateReviewPointStatus } from "../../src/server/review-service";
 import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride } from "../../src/server/override-service";
+import { getCalculationState, runPersistedCalculation } from "../../src/server/calculation-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -30,6 +31,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0007_mapping_residual_disclosure.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0008_review_workflow.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0009_override_governance.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0010_calculation_snapshots.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -275,5 +277,22 @@ suite("PostgreSQL foundation", () => {
     const verification = new pg.Client({ connectionString }); await verification.connect();
     const blockers = await verification.query("SELECT 1 FROM validation_issues WHERE tax_year_id='40000000-0000-4000-8000-000000000001' AND code='OVERRIDE_RECALCULATION_REQUIRED' AND resolved_at IS NULL");
     await verification.end(); expect(blockers.rowCount).toBeGreaterThan(0);
+  });
+
+  it("assembles current persisted facts into an immutable, hashed, idempotent calculation snapshot", async () => {
+    const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const before = await getCalculationState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    const run = await runPersistedCalculation(context, "30000000-0000-4000-8000-000000000001", 2025, before.revision);
+    expect(run).toMatchObject({ revision: before.revision, status: "partial", replayed: false });
+    expect(run.resultHash).toMatch(/^[a-f0-9]{64}$/);
+    const replay = await runPersistedCalculation(context, "30000000-0000-4000-8000-000000000001", 2025, before.revision);
+    expect(replay).toMatchObject({ id: run.id, revision: before.revision, status: "partial", replayed: true, resultHash: run.resultHash });
+    const state = await getCalculationState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(state.latestRun).toMatchObject({ id: run.id, inputRevision: before.revision, current: true, status: "partial", resultHash: run.resultHash });
+    const database = new pg.Client({ connectionString }); await database.connect();
+    const stored = await database.query<{ input_snapshot: Record<string, unknown>; result_hash: string }>("SELECT input_snapshot,result_hash FROM calculation_runs WHERE id=$1", [run.id]);
+    await database.end();
+    expect(stored.rows[0]?.input_snapshot).toMatchObject({ calculationId: expect.any(String), inputRevision: before.revision });
+    expect(stored.rows[0]?.result_hash).toBe(run.resultHash);
   });
 });

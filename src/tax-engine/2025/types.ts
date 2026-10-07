@@ -100,6 +100,7 @@ export interface CalculationInput2025 {
   dividends: DividendInput2025[];
   scheduleCActivities: ScheduleCActivityInput2025[];
   businessWithholding: BusinessWithholdingInput2025[];
+  approvedOverrides?: { form1040IncomeTax?: DollarInput };
 }
 
 export interface CalculationDiagnostic2025 {

@@ -102,6 +102,16 @@ describe("2025 supported return graph", () => {
     expect(result.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax")?.ruleId).toBe("IRS-TAX-TABLE");
   });
 
+  it("applies only the registered income-tax override and recomputes downstream totals", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-override", owner: "taxpayer", wages: "100000.00", federalWithholding: "15000.00", socialSecurityWages: "100000.00" }],
+      approvedOverrides: { form1040IncomeTax: "13000.00" },
+    }));
+    expect(result.forms?.form1040).toMatchObject({ incomeTax: "13000", totalTax: "13000", refund: "2000", amountOwed: "0" });
+    expect(result.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax")).toMatchObject({ ruleId: "APPROVED-MANUAL-OVERRIDE", result: "13000" });
+    expect(result.diagnostics.some(({ code }) => code === "MANUAL_OVERRIDE_APPLIED")).toBe(true);
+  });
+
   it("aggregates self-employment by owner, applies wage-base interaction, and closes QBI dependencies", () => {
     const result = calculateFederalReturn2025(supportedInput({
       filingStatus: "married_filing_jointly",
