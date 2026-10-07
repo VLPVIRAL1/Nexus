@@ -38,6 +38,7 @@ npm test           # unit tests
 npm run build      # production build
 npm run db:migrate # apply pending PostgreSQL migrations transactionally
 npm run test:integration # verify live PostgreSQL constraints and seed state
+npm run recovery:exercise # restore the local synthetic database and verify coherent hashes/history
 ```
 
 The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production identity/storage, official-template rendering, recovery evidence and acceptance gates remain open.
