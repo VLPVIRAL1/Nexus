@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "db:prisma:migrate": "prisma migrate dev"
+    "db:prisma:migrate": "prisma migrate dev",
+    "worker:artifacts": "node --conditions=react-server --import tsx scripts/artifact-worker.ts"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",
@@ -28,6 +29,7 @@
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-hook-form": "7.63.0",
+    "server-only": "0.0.1",
     "zod": "4.1.11"
   },
   "devDependencies": {

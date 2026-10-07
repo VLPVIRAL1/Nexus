@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, requireSafeMutationRequest } from "@/server/api-guards";
-import { generatePersistedArtifact, getArtifactState } from "@/server/output-persistence-service";
+import { enqueueArtifactJob } from "@/server/artifact-job-service";
+import { getArtifactState } from "@/server/output-persistence-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
 const routeParams = z.object({ clientId: z.string().uuid(), year: z.coerce.number().int().min(2025).max(2200) });
@@ -24,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
     requireSafeMutationRequest(request);
     const values = routeParams.parse(await params);
     const body = bodySchema.parse(await request.json());
-    return NextResponse.json(await generatePersistedArtifact(await requestAuthorizationContext(), values.clientId, values.year, body.expectedRevision, body.artifactType), { status: 201 });
+    return NextResponse.json(await enqueueArtifactJob(await requestAuthorizationContext(), values.clientId, values.year, body.expectedRevision, body.artifactType), { status: 202 });
   } catch (error) {
     return apiError(error);
   }

@@ -14,8 +14,10 @@ import { createReviewPoint, getReviewState, requestChanges, updateReviewPointSta
 import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride } from "../../src/server/override-service";
 import { getCalculationState, runPersistedCalculation } from "../../src/server/calculation-service";
 import { downloadPersistedArtifact, generatePersistedArtifact, getArtifactState } from "../../src/server/output-persistence-service";
+import { enqueueArtifactJob, processNextArtifactJob } from "../../src/server/artifact-job-service";
 import { downloadSourceDocument, getSourceDocumentState, uploadSourceDocument } from "../../src/server/source-document-service";
 import { getSourceRecordState, reviseSourceRecord } from "../../src/server/source-record-service";
+import { getArtifactJobMetrics } from "../../src/server/operations-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -38,6 +40,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0011_persisted_artifacts.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0012_encrypted_source_storage.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0013_source_record_lifecycle.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0014_artifact_jobs.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -308,10 +311,14 @@ suite("PostgreSQL foundation", () => {
     const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
     const calculation = await getCalculationState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(calculation.latestRun?.current).toBe(true);
+    const queuedPdf = await enqueueArtifactJob(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
+    expect(["queued", "succeeded"]).toContain(queuedPdf.status);
+    const processedPdf = queuedPdf.status === "succeeded" ? { jobId: queuedPdf.jobId, status: queuedPdf.status, artifactId: queuedPdf.artifactId, attemptCount: queuedPdf.attemptCount } : await processNextArtifactJob("integration-worker");
+    expect(processedPdf).toMatchObject({ jobId: queuedPdf.jobId, status: "succeeded", artifactId: expect.any(String), attemptCount: expect.any(Number) });
     const pdf = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
     const workbook = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "workpaper_xlsx");
     const sourceJson = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "source_only_json");
-    expect(pdf).toMatchObject({ status: "succeeded", replayed: false, contentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(pdf).toMatchObject({ id: processedPdf?.artifactId, status: "succeeded", replayed: true, contentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(workbook).toMatchObject({ status: "succeeded", replayed: false });
     expect(sourceJson).toMatchObject({ status: "succeeded", replayed: false });
     const replay = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
@@ -323,6 +330,7 @@ suite("PostgreSQL foundation", () => {
     expect(downloaded.contentHash).toBe(pdf.contentHash);
     let state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(state.canExportComplete).toBe(false);
+    expect(state.jobs.find(({ id }) => id === queuedPdf.jobId)).toMatchObject({ status: "succeeded", artifactId: pdf.id });
     expect(state.artifacts.filter(({ stale }) => !stale).map(({ id }) => id)).toEqual(expect.arrayContaining([pdf.id, workbook.id, sourceJson.id]));
     await createActivity(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, {
       type: "schedule_c", name: `Artifact invalidation ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "supported",
@@ -330,6 +338,11 @@ suite("PostgreSQL foundation", () => {
     });
     state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(state.artifacts.find(({ id }) => id === pdf.id)?.stale).toBe(true);
+    expect(state.jobs.find(({ id }) => id === queuedPdf.jobId)?.status).toBe("stale");
+    await expect(getArtifactJobMetrics(context)).rejects.toMatchObject({ code: "forbidden" });
+    const metrics = await getArtifactJobMetrics({ ...context, role: "admin", assignedClientIds: new Set() });
+    expect(metrics.counts.stale).toBeGreaterThan(0);
+    expect(metrics.recentFailures).toBeInstanceOf(Array);
   });
 
   it("quarantines, scans, encrypts, authorizes, verifies, and duplicate-flags persisted source originals", async () => {

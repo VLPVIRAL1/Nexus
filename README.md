@@ -20,12 +20,19 @@ npm run db:seed
 npm run dev
 ```
 
+Run the durable output worker in a second terminal:
+
+```bash
+npm run worker:artifacts
+```
+
 Open `http://localhost:3000`. Development uses the seeded synthetic firm and assigned preparer when no session cookie exists. Production has no identity fallback and requires an MFA-verified session.
 
 ## Commands
 
 ```bash
 npm run dev        # development server
+npm run worker:artifacts # durable PDF/XLSX/JSON generation worker
 npm run typecheck  # strict TypeScript checks
 npm test           # unit tests
 npm run build      # production build
@@ -33,7 +40,7 @@ npm run db:migrate # apply pending PostgreSQL migrations transactionally
 npm run test:integration # verify live PostgreSQL constraints and seed state
 ```
 
-The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF/XLSX/JSON services and tax calculations are draft foundations. The 2025 tax package remains `research_unapproved` until qualified independent review; full form rendering, persisted imports, production identity/storage and acceptance gates remain open.
+The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production identity/storage, official-template rendering, recovery evidence and acceptance gates remain open.
 
 ## Safety boundary
 
