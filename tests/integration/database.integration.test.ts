@@ -18,6 +18,8 @@ import { enqueueArtifactJob, processNextArtifactJob } from "../../src/server/art
 import { downloadSourceDocument, getSourceDocumentState, uploadSourceDocument } from "../../src/server/source-document-service";
 import { getSourceRecordState, reviseSourceRecord } from "../../src/server/source-record-service";
 import { getArtifactJobMetrics } from "../../src/server/operations-service";
+import { getAssignmentState, setClientAssignment } from "../../src/server/assignment-service";
+import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -41,6 +43,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0012_encrypted_source_storage.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0013_source_record_lifecycle.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0014_artifact_jobs.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0015_api_rate_limits.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -55,6 +58,44 @@ suite("PostgreSQL foundation", () => {
       const inserted = await client.query<{ id: string }>("INSERT INTO audit_events(firm_id,tax_year_id,actor_id,event_type,record_type,record_id,event_hash) VALUES('10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','test','tax_year','synthetic','hash') RETURNING id");
       await expect(client.query("UPDATE audit_events SET event_type='changed' WHERE id=$1", [inserted.rows[0].id])).rejects.toThrow("append-only");
     } finally { await client.query("ROLLBACK"); await client.end(); }
+  });
+
+  it("lets only administrators manage compatible firm assignments and audits every change", async () => {
+    const clientId = "30000000-0000-4000-8000-000000000001";
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set([clientId]) };
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    expect(await getAssignmentState(preparer, clientId)).toEqual({ canManage: false, members: [], assignments: [] });
+    await expect(setClientAssignment(preparer, clientId, preparer.userId, "preparer", true)).rejects.toMatchObject({ code: "forbidden" });
+    const before = await getAssignmentState(admin, clientId);
+    expect(before.members.map(({ role }) => role)).toEqual(expect.arrayContaining(["admin", "preparer", "reviewer"]));
+    await setClientAssignment(admin, clientId, admin.userId, "reviewer", true);
+    let state = await getAssignmentState(admin, clientId);
+    expect(state.assignments).toContainEqual({ userId: admin.userId, kind: "reviewer" });
+    await expect(setClientAssignment(admin, clientId, "20000000-0000-4000-8000-000000000002", "preparer", true)).rejects.toMatchObject({ code: "invalid" });
+    await setClientAssignment(admin, clientId, admin.userId, "reviewer", false);
+    state = await getAssignmentState(admin, clientId);
+    expect(state.assignments).not.toContainEqual({ userId: admin.userId, kind: "reviewer" });
+    const database = new pg.Client({ connectionString }); await database.connect();
+    const audit = await database.query("SELECT 1 FROM audit_events WHERE firm_id=$1 AND event_type='client.assignment_changed' AND record_id=$2", [admin.firmId, clientId]);
+    await database.end();
+    expect(audit.rowCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("persists per-user sensitive-operation limits and returns a retry interval", async () => {
+    const userId = randomUUID();
+    const database = new pg.Client({ connectionString }); await database.connect();
+    await database.query("INSERT INTO users(id,email,display_name) VALUES($1,$2,'Synthetic Rate Test')", [userId, `${userId}@example.invalid`]);
+    const context: AuthorizationContext = { userId, firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const now = new Date();
+    try {
+      for (let request = 0; request < 30; request += 1) await enforceRateLimit(context, "assignment.modify", now);
+      await expect(enforceRateLimit(context, "assignment.modify", now)).rejects.toBeInstanceOf(RateLimitError);
+      await expect(enforceRateLimit(context, "assignment.modify", now)).rejects.toMatchObject({ retryAfterSeconds: expect.any(Number) });
+    } finally {
+      await database.query("DELETE FROM api_rate_limit_windows WHERE user_id=$1", [userId]);
+      await database.query("DELETE FROM users WHERE id=$1", [userId]);
+      await database.end();
+    }
   });
 
   it("stores only hashed MFA-backed session tokens and enforces client binding and revocation", async () => {

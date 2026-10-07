@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, requireSafeMutationRequest } from "@/server/api-guards";
 import { retryArtifactJob } from "@/server/artifact-job-service";
+import { enforceRateLimit } from "@/server/rate-limit-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
 const routeParams = z.object({ clientId: z.string().uuid(), year: z.coerce.number().int().min(2025).max(2200), jobId: z.string().uuid() });
@@ -9,8 +10,10 @@ const routeParams = z.object({ clientId: z.string().uuid(), year: z.coerce.numbe
 export async function POST(request: Request, { params }: { params: Promise<{ clientId: string; year: string; jobId: string }> }) {
   try {
     requireSafeMutationRequest(request);
+    const context = await requestAuthorizationContext();
+    await enforceRateLimit(context, "artifact.retry");
     const values = routeParams.parse(await params);
-    return NextResponse.json(await retryArtifactJob(await requestAuthorizationContext(), values.clientId, values.year, values.jobId), { status: 202 });
+    return NextResponse.json(await retryArtifactJob(context, values.clientId, values.year, values.jobId), { status: 202 });
   } catch (error) {
     return apiError(error);
   }

@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { AuthenticationError } from "./session-service";
 import { WorkflowError } from "./client-workflow-service";
 import { ImportError } from "@/services/import-service";
+import { RateLimitError } from "./rate-limit-service";
 
 const maximumWorkflowBodyBytes = 64 * 1024;
 
@@ -23,6 +24,7 @@ export function requireSameOrigin(request: Request): void {
 }
 
 export function apiError(error: unknown): NextResponse {
+  if (error instanceof RateLimitError) return NextResponse.json({ error: "rate_limited", message: error.message }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
   if (error instanceof AuthenticationError) return NextResponse.json({ error: "authentication_required" }, { status: 401 });
   if (error instanceof WorkflowError) {
     const status = { forbidden: 403, not_found: 404, conflict: 409, invalid: 400 }[error.code];
