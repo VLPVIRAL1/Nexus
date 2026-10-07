@@ -10,5 +10,5 @@
 | W-2 entry pattern | `workspace.tsx` | Visual/keyboard tests pending | Synthetic UI slice |
 | 2025 tax calculation research package | `src/tax-engine/2025`, `src/tax-engine/dependency-graph.ts` | Exact IRS table/source-hash, method, dependency, blocker and end-to-end unit tests | Implemented as `research_unapproved`; Reviewed Draft activation disabled |
 | Reviewed Draft approval | — | Completeness/security gates absent | Disabled |
-| PDF/XLSX output foundation | `src/services/outputs` | PDF/XLSX/JSON service tests | Foundation implemented; full forms pending |
+| Draft PDF package and reviewer XLSX | `src/services/outputs/form-data-2025.ts`, `tax-form-renderer.ts`, `return-package-service.ts`, `workpaper-service.ts`, `src/server/output-persistence-service.ts` | Unit PDF page/manifest and workbook-sheet tests; live persistence, hash, replay, authorization, download and stale-artifact integration test; manual two-page visual inspection | Controlled internal supported-form previews and expanded reviewer workpaper implemented; official-template adapter, asynchronous jobs and final visual/consumer evidence pending |
 | Filing/vendor sync | `src/integrations` | Planned-adapter test | Correctly unavailable |
