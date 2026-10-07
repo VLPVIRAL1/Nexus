@@ -20,7 +20,19 @@ export function requireSameOrigin(request: Request): void {
     if (process.env.APP_ENV === "production") throw new WorkflowError("forbidden", "A same-origin request is required.");
     return;
   }
-  if (new URL(origin).origin !== new URL(request.url).origin) throw new WorkflowError("forbidden", "Cross-origin mutation denied.");
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    const requestHost = request.headers.get("host") ?? requestUrl.host;
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim();
+    const requestProtocol = forwardedProtocol ? `${forwardedProtocol}:` : requestUrl.protocol;
+    if (originUrl.host !== requestHost || originUrl.protocol !== requestProtocol) {
+      throw new WorkflowError("forbidden", "Cross-origin mutation denied.");
+    }
+  } catch (error) {
+    if (error instanceof WorkflowError) throw error;
+    throw new WorkflowError("forbidden", "Cross-origin mutation denied.");
+  }
 }
 
 export function apiError(error: unknown): NextResponse {

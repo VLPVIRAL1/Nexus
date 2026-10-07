@@ -29,6 +29,18 @@ test("keyboard users can skip repeated navigation and see focus", async ({ page 
   await expect(page.locator("#main-content")).toHaveCSS("outline-style", "solid");
 });
 
+test("authorized client search keeps the query out of the URL and supports the keyboard shortcut", async ({ page }) => {
+  await page.goto("/dashboard");
+  await page.keyboard.press("Control+k");
+  const search = page.getByRole("combobox", { name: "Search assigned clients and returns" });
+  await expect(search).toBeFocused();
+  await search.fill("000123");
+  await expect(page.getByRole("option", { name: /John Sample/ })).toBeVisible();
+  expect(page.url()).not.toContain("000123");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Client search results" })).toBeHidden();
+});
+
 test("registered repeatable fields are keyboard-operable", async ({ page }) => {
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry");
   await expect(page.locator(".registry-add-row").first()).toBeVisible();

@@ -10,13 +10,13 @@ const createClientSchema = z.object({
   displayName: z.string().trim().min(1).max(200),
 }).strict();
 
-const listSchema = z.object({ query: z.string().trim().max(100).optional(), limit: z.coerce.number().int().min(1).max(200).default(100) });
+const listSchema = z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) });
 
 export async function GET(request: Request) {
   try {
     const context = await requestAuthorizationContext();
     const url = new URL(request.url);
-    const options = listSchema.parse({ query: url.searchParams.get("query") || undefined, limit: url.searchParams.get("limit") || undefined });
+    const options = listSchema.parse({ limit: url.searchParams.get("limit") || undefined });
     return NextResponse.json({ clients: await listDashboardClients(context, options) });
   } catch (error) {
     return apiError(error);

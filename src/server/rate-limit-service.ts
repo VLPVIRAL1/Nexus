@@ -19,6 +19,7 @@ const limits = {
   "artifact.retry": 10,
   "assignment.modify": 30,
   "retention.modify": 20,
+  "client.search": 60,
 } as const;
 
 export type RateLimitedOperation = keyof typeof limits;

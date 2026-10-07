@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { ClientSummary } from "@/domain/types";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -40,12 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <small>Professional</small>
           </span>
         </Link>
-        <label className="global-search">
-          <Search size={15} aria-hidden="true" />
-          <span className="sr-only">Search clients and returns</span>
-          <input placeholder="Search clients, returns, or screens" />
-          <kbd>⌘ K</kbd>
-        </label>
+        <ClientSearch />
         <div className="topbar-actions">
           <span className="environment"><span /> Development</span>
           <button className="icon-button" aria-label="Notifications"><Bell size={17} /><span className="notification-dot" /></button>
@@ -80,4 +76,58 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="main-content" id="main-content" tabIndex={-1}>{children}</main>
     </div>
   );
+}
+
+function ClientSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ClientSummary[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault(); inputRef.current?.focus(); setOpen(true);
+      }
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const clean = query.trim();
+    if (clean.length < 2) { setResults([]); setLoading(false); setError(null); return; }
+    const sequence = ++requestSequence.current;
+    setLoading(true); setError(null);
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/search/clients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: clean }), signal: controller.signal });
+        const body = await response.json();
+        if (sequence !== requestSequence.current) return;
+        if (!response.ok) { setResults([]); setError(body.message ?? "Search unavailable."); }
+        else { setResults(body.clients ?? []); setOpen(true); }
+      } catch (caught) {
+        if ((caught as Error).name !== "AbortError" && sequence === requestSequence.current) { setResults([]); setError("Search unavailable."); }
+      } finally { if (sequence === requestSequence.current) setLoading(false); }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query]);
+
+  const listId = "global-client-search-results";
+  return <div className="global-search-wrap" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <label className="global-search">
+      <Search size={15} aria-hidden="true" />
+      <span className="sr-only">Search assigned clients and returns</span>
+      <input ref={inputRef} role="combobox" aria-label="Search assigned clients and returns" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" autoComplete="off" placeholder="Search assigned clients" value={query} onFocus={() => setOpen(true)} onChange={(event) => setQuery(event.target.value)} />
+      <kbd>⌘ K</kbd>
+    </label>
+    {open && query.trim().length >= 2 ? <div className="global-search-results" id={listId} role="listbox" aria-label="Client search results">
+      {loading ? <p role="status">Searching…</p> : error ? <p role="alert">{error}</p> : results.length ? results.map((client) => <Link key={`${client.id}:${client.taxYear}`} role="option" aria-selected="false" href={`/clients/${client.id}/years/${client.taxYear}`} onClick={() => setOpen(false)}><span><strong>{client.taxpayer}</strong><small>{client.code} · {client.maskedTin}</small></span><span>{client.taxYear}<small>{client.status}</small></span></Link>) : <p>No assigned clients found.</p>}
+    </div> : null}
+  </div>;
 }
