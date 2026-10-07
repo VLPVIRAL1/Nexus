@@ -15,6 +15,7 @@ import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride
 import { getCalculationState, runPersistedCalculation } from "../../src/server/calculation-service";
 import { downloadPersistedArtifact, generatePersistedArtifact, getArtifactState } from "../../src/server/output-persistence-service";
 import { downloadSourceDocument, getSourceDocumentState, uploadSourceDocument } from "../../src/server/source-document-service";
+import { getSourceRecordState, reviseSourceRecord } from "../../src/server/source-record-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -36,6 +37,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0010_calculation_snapshots.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0011_persisted_artifacts.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0012_encrypted_source_storage.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0013_source_record_lifecycle.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -350,5 +352,11 @@ suite("PostgreSQL foundation", () => {
     expect(stored.rows[0]?.cipher_bytes.includes(Buffer.from("Synthetic integration source"))).toBe(false);
     expect(issue.rowCount).toBe(1);
     await expect(uploadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,second.revision,{fileName:"active.pdf",mimeType:"application/pdf",bytes:new TextEncoder().encode("%PDF-1.4 /OpenAction"),documentType:"OTHER"})).rejects.toMatchObject({code:"invalid"});
+  });
+
+  it("versions source corrections and duplicate exclusions without double-counting historical records", async()=>{
+    const context:AuthorizationContext={userId:"20000000-0000-4000-8000-000000000001",firmId:"10000000-0000-4000-8000-000000000001",role:"preparer",assignedClientIds:new Set(["30000000-0000-4000-8000-000000000001"])};
+    const externalSourceId=`lifecycle-${randomUUID()}`;const originalId=randomUUID();const database=new pg.Client({connectionString});await database.connect();await database.query(`INSERT INTO source_form_records(id,tax_year_id,form_type,form_year,external_source_id,owner_role,normalized_data,raw_fields,unmapped_fields,record_disposition) VALUES($1,'40000000-0000-4000-8000-000000000001','1099-INT',2025,$2,'taxpayer',$3::jsonb,'[]','[]','original')`,[originalId,externalSourceId,JSON.stringify({payer:{name:"Lifecycle Bank"},boxes:{interestIncome:"10.00"}})]);await database.end();
+    const before=await getSourceRecordState(context,"30000000-0000-4000-8000-000000000001",2025);const correctedData={payer:{name:"Lifecycle Bank"},boxes:{interestIncome:"11.00"}};await expect(reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,before.revision,1,"correct","Unsafe correction",JSON.parse('{"__proto__":{"polluted":true}}'))).rejects.toMatchObject({code:"invalid"});const corrected=await reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,before.revision,1,"correct","Synthetic source correction",correctedData);expect(corrected).toMatchObject({version:2,disposition:"corrected"});await expect(reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,originalId,corrected.revision,1,"void","Stale version attempt",null)).rejects.toMatchObject({code:"conflict"});const excluded=await reviseSourceRecord(context,"30000000-0000-4000-8000-000000000001",2025,corrected.id,corrected.revision,2,"exclude_duplicate","Confirmed duplicate of another bank statement",null);expect(excluded).toMatchObject({version:3,disposition:"duplicate_excluded"});const state=await getSourceRecordState(context,"30000000-0000-4000-8000-000000000001",2025);const lineage=state.records.filter(record=>record.externalSourceId===externalSourceId);expect(lineage).toHaveLength(3);expect(lineage.filter(record=>record.effective)).toEqual([expect.objectContaining({id:excluded.id,disposition:"duplicate_excluded"})]);const verify=new pg.Client({connectionString});await verify.connect();const contributing=await verify.query("SELECT id FROM source_form_records WHERE external_source_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded')",[externalSourceId]);const audits=await verify.query("SELECT event_type FROM audit_events WHERE record_id=ANY($1::text[])",[[corrected.id,excluded.id]]);await verify.end();expect(contributing.rowCount).toBe(0);expect(audits.rows.map(row=>row.event_type)).toEqual(expect.arrayContaining(["source_record.corrected","source_record.duplicate_excluded"]));
   });
 });

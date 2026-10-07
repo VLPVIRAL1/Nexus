@@ -29,7 +29,7 @@ interface WorkspaceTreeItem { name: string; count: string; active?: boolean; war
 const sections: Array<{ label: string; items: WorkspaceTreeItem[] }> = [
   { label: "Overview", items: [{ name: "Return overview", count: "" }, { name: "Intake & completeness", count: "", href: "intake" }] },
   { label: "General", items: [{ name: "Taxpayer information", count: "" }, { name: "Spouse", count: "" }, { name: "Dependents", count: "0" }] },
-  { label: "Source data", items: [{ name: "Source documents", count: "", href: "sources" }, { name: "Imports", count: "2" }, { name: "Mapping center", count: "2", warn: true, href: "mapping" }] },
+  { label: "Source data", items: [{ name: "Source documents", count: "", href: "sources" }, { name: "Source record lineage", count: "", href: "source-records" }, { name: "Imports", count: "2" }, { name: "Mapping center", count: "2", warn: true, href: "mapping" }] },
   { label: "Income", items: [{ name: "W-2", count: "2", active: true }, { name: "1099-INT", count: "3" }, { name: "1099-DIV", count: "2" }, { name: "1099-NEC", count: "2" }, { name: "1099-MISC", count: "2", warn: true }] },
   { label: "Calculation", items: [{ name: "Tax summary", count: "", href: "calculation/summary" }, { name: "Form 1040", count: "" }, { name: "Forms & schedules", count: "3" }, { name: "Outputs & exports", count: "", href: "outputs" }] },
   { label: "Review", items: [{ name: "Validation & open points", count: "5", warn: true, href: "review" }, { name: "Manual overrides", count: "", href: "overrides" }, { name: "Reconciliation", count: "2", warn: true }] },

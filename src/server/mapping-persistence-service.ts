@@ -111,7 +111,7 @@ export async function saveAllocations(context: AuthorizationContext, clientId: s
     assertRevision(scope.revision, expectedRevision);
     if (allocations.length > 20) throw new WorkflowError("invalid", "A source field supports at most 20 allocation rows.");
     const sourceResult = await client.query<{ form_type: string; normalized_data: Record<string, unknown> }>(
-      "SELECT form_type,normalized_data FROM source_form_records WHERE id=$1 AND tax_year_id=$2 AND effective AND NOT void FOR UPDATE",
+      "SELECT form_type,normalized_data FROM source_form_records WHERE id=$1 AND tax_year_id=$2 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') FOR UPDATE",
       [sourceRecordId, scope.taxYearId],
     );
     const source = sourceResult.rows[0];
@@ -186,7 +186,7 @@ export async function getMappingState(context: AuthorizationContext, clientId: s
 async function readMappingState(client: pg.PoolClient, taxYearId: string, revision: number) {
   const [activityResult, sourceResult, mappingResult] = await Promise.all([
     client.query<{ id: string; activity_type: ActivityType; name: string; owner_role: string; implementation_status: "supported" | "mapping_only"; receipt_basis: ReceiptBasis | null; additional_receipts: string; receipt_note: string | null; active: boolean; version: number }>("SELECT id,activity_type,name,owner_role,implementation_status,receipt_basis,additional_receipts::text,receipt_note,active,version FROM activities WHERE tax_year_id=$1 ORDER BY active DESC,name", [taxYearId]),
-    client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown>; source_document_id: string | null }>("SELECT id,form_type,owner_role,normalized_data,source_document_id FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void ORDER BY created_at,id", [taxYearId]),
+    client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown>; source_document_id: string | null }>("SELECT id,form_type,owner_role,normalized_data,source_document_id FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
     client.query<{ id: string; source_record_id: string; source_field: string; source_amount: string; target_type: ActivityType | "excluded"; target_activity_id: string | null; allocation_method: "amount" | "percentage"; allocated_amount: string; percentage: string | null; reason: string | null; mapping_status: "suggested" | "accepted" | "reviewed"; version: number; note: string | null; receives_rounding_residual: boolean }>("SELECT id,source_record_id,source_field,source_amount::text,target_type,target_activity_id,allocation_method,allocated_amount::text,percentage::text,reason,mapping_status,version,note,receives_rounding_residual FROM source_mappings WHERE tax_year_id=$1 AND effective ORDER BY created_at,id", [taxYearId]),
   ]);
   const mappingsByField = Map.groupBy(mappingResult.rows, (row) => `${row.source_record_id}:${row.source_field}`);

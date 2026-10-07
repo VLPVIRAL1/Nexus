@@ -111,7 +111,7 @@ export async function commitPersistedImport(
       "UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale' WHERE id=$1",
       [scope.taxYearId, JSON.stringify(committed.result), nextRevision],
     );
-    const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, committed.result);
+    const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
     const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query(
       `UPDATE import_batches SET import_status='committed',result_revision=$2,previous_snapshot=$3::jsonb,committed_snapshot=$4::jsonb,committed_by=$5,committed_at=now()
@@ -231,7 +231,7 @@ const formTypes = {
   form_1099_div: "1099-DIV",
 } as const;
 
-async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: string, importBatchId: string, snapshot: Record<string, unknown>): Promise<number> {
+async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: string, importBatchId: string, createdById: string, snapshot: Record<string, unknown>): Promise<number> {
   const forms = snapshot.forms;
   if (!forms || typeof forms !== "object" || Array.isArray(forms)) return 0;
   const people = await client.query<{ id: string; role: string }>("SELECT id,role FROM people WHERE tax_year_id=$1", [taxYearId]);
@@ -271,14 +271,15 @@ async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: st
       const ownerRole = typeof record.recipient_role === "string" ? record.recipient_role : "unknown";
       const sourceDocumentId = typeof record.source_document_id === "string" && documentIds.has(record.source_document_id) ? record.source_document_id : null;
       const inserted = await client.query<{ id: string; external_source_id: string; normalized_data: Record<string, unknown>; corrected: boolean; void: boolean; effective: boolean; version: number }>(
-        `INSERT INTO source_form_records(tax_year_id,source_document_id,form_type,form_year,external_source_id,owner_role,owner_person_id,normalized_data,raw_fields,unmapped_fields,corrected,void,effective,supersedes_record_id,version,import_batch_id)
-         VALUES($1,$2,$3,2025,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15)
+        `INSERT INTO source_form_records(tax_year_id,source_document_id,form_type,form_year,external_source_id,owner_role,owner_person_id,normalized_data,raw_fields,unmapped_fields,corrected,void,effective,supersedes_record_id,version,import_batch_id,record_disposition,change_reason,created_by_id)
+         VALUES($1,$2,$3,2025,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING id,external_source_id,normalized_data,corrected,void,effective,version`,
         [
           taxYearId, sourceDocumentId, formType, externalId, ownerRole, personByRole.get(ownerRole) ?? null,
           JSON.stringify(record), JSON.stringify(Array.isArray(record.raw_fields) ? record.raw_fields : []),
           JSON.stringify(Array.isArray(record.unmapped_source_fields) ? record.unmapped_source_fields : []),
           corrected, voided, !voided, prior?.id ?? null, (latest?.version ?? 0) + 1, importBatchId,
+          voided ? "void" : corrected ? "corrected" : "original", voided ? "Canonical import marked this record void." : corrected ? "Canonical import supplied a corrected version." : null, createdById,
         ],
       );
       const created = inserted.rows[0];
