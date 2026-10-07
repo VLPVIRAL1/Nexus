@@ -14,7 +14,7 @@ export interface ObjectStore {
   promote(storageId: string, version: string): Promise<void>;
   createAuthorizedReadUrl(storageId: string, expiresInSeconds: number): Promise<string>;
 }
-export interface AcceptedSourceFile { id: string; sanitizedName: string; mimeType: string; byteLength: number; checksum: string; storageId: string; storageVersion: string; scanState: "clean"; }
+export interface AcceptedSourceFile { id: string; sanitizedName: string; mimeType: string; byteLength: number; checksum: string; storageId: string; storageVersion: string; scanState: "clean"; scannerVersion: string; }
 
 export class SourceFileError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
@@ -30,7 +30,7 @@ export async function acceptSourceFile(input: { fileName: string; declaredMimeTy
   const scan = await scanner.scan(input.bytes);
   if (!scan.clean) throw new SourceFileError("FILE_QUARANTINED", `The source file failed security scanning: ${scan.reason ?? "unspecified scanner finding"}.`);
   await store.promote(stored.storageId, stored.version);
-  return { id: randomUUID(), sanitizedName, mimeType: input.declaredMimeType, byteLength: input.bytes.byteLength, checksum, storageId: stored.storageId, storageVersion: stored.version, scanState: "clean" };
+  return { id: randomUUID(), sanitizedName, mimeType: input.declaredMimeType, byteLength: input.bytes.byteLength, checksum, storageId: stored.storageId, storageVersion: stored.version, scanState: "clean", scannerVersion: scan.scannerVersion };
 }
 
 export function sanitizeFileName(value: string): string {

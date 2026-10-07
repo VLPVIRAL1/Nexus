@@ -14,6 +14,7 @@ import { createReviewPoint, getReviewState, requestChanges, updateReviewPointSta
 import { createOverrideRequest, getOverrideState, reviewOverride, revertOverride } from "../../src/server/override-service";
 import { getCalculationState, runPersistedCalculation } from "../../src/server/calculation-service";
 import { downloadPersistedArtifact, generatePersistedArtifact, getArtifactState } from "../../src/server/output-persistence-service";
+import { downloadSourceDocument, getSourceDocumentState, uploadSourceDocument } from "../../src/server/source-document-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -34,6 +35,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0009_override_governance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0010_calculation_snapshots.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0011_persisted_artifacts.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0012_encrypted_source_storage.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -324,5 +326,29 @@ suite("PostgreSQL foundation", () => {
     });
     state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(state.artifacts.find(({ id }) => id === pdf.id)?.stale).toBe(true);
+  });
+
+  it("quarantines, scans, encrypts, authorizes, verifies, and duplicate-flags persisted source originals", async () => {
+    const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const before=await getSourceDocumentState(context,"30000000-0000-4000-8000-000000000001",2025);
+    const bytes=new TextEncoder().encode(`%PDF-1.4\nSynthetic integration source ${randomUUID()}\n%%EOF\n`);
+    const first=await uploadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,before.revision,{fileName:"../Synthetic W-2.pdf",mimeType:"application/pdf",bytes,documentType:"W2"});
+    expect(first.possibleDuplicateOf).toBeNull();
+    const downloaded=await downloadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,first.id);
+    expect(downloaded.fileName).toBe("Synthetic W-2.pdf");
+    expect(downloaded.bytes).toEqual(Buffer.from(bytes));
+    await expect(downloadSourceDocument({...context,role:"read_only"},"30000000-0000-4000-8000-000000000001",2025,first.id)).rejects.toMatchObject({code:"forbidden"});
+    const second=await uploadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,first.revision,{fileName:"duplicate.pdf",mimeType:"application/pdf",bytes,documentType:"W2"});
+    expect(second.possibleDuplicateOf).toBe(first.id);
+    const state=await getSourceDocumentState(context,"30000000-0000-4000-8000-000000000001",2025);
+    expect(state.documents.find(({id})=>id===first.id)).toMatchObject({scanState:"clean",scannerVersion:"development-static-v1",possibleDuplicate:true});
+    const database=new pg.Client({connectionString});await database.connect();
+    const stored=await database.query<{object_state:string;cipher_bytes:Buffer}>("SELECT object_state,cipher_bytes FROM source_object_blobs WHERE id=(SELECT storage_id::uuid FROM source_documents WHERE id=$1)",[first.id]);
+    const issue=await database.query("SELECT 1 FROM validation_issues WHERE record_id=$1 AND code='POSSIBLE_DUPLICATE_SOURCE' AND resolved_at IS NULL",[second.id]);
+    await database.end();
+    expect(stored.rows[0]?.object_state).toBe("promoted");
+    expect(stored.rows[0]?.cipher_bytes.includes(Buffer.from("Synthetic integration source"))).toBe(false);
+    expect(issue.rowCount).toBe(1);
+    await expect(uploadSourceDocument(context,"30000000-0000-4000-8000-000000000001",2025,second.revision,{fileName:"active.pdf",mimeType:"application/pdf",bytes:new TextEncoder().encode("%PDF-1.4 /OpenAction"),documentType:"OTHER"})).rejects.toMatchObject({code:"invalid"});
   });
 });

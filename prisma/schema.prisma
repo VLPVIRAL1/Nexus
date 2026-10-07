@@ -127,22 +127,42 @@ model TaxYear {
 }
 
 model SourceDocument {
-  id              String   @id @default(uuid()) @db.Uuid
-  taxYearId       String   @db.Uuid
-  fileName        String
-  storageId       String
-  mimeType        String
-  byteLength      Int
-  checksum        String
-  duplicateHash   String
-  scanState       String
-  sourceRevision  Int      @default(1)
-  supersededById  String?  @db.Uuid
-  taxYear         TaxYear  @relation(fields: [taxYearId], references: [id])
-  sourceForms     SourceFormRecord[]
+  id                   String   @id @default(uuid()) @db.Uuid
+  taxYearId            String   @db.Uuid
+  fileName             String
+  documentType         String
+  storageId            String?
+  mimeType             String?
+  byteLength           BigInt?
+  checksum             String?
+  pageCount            Int?
+  duplicateFingerprint String?
+  disposition          String   @default("original")
+  supersedesDocumentId String?  @db.Uuid
+  scanState            String   @default("pending")
+  storageVersion       Int      @default(1)
+  uploadedById         String?  @db.Uuid
+  scannerVersion       String?
+  scanCompletedAt      DateTime?
+  uploadedAt           DateTime @default(now())
+  taxYear              TaxYear  @relation(fields: [taxYearId], references: [id])
+  sourceForms          SourceFormRecord[]
   expectedDocuments ExpectedDocument[]
+  @@index([taxYearId, duplicateFingerprint])
+}
+
+model SourceObjectBlob {
+  id              String   @id @default(uuid()) @db.Uuid
+  objectKey       String   @unique
+  storageVersion  Int      @default(1)
+  objectState     String
+  cipherAlgorithm String   @default("aes-256-gcm")
+  cipherIv        Bytes
+  cipherAuthTag   Bytes
+  cipherBytes     Bytes
   createdAt       DateTime @default(now())
-  @@index([taxYearId, duplicateHash])
+  promotedAt      DateTime?
+  @@index([objectState, createdAt])
 }
 
 model ExpectedDocument {
