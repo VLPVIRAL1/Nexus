@@ -169,5 +169,5 @@ function record(value: unknown): Record<string, unknown> { return value && typeo
 function numeric(value: unknown): number { const result = Number(value ?? 0); return Number.isFinite(result) ? result : 0; }
 function sumKeys(values: Record<string, unknown>, keys: string[]): number { return keys.reduce((total, current) => total + numeric(values[current]), 0); }
 function formatMoney(value: number): string { return value.toLocaleString("en-US", { style: "currency", currency: "USD" }); }
-function totalValue(column: string, totalRow: number, result: number): number | ExcelJS.CellFormulaValue { return totalRow <= 2 ? 0 : { formula: `SUM(${column}2:${column}${totalRow - 1})`, result }; }
+function totalValue(column: string, lastDataRow: number, result: number): number | ExcelJS.CellFormulaValue { return lastDataRow < 2 ? 0 : { formula: `SUM(${column}2:${column}${lastDataRow})`, result }; }
 function unique(values: string[]): string[] { return [...new Set(values)]; }

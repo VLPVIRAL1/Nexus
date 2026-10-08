@@ -498,12 +498,22 @@ suite("PostgreSQL foundation", () => {
     const pdf = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
     const workbook = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "workpaper_xlsx");
     const sourceJson = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "source_only_json");
+    const blankJson = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "blank_template_json");
+    const admin = { ...context, role: "admin" as const, assignedClientIds: new Set<string>() };
+    const completeJson = await generatePersistedArtifact(admin, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "complete_json");
     expect(pdf).toMatchObject({ id: processedPdf?.artifactId, status: "succeeded", replayed: true, contentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(workbook).toMatchObject({ status: "succeeded", replayed: false });
     expect(sourceJson).toMatchObject({ status: "succeeded", replayed: false });
+    expect(blankJson).toMatchObject({ status: "succeeded", replayed: false });
+    expect(completeJson).toMatchObject({ status: "succeeded", replayed: false });
     const replay = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "return_package_pdf");
     expect(replay).toMatchObject({ id: pdf.id, replayed: true, contentHash: pdf.contentHash });
     await expect(generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "complete_json")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id)).rejects.toMatchObject({ code: "forbidden" });
+    const downloadedComplete = await downloadPersistedArtifact(admin, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id);
+    expect(JSON.parse(downloadedComplete.bytes.toString())).toMatchObject({ clientId: "30000000-0000-4000-8000-000000000001", taxYear: 2025, revision: calculation.revision });
+    const downloadedBlank = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, blankJson.id);
+    expect(JSON.parse(downloadedBlank.bytes.toString())).toMatchObject({ client: {}, taxpayer: {}, source_documents: [], mappings: [] });
     const downloaded = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, pdf.id);
     expect(downloaded.mimeType).toBe("application/pdf");
     expect(downloaded.bytes.subarray(0, 4).toString()).toBe("%PDF");
@@ -511,7 +521,7 @@ suite("PostgreSQL foundation", () => {
     let state = await getArtifactState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(state.canExportComplete).toBe(false);
     expect(state.jobs.find(({ id }) => id === queuedPdf.jobId)).toMatchObject({ status: "succeeded", artifactId: pdf.id });
-    expect(state.artifacts.filter(({ stale }) => !stale).map(({ id }) => id)).toEqual(expect.arrayContaining([pdf.id, workbook.id, sourceJson.id]));
+    expect(state.artifacts.filter(({ stale }) => !stale).map(({ id }) => id)).toEqual(expect.arrayContaining([pdf.id, workbook.id, sourceJson.id, blankJson.id, completeJson.id]));
     await createActivity(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, {
       type: "schedule_c", name: `Artifact invalidation ${randomUUID()}`, ownerRole: "taxpayer", implementationStatus: "supported",
       receiptBasis: "source_plus_additional_receipts", additionalReceipts: "0.00", receiptNote: null,
