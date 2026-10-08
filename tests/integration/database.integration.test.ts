@@ -21,6 +21,7 @@ import { getArtifactJobMetrics } from "../../src/server/operations-service";
 import { getAssignmentState, setClientAssignment } from "../../src/server/assignment-service";
 import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-service";
 import { executeRetentionDisposal, getRetentionState, placeLegalHold, previewRetentionDisposal, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
+import { AuthenticationAttemptLimitError, enforceAuthenticationAttemptLimit } from "../../src/server/auth-attempt-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -49,6 +50,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0017_retention_governance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0018_client_list_performance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0019_retention_disposal.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0020_authentication_attempt_limits.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -171,6 +173,48 @@ suite("PostgreSQL foundation", () => {
       await database.query("DELETE FROM api_rate_limit_windows WHERE user_id=$1", [userId]);
       await database.query("DELETE FROM users WHERE id=$1", [userId]);
       await database.end();
+    }
+  });
+
+  it("throttles pre-session authentication attempts without storing network or principal identifiers", async () => {
+    const marker = randomUUID();
+    const networkIdentifier = `integration-network-${marker}`;
+    const principalIdentifier = `Synthetic.User+${marker}@Example.Invalid`;
+    const startedAt = new Date();
+    const now = new Date(Math.floor(startedAt.getTime() / 1_000) * 1_000);
+    const database = new pg.Client({ connectionString }); await database.connect();
+    try {
+      for (let request = 0; request < 10; request += 1) {
+        await enforceAuthenticationAttemptLimit({ operation: "login", networkIdentifier, principalIdentifier }, now);
+      }
+      await expect(enforceAuthenticationAttemptLimit({ operation: "login", networkIdentifier, principalIdentifier }, now)).rejects.toBeInstanceOf(AuthenticationAttemptLimitError);
+      await expect(enforceAuthenticationAttemptLimit({ operation: "login", networkIdentifier, principalIdentifier }, now)).rejects.toMatchObject({ retryAfterSeconds: expect.any(Number) });
+      await expect(enforceAuthenticationAttemptLimit({ operation: "login", networkIdentifier, principalIdentifier: `other-${marker}@example.invalid` }, now)).resolves.toBeUndefined();
+
+      const rows = await database.query<{ key_hash: string; request_count: number }>(
+        "SELECT key_hash,request_count FROM authentication_attempt_windows WHERE operation_code='login' AND updated_at >= $1",
+        [startedAt],
+      );
+      expect(rows.rows).toHaveLength(3);
+      expect(rows.rows.every(({ key_hash }) => /^[0-9a-f]{64}$/.test(key_hash))).toBe(true);
+      expect(JSON.stringify(rows.rows)).not.toContain(marker);
+      expect(rows.rows.map(({ request_count }) => request_count)).toEqual(expect.arrayContaining([1, 13]));
+    } finally {
+      await database.query("DELETE FROM authentication_attempt_windows WHERE operation_code='login' AND updated_at >= $1", [startedAt]);
+      await database.end();
+    }
+  });
+
+  it("fails closed when production authentication throttling has no strong keyed-hash secret", async () => {
+    const priorEnvironment = process.env.APP_ENV;
+    const priorSecret = process.env.AUTH_RATE_LIMIT_SECRET;
+    process.env.APP_ENV = "production";
+    delete process.env.AUTH_RATE_LIMIT_SECRET;
+    try {
+      await expect(enforceAuthenticationAttemptLimit({ operation: "login", networkIdentifier: "synthetic-network", principalIdentifier: "synthetic@example.invalid" })).rejects.toThrow("AUTH_RATE_LIMIT_SECRET");
+    } finally {
+      if (priorEnvironment === undefined) delete process.env.APP_ENV; else process.env.APP_ENV = priorEnvironment;
+      if (priorSecret === undefined) delete process.env.AUTH_RATE_LIMIT_SECRET; else process.env.AUTH_RATE_LIMIT_SECRET = priorSecret;
     }
   });
 
