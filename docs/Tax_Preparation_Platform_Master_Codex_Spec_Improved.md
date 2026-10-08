@@ -57,7 +57,7 @@
 ### In progress / not complete
 
 - [ ] Complete authentication, MFA/session behavior, firm membership, assignments and server-enforced persistence.
-- [ ] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows.
+- [x] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows. Verified all 21 migrations, repeatable synthetic seeding, firm-scoped creation and reads, assignment enforcement, optimistic person updates, revision invalidation and audit history through the live PostgreSQL integration suite on October 8, 2026.
 - [ ] Complete secure source upload, scanning/quarantine, encrypted object storage and authorized source viewing.
 - [ ] Complete every year-defined field and screen for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV.
 - [ ] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history.
