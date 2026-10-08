@@ -19,6 +19,7 @@
 - [x] Implement allocation reconciliation with full, partial, excluded and over-allocation outcomes.
 - [x] Implement required-intake question registry and blocking unknown/unsupported-answer diagnostics.
 - [x] Persist evidence-backed intake answer revisions, expected-document dispositions and immutable completeness attestations; add optimistic revision checks, generated blockers, stale calculation/review invalidation, audit events, guarded APIs and a database-backed intake screen.
+- [x] Connect expected-document intake evidence to clean same-return source uploads: expose eligible files without source bytes, require received items to have a link or evidence note, reject unsafe/cross-return links, support optimistic editing of existing dispositions, and cover the persisted UI and linked attestation path in browser/database tests.
 - [x] Implement guarded Ready for Review / Reviewed Draft decisions, stale-revision checks and review invalidation after relevant edits.
 - [x] Implement optimistic-concurrency conflict results containing base, current and proposed values.
 - [x] Implement firm/client authorization checks, TIN masking, structured-log redaction and spreadsheet-formula neutralization utilities.

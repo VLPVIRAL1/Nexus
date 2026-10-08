@@ -325,12 +325,15 @@ suite("PostgreSQL foundation", () => {
       phase1IntakeQuestions.map((question) => ({ questionId: question.id, answer: question.supportedWhenYes ? "yes" as const : "no" as const, evidence: "Synthetic integration interview" })),
     );
     expect(answered.blockerCount).toBe(0);
-    const document = await saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, answered.revision, {
-      documentKey: `fixture.${randomUUID()}`, label: "Synthetic W-2", status: "received", evidence: "Synthetic source inventory", sourceDocumentId: null, expectedVersion: null,
+    const uploaded = await uploadSourceDocument(context, "30000000-0000-4000-8000-000000000001", 2025, answered.revision, {
+      fileName: `Synthetic intake W-2 ${randomUUID()}.pdf`, mimeType: "application/pdf", bytes: new TextEncoder().encode(`%PDF-1.4\nSynthetic intake evidence ${randomUUID()}\n%%EOF\n`), documentType: "W2",
+    });
+    const document = await saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, uploaded.revision, {
+      documentKey: `fixture.${randomUUID()}`, label: "Synthetic W-2", status: "received", evidence: null, sourceDocumentId: uploaded.id, expectedVersion: null,
     });
     const attestation = await attestCompleteness(context, "30000000-0000-4000-8000-000000000001", 2025, document.revision, "Synthetic preparer completeness review", null);
     const complete = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
-    expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true } });
+    expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true }, expectedDocuments: expect.arrayContaining([expect.objectContaining({ sourceDocumentId: uploaded.id })]), sourceDocuments: expect.arrayContaining([expect.objectContaining({ id: uploaded.id, documentType: "W2" })]) });
 
     const invalidated = await saveIntakeAnswers(context, "30000000-0000-4000-8000-000000000001", 2025, complete.revision, [{
       questionId: "income.investment_sales", answer: "yes", evidence: "Synthetic unsupported fact",

@@ -5,6 +5,7 @@ const accessibleRoutes = [
   { name: "dashboard", path: "/dashboard" },
   { name: "client list", path: "/clients" },
   { name: "return workspace", path: "/clients/sample/years/2025" },
+  { name: "persisted intake", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/intake" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping split", path: "/clients/sample/years/2025/mapping" },
   { name: "review blockers", path: "/clients/sample/years/2025/review" },
@@ -56,6 +57,15 @@ test("registered repeatable fields are keyboard-operable", async ({ page }) => {
   await expect(addRow).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: /Remove .* row/ }).first()).toBeVisible();
+});
+
+test("expected-document intake can link clean uploaded evidence", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/intake");
+  await expect(page.getByRole("heading", { name: "Expected documents" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Upload source" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/sources");
+  await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("received");
+  await expect(page.getByLabel("Clean uploaded source")).toBeVisible();
+  await expect(page.getByRole("option", { name: /\.pdf · / }).first()).toBeAttached();
 });
 
 for (const route of [

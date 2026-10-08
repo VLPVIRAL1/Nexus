@@ -48,8 +48,9 @@ export async function saveExpectedDocument(context: AuthorizationContext, client
     if ((input.status === "unavailable" || input.status === "not_applicable") && !input.evidence?.trim()) throw new WorkflowError("invalid", "Unavailable or not-applicable documents require evidence.");
     if (input.status === "received" && !input.sourceDocumentId && !input.evidence?.trim()) throw new WorkflowError("invalid", "A received document requires a source link or evidence note.");
     if (input.sourceDocumentId) {
-      const source = await client.query("SELECT 1 FROM source_documents WHERE id=$1 AND tax_year_id=$2", [input.sourceDocumentId, scope.taxYearId]);
-      if (!source.rowCount) throw new WorkflowError("invalid", "Source document does not belong to this tax year.");
+      if (input.status !== "received") throw new WorkflowError("invalid", "Only received expected documents can link to a source document.");
+      const source = await client.query("SELECT 1 FROM source_documents WHERE id=$1 AND tax_year_id=$2 AND scan_state='clean'", [input.sourceDocumentId, scope.taxYearId]);
+      if (!source.rowCount) throw new WorkflowError("invalid", "Source document is not a clean document for this tax year.");
     }
     let document: { id: string; version: number } | undefined;
     if (input.expectedVersion == null) {
@@ -121,6 +122,9 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
   const documents = await client.query<{ id: string; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
     "SELECT id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],
   );
+  const sourceDocuments = await client.query<{ id: string; file_name: string; document_type: string }>(
+    "SELECT id,file_name,document_type FROM source_documents WHERE tax_year_id=$1 AND scan_state='clean' ORDER BY uploaded_at DESC,id DESC", [taxYearId],
+  );
   const attestation = await client.query<{ id: string; tax_year_revision: number }>("SELECT id,tax_year_revision FROM completeness_attestations WHERE tax_year_id=$1 ORDER BY tax_year_revision DESC LIMIT 1", [taxYearId]);
   return {
     revision,
@@ -128,6 +132,7 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
     missingQuestionIds,
     blockingQuestionIds,
     expectedDocuments: documents.rows.map((row) => ({ id: row.id, documentKey: row.document_key, label: row.label, status: row.status, evidence: row.evidence, sourceDocumentId: row.source_document_id, version: row.version })),
+    sourceDocuments: sourceDocuments.rows.map((row) => ({ id: row.id, fileName: row.file_name, documentType: row.document_type })),
     attestation: attestation.rows[0] ? { id: attestation.rows[0].id, revision: attestation.rows[0].tax_year_revision, current: attestation.rows[0].tax_year_revision === revision } : null,
   };
 }
