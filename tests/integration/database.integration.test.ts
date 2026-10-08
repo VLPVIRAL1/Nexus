@@ -20,7 +20,7 @@ import { getSourceRecordState, reviseSourceRecord } from "../../src/server/sourc
 import { getArtifactJobMetrics } from "../../src/server/operations-service";
 import { getAssignmentState, setClientAssignment } from "../../src/server/assignment-service";
 import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-service";
-import { getRetentionState, placeLegalHold, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
+import { executeRetentionDisposal, getRetentionState, placeLegalHold, previewRetentionDisposal, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -48,6 +48,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0016_correction_evidence.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0017_retention_governance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0018_client_list_performance.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0019_retention_disposal.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -96,7 +97,7 @@ suite("PostgreSQL foundation", () => {
     const clientId = "30000000-0000-4000-8000-000000000001";
     const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set([clientId]) };
     const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: preparer.firmId, role: "admin", assignedClientIds: new Set() };
-    expect(await getRetentionState(preparer)).toEqual({ canManage: false, policies: [], holds: [], scopes: [] });
+    expect(await getRetentionState(preparer)).toEqual({ canManage: false, policies: [], holds: [], scopes: [], disposalRuns: [] });
     await expect(saveRetentionPolicy(preparer, { category: "backups", retentionMonths: 12, disposition: "review", policyBasis: "Unauthorized", expectedVersion: null })).rejects.toMatchObject({ code: "forbidden" });
 
     let state = await getRetentionState(admin);
@@ -118,6 +119,42 @@ suite("PostgreSQL foundation", () => {
     const audit = await verify.query("SELECT event_type FROM audit_events WHERE record_id=ANY($1::text[])", [[hold.id, saved.id]]);
     await verify.end();
     expect(audit.rows.map((row) => row.event_type)).toEqual(expect.arrayContaining(["retention.policy_saved", "retention.legal_hold_placed", "retention.legal_hold_released"]));
+  });
+
+  it("disposes expired payloads only after rechecking legal holds and preserves immutable evidence", async () => {
+    const clientId = "30000000-0000-4000-8000-000000000001";
+    const taxYearId = "40000000-0000-4000-8000-000000000001";
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: admin.firmId, role: "preparer", assignedClientIds: new Set([clientId]) };
+    const database = new pg.Client({ connectionString }); await database.connect();
+    const batchId = randomUUID();
+    await database.query(
+      `INSERT INTO import_batches(id,tax_year_id,file_name,schema_version,batch_hash,base_revision,import_status,raw_payload,parsed_payload,created_at)
+       VALUES($1,$2,'expired.json','1.0.0',$3,1,'previewed',$4,$5::jsonb,now()-interval '2 months')`,
+      [batchId, taxYearId, randomUUID().replaceAll("-", ""), Buffer.from("synthetic expired payload"), JSON.stringify({ synthetic: true })],
+    );
+    try {
+      let state = await getRetentionState(admin);
+      for (const active of state.holds.filter((item) => item.taxYearId === taxYearId && !item.releasedAt)) await releaseLegalHold(admin, { holdId: active.id, expectedVersion: active.version, reason: "Reset repeatable disposal fixture." });
+      const prior = state.policies.find((item) => item.category === "import_payloads");
+      const policy = await saveRetentionPolicy(admin, { category: "import_payloads", retentionMonths: 1, disposition: "delete", policyBasis: "Synthetic approved payload-disposal fixture.", expectedVersion: prior?.version ?? null });
+      const authorizationPreview = await previewRetentionDisposal(admin, "import_payloads");
+      await expect(executeRetentionDisposal(preparer, { category: "import_payloads", expectedPolicyVersion: policy.version, previewCutoffAt: authorizationPreview.cutoffAt, authorizationReference: "UNAUTHORIZED", confirmation: "DELETE import_payloads" })).rejects.toMatchObject({ code: "forbidden" });
+      const hold = await placeLegalHold(admin, { taxYearId, reference: `DISPOSAL-${randomUUID()}`, reason: "Prove the disposal transaction preserves held records." });
+      const heldPreview = await previewRetentionDisposal(admin, "import_payloads");
+      expect(heldPreview.heldCount).toBeGreaterThanOrEqual(1);
+      const heldRun = await executeRetentionDisposal(admin, { category: "import_payloads", expectedPolicyVersion: policy.version, previewCutoffAt: heldPreview.cutoffAt, authorizationReference: "SYNTHETIC-HOLD-CHECK", confirmation: "DELETE import_payloads" });
+      expect(heldRun.heldCount).toBeGreaterThanOrEqual(1);
+      expect((await database.query("SELECT raw_payload IS NOT NULL retained FROM import_batches WHERE id=$1", [batchId])).rows[0].retained).toBe(true);
+      await releaseLegalHold(admin, { holdId: hold.id, expectedVersion: hold.version, reason: "Synthetic hold check completed." });
+      const releasedPreview = await previewRetentionDisposal(admin, "import_payloads");
+      const disposedRun = await executeRetentionDisposal(admin, { category: "import_payloads", expectedPolicyVersion: releasedPreview.policyVersion, previewCutoffAt: releasedPreview.cutoffAt, authorizationReference: "SYNTHETIC-DISPOSAL", confirmation: "DELETE import_payloads" });
+      expect(disposedRun.disposedCount).toBeGreaterThanOrEqual(1);
+      expect((await database.query("SELECT raw_payload,parsed_payload,disposed_at,disposal_run_id FROM import_batches WHERE id=$1", [batchId])).rows[0]).toMatchObject({ raw_payload: null, parsed_payload: null, disposal_run_id: disposedRun.id });
+      await expect(database.query("UPDATE retention_disposal_runs SET authorization_reference='changed' WHERE id=$1", [disposedRun.id])).rejects.toThrow("append-only");
+      const audit = await database.query("SELECT 1 FROM audit_events WHERE event_type='retention.disposal_executed' AND record_id=$1", [disposedRun.id]);
+      expect(audit.rowCount).toBe(1);
+    } finally { await database.end(); }
   });
 
   it("persists per-user sensitive-operation limits and returns a retry interval", async () => {
