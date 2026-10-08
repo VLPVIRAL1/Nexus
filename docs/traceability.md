@@ -1,5 +1,7 @@
 # Phase 1 traceability matrix
 
+Section 124 scenario and gate status is maintained in `acceptance-evidence.md`; the manual assistive-technology and representative-preparer procedure is in `manual-acceptance-protocol.md`.
+
 | Requirement | Current module | Evidence | Status |
 |---|---|---|---|
 | Dense Drake-inspired shell | `src/components/app-shell.tsx`, `workspace.tsx` | Build + visual review pending | Implemented foundation |
