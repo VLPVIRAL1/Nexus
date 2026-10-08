@@ -7,6 +7,7 @@ import { requestAuthorizationContext } from "@/server/request-auth";
 const routeParams = z.object({ clientId: z.string().uuid(), year: z.coerce.number().int().min(2025).max(2200) });
 const bodySchema = z.object({
   expectedTaxYearRevision: z.number().int().positive(),
+  registryId: z.string().trim().min(1).max(100).regex(/^[a-z0-9_]+$/).nullable(),
   documentKey: z.string().trim().min(1).max(100).regex(/^[a-z0-9_.-]+$/),
   label: z.string().trim().min(1).max(200),
   status: z.enum(["expected", "received", "unavailable", "not_applicable"]),

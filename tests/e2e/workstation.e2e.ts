@@ -63,6 +63,8 @@ test("expected-document intake can link clean uploaded evidence", async ({ page 
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/intake");
   await expect(page.getByRole("heading", { name: "Expected documents" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Upload source" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/sources");
+  await page.getByRole("combobox", { name: "Registry item", exact: true }).selectOption("w2");
+  await expect(page.getByRole("textbox", { name: "Checklist key", exact: true })).toHaveValue("w2");
   await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("received");
   await expect(page.getByLabel("Clean uploaded source")).toBeVisible();
   await expect(page.getByRole("option", { name: /\.pdf · / }).first()).toBeAttached();

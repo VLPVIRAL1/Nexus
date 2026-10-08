@@ -20,6 +20,7 @@
 - [x] Implement required-intake question registry and blocking unknown/unsupported-answer diagnostics.
 - [x] Persist evidence-backed intake answer revisions, expected-document dispositions and immutable completeness attestations; add optimistic revision checks, generated blockers, stale calculation/review invalidation, audit events, guarded APIs and a database-backed intake screen.
 - [x] Connect expected-document intake evidence to clean same-return source uploads: expose eligible files without source bytes, require received items to have a link or evidence note, reject unsafe/cross-return links, support optimistic editing of existing dispositions, and cover the persisted UI and linked attestation path in browser/database tests.
+- [x] Add a versioned 2025 expected-document registry with the five supported source families, common supporting evidence, fact-driven suggestions that do not silently declare files required, explicit custom items, compatible-source validation and stable multi-document keys. Complete the attestation UI with preparer-entered review evidence and a required explanation for legitimately unavailable items.
 - [x] Implement guarded Ready for Review / Reviewed Draft decisions, stale-revision checks and review invalidation after relevant edits.
 - [x] Implement optimistic-concurrency conflict results containing base, current and proposed values.
 - [x] Implement firm/client authorization checks, TIN masking, structured-log redaction and spreadsheet-formula neutralization utilities.
@@ -60,7 +61,6 @@
 - [ ] Complete secure source upload, scanning/quarantine, encrypted object storage and authorized source viewing.
 - [ ] Complete every year-defined field and screen for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV.
 - [ ] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history.
-- [ ] Complete expected-document intake, completeness attestation and evidence workflow.
 - [ ] Complete activity mapping, receipts reconciliation, review points, overrides, audit history and dependency-based invalidation.
 - [ ] Complete approved, independently verified 2025 rule package and supported calculation dependency graph.
 - [ ] Complete Forms 1040, Schedules 1/2/B/C/SE, Form 8995, worksheets, traces and dependency manifests for the supported envelope.

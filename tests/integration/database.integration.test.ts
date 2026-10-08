@@ -51,6 +51,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0018_client_list_performance.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0019_retention_disposal.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0020_authentication_attempt_limits.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0021_expected_document_registry.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -328,12 +329,19 @@ suite("PostgreSQL foundation", () => {
     const uploaded = await uploadSourceDocument(context, "30000000-0000-4000-8000-000000000001", 2025, answered.revision, {
       fileName: `Synthetic intake W-2 ${randomUUID()}.pdf`, mimeType: "application/pdf", bytes: new TextEncoder().encode(`%PDF-1.4\nSynthetic intake evidence ${randomUUID()}\n%%EOF\n`), documentType: "W2",
     });
+    await expect(saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, uploaded.revision, {
+      registryId: "1099_int", documentKey: `1099_int.fixture_${randomUUID()}`, label: "Mismatched interest statement", status: "received", evidence: null, sourceDocumentId: uploaded.id, expectedVersion: null,
+    })).rejects.toMatchObject({ code: "invalid" });
     const document = await saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, uploaded.revision, {
-      documentKey: `fixture.${randomUUID()}`, label: "Synthetic W-2", status: "received", evidence: null, sourceDocumentId: uploaded.id, expectedVersion: null,
+      registryId: "w2", documentKey: `w2.fixture_${randomUUID()}`, label: "Synthetic W-2", status: "received", evidence: null, sourceDocumentId: uploaded.id, expectedVersion: null,
     });
-    const attestation = await attestCompleteness(context, "30000000-0000-4000-8000-000000000001", 2025, document.revision, "Synthetic preparer completeness review", null);
+    const unavailable = await saveExpectedDocument(context, "30000000-0000-4000-8000-000000000001", 2025, document.revision, {
+      registryId: "estimated_payment_support", documentKey: `estimated_payment_support.fixture_${randomUUID()}`, label: "Unavailable synthetic payment confirmation", status: "unavailable", evidence: "Client and preparer documented the unavailable confirmation.", sourceDocumentId: null, expectedVersion: null,
+    });
+    await expect(attestCompleteness(context, "30000000-0000-4000-8000-000000000001", 2025, unavailable.revision, "Synthetic preparer completeness review", null)).rejects.toMatchObject({ code: "invalid" });
+    const attestation = await attestCompleteness(context, "30000000-0000-4000-8000-000000000001", 2025, unavailable.revision, "Synthetic preparer completeness review", "Client could not obtain the confirmation; preparer reviewed the payment ledger instead.");
     const complete = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
-    expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true }, expectedDocuments: expect.arrayContaining([expect.objectContaining({ sourceDocumentId: uploaded.id })]), sourceDocuments: expect.arrayContaining([expect.objectContaining({ id: uploaded.id, documentType: "W2" })]) });
+    expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true }, expectedDocuments: expect.arrayContaining([expect.objectContaining({ registryId: "w2", sourceDocumentId: uploaded.id })]), sourceDocuments: expect.arrayContaining([expect.objectContaining({ id: uploaded.id, documentType: "W2" })]), documentRegistry: expect.arrayContaining([expect.objectContaining({ id: "prior_year_return", suggested: true }), expect.objectContaining({ id: "w2" })]) });
 
     const invalidated = await saveIntakeAnswers(context, "30000000-0000-4000-8000-000000000001", 2025, complete.revision, [{
       questionId: "income.investment_sales", answer: "yes", evidence: "Synthetic unsupported fact",

@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { phase1IntakeQuestions } from "@/domain/intake";
+import { expectedDocumentRegistry2025, expectedDocumentRegistryForAnswers } from "@/domain/expected-documents";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { databasePool } from "./database";
 import { WorkflowError } from "./client-workflow-service";
@@ -9,6 +10,7 @@ import { WorkflowError } from "./client-workflow-service";
 export type IntakeAnswerValue = "yes" | "no" | "unknown";
 export interface IntakeAnswerInput { questionId: string; answer: IntakeAnswerValue; evidence: string }
 export interface ExpectedDocumentInput {
+  registryId: string | null;
   documentKey: string;
   label: string;
   status: "expected" | "received" | "unavailable" | "not_applicable";
@@ -45,26 +47,30 @@ export async function saveExpectedDocument(context: AuthorizationContext, client
   return inTransaction(async (client) => {
     const scope = await authorizedTaxYear(client, context, clientId, year, "intake.modify", true);
     assertRevision(scope.revision, expectedTaxYearRevision);
+    const registryDefinition = input.registryId ? expectedDocumentRegistry2025.find(({ id }) => id === input.registryId) : null;
+    if (input.registryId && !registryDefinition) throw new WorkflowError("invalid", "Expected-document registry item is not defined for 2025.");
+    if (registryDefinition && (registryDefinition.allowsMultiple ? input.documentKey !== registryDefinition.id && !input.documentKey.startsWith(`${registryDefinition.id}.`) : input.documentKey !== registryDefinition.id)) throw new WorkflowError("invalid", registryDefinition.allowsMultiple ? `Checklist key must start with ${registryDefinition.id}.` : `Checklist key must be ${registryDefinition.id}.`);
     if ((input.status === "unavailable" || input.status === "not_applicable") && !input.evidence?.trim()) throw new WorkflowError("invalid", "Unavailable or not-applicable documents require evidence.");
     if (input.status === "received" && !input.sourceDocumentId && !input.evidence?.trim()) throw new WorkflowError("invalid", "A received document requires a source link or evidence note.");
     if (input.sourceDocumentId) {
       if (input.status !== "received") throw new WorkflowError("invalid", "Only received expected documents can link to a source document.");
-      const source = await client.query("SELECT 1 FROM source_documents WHERE id=$1 AND tax_year_id=$2 AND scan_state='clean'", [input.sourceDocumentId, scope.taxYearId]);
-      if (!source.rowCount) throw new WorkflowError("invalid", "Source document is not a clean document for this tax year.");
+      const source = await client.query<{ document_type: string }>("SELECT document_type FROM source_documents WHERE id=$1 AND tax_year_id=$2 AND scan_state='clean'", [input.sourceDocumentId, scope.taxYearId]);
+      if (!source.rows[0]) throw new WorkflowError("invalid", "Source document is not a clean document for this tax year.");
+      if (registryDefinition && !registryDefinition.allowedSourceDocumentTypes.includes(source.rows[0].document_type)) throw new WorkflowError("invalid", "Linked source type does not match the expected-document registry item.");
     }
     let document: { id: string; version: number } | undefined;
     if (input.expectedVersion == null) {
       const inserted = await client.query<{ id: string; version: number }>(
-        `INSERT INTO expected_documents(tax_year_id,document_key,label,status,evidence,source_document_id,updated_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,version`,
-        [scope.taxYearId, input.documentKey, input.label, input.status, input.evidence?.trim() || null, input.sourceDocumentId, context.userId],
+        `INSERT INTO expected_documents(tax_year_id,registry_id,document_key,label,status,evidence,source_document_id,updated_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,version`,
+        [scope.taxYearId, input.registryId, input.documentKey, input.label, input.status, input.evidence?.trim() || null, input.sourceDocumentId, context.userId],
       ).catch((error: unknown) => { if (isUniqueViolation(error)) throw new WorkflowError("conflict", "Expected document changed; reload before saving."); throw error; });
       document = inserted.rows[0];
     } else {
       const updated = await client.query<{ id: string; version: number }>(
-        `UPDATE expected_documents SET label=$4,status=$5,evidence=$6,source_document_id=$7,updated_by=$8,version=version+1
+        `UPDATE expected_documents SET registry_id=$4,label=$5,status=$6,evidence=$7,source_document_id=$8,updated_by=$9,version=version+1
          WHERE tax_year_id=$1 AND document_key=$2 AND version=$3 RETURNING id,version`,
-        [scope.taxYearId, input.documentKey, input.expectedVersion, input.label, input.status, input.evidence?.trim() || null, input.sourceDocumentId, context.userId],
+        [scope.taxYearId, input.documentKey, input.expectedVersion, input.registryId, input.label, input.status, input.evidence?.trim() || null, input.sourceDocumentId, context.userId],
       );
       document = updated.rows[0];
       if (!document) throw new WorkflowError("conflict", "Expected document changed or was removed; reload before saving.");
@@ -72,7 +78,7 @@ export async function saveExpectedDocument(context: AuthorizationContext, client
     if (!document) throw new Error("Expected document write failed.");
     const nextRevision = scope.revision + 1;
     await invalidateTaxYear(client, scope.taxYearId, nextRevision);
-    await appendAuditEvent(client, context, scope.taxYearId, "expected_document.saved", "expected_document", document.id, { revision: nextRevision, documentKey: input.documentKey, status: input.status, version: document.version });
+    await appendAuditEvent(client, context, scope.taxYearId, "expected_document.saved", "expected_document", document.id, { revision: nextRevision, registryId: input.registryId, documentKey: input.documentKey, status: input.status, sourceLinked: Boolean(input.sourceDocumentId), version: document.version });
     return { id: document.id, version: document.version, revision: nextRevision };
   });
 }
@@ -119,8 +125,8 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
     const answer = answerByQuestion.get(question.id)?.answer;
     return answer === "yes" ? !question.supportedWhenYes : answer === "no" ? question.supportedWhenYes : false;
   }).map(({ id }) => id);
-  const documents = await client.query<{ id: string; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
-    "SELECT id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],
+  const documents = await client.query<{ id: string; registry_id: string | null; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
+    "SELECT id,registry_id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],
   );
   const sourceDocuments = await client.query<{ id: string; file_name: string; document_type: string }>(
     "SELECT id,file_name,document_type FROM source_documents WHERE tax_year_id=$1 AND scan_state='clean' ORDER BY uploaded_at DESC,id DESC", [taxYearId],
@@ -131,7 +137,8 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
     questions: phase1IntakeQuestions.map((question) => ({ ...question, answer: answerByQuestion.get(question.id) ?? null })),
     missingQuestionIds,
     blockingQuestionIds,
-    expectedDocuments: documents.rows.map((row) => ({ id: row.id, documentKey: row.document_key, label: row.label, status: row.status, evidence: row.evidence, sourceDocumentId: row.source_document_id, version: row.version })),
+    expectedDocuments: documents.rows.map((row) => ({ id: row.id, registryId: row.registry_id, documentKey: row.document_key, label: row.label, status: row.status, evidence: row.evidence, sourceDocumentId: row.source_document_id, version: row.version })),
+    documentRegistry: expectedDocumentRegistryForAnswers(new Map(answerResult.rows.map((answer) => [answer.question_id, answer.answer]))),
     sourceDocuments: sourceDocuments.rows.map((row) => ({ id: row.id, fileName: row.file_name, documentType: row.document_type })),
     attestation: attestation.rows[0] ? { id: attestation.rows[0].id, revision: attestation.rows[0].tax_year_revision, current: attestation.rows[0].tax_year_revision === revision } : null,
   };
