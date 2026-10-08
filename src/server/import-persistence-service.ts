@@ -110,7 +110,9 @@ export async function commitPersistedImport(
     const committed = commitImport(preview, scope.snapshot, scope.revision, new Map());
     const nextRevision = scope.revision + 1;
     await client.query(
-      "UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale' WHERE id=$1",
+      `UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale',
+       preparation_status=CASE WHEN preparation_status IN ('ready_for_review','reviewed_draft') THEN 'changes_requested' ELSE preparation_status END
+       WHERE id=$1`,
       [scope.taxYearId, JSON.stringify(committed.result), nextRevision],
     );
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
@@ -145,7 +147,9 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
       if (priorIds.length) await client.query("UPDATE source_form_records SET effective=NOT void WHERE id=ANY($1::uuid[])", [priorIds]);
     }
     await client.query(
-      "UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale' WHERE id=$1",
+      `UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale',
+       preparation_status=CASE WHEN preparation_status IN ('ready_for_review','reviewed_draft') THEN 'changes_requested' ELSE preparation_status END
+       WHERE id=$1`,
       [scope.taxYearId, JSON.stringify(row.previous_snapshot), nextRevision],
     );
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);

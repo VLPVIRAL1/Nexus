@@ -287,9 +287,17 @@ suite("PostgreSQL foundation", () => {
       box1: "1000.00",
     }];
     const raw = new TextEncoder().encode(JSON.stringify(payload));
+    const statusSetup = new pg.Client({ connectionString });
+    await statusSetup.connect();
+    await statusSetup.query("UPDATE tax_years SET preparation_status='reviewed_draft' WHERE id='40000000-0000-4000-8000-000000000001'");
+    await statusSetup.end();
     const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "integration.json", raw);
     const committed = await commitPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId, preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })));
     expect(committed.replayed).toBe(false);
+    const statusVerification = new pg.Client({ connectionString });
+    await statusVerification.connect();
+    expect((await statusVerification.query<{ preparation_status: string }>("SELECT preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'")).rows[0]?.preparation_status).toBe("changes_requested");
+    await statusVerification.end();
     if (committed.committedRevision == null) throw new Error("Expected committed revision.");
     const replay = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "integration.json", raw);
     expect(replay).toMatchObject({ batchId: preview.batchId, replayed: true, status: "committed" });

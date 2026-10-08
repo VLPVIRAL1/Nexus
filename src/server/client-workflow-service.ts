@@ -118,7 +118,9 @@ async function authorizedTaxYear(client: pg.PoolClient, context: AuthorizationCo
 
 async function bumpTaxYearRevision(client: pg.PoolClient, taxYearId: string): Promise<number> {
   const result = await client.query<{ revision: number }>(
-    "UPDATE tax_years SET revision=revision+1,validation_status='not_run',calculation_status='stale' WHERE id=$1 RETURNING revision",
+    `UPDATE tax_years SET revision=revision+1,validation_status='not_run',calculation_status='stale',
+     preparation_status=CASE WHEN preparation_status IN ('ready_for_review','reviewed_draft') THEN 'changes_requested' ELSE preparation_status END
+     WHERE id=$1 RETURNING revision`,
     [taxYearId],
   );
   const revision = result.rows[0]?.revision;
