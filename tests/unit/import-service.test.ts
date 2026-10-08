@@ -48,6 +48,22 @@ describe("safe canonical import", () => {
     expect(preview.changes.some(({ path }) => path.startsWith("forms.w2"))).toBe(false);
   });
 
+  it("keeps the effective value unchanged for keep-existing and review-later decisions", () => {
+    const current = returnWithW2("86000.00");
+    const preview = previewImport(bytes(returnWithW2("87000.00")), current, 4);
+    const wageChange = preview.changes.find(({ path }) => path.endsWith(".box1"));
+    if (!wageChange) throw new Error("Expected wage change.");
+
+    wageChange.decision = "keep_existing";
+    expect((commitImport(preview, current, 4, new Map()).result.forms as any).w2[0].box1).toBe("86000.00");
+
+    const reviewPreview = previewImport(bytes(returnWithW2("87000.00")), current, 4);
+    const reviewChange = reviewPreview.changes.find(({ path }) => path.endsWith(".box1"));
+    if (!reviewChange) throw new Error("Expected wage change.");
+    reviewChange.decision = "review_later";
+    expect((commitImport(reviewPreview, current, 4, new Map()).result.forms as any).w2[0].box1).toBe("86000.00");
+  });
+
   it("keeps imported review claims out of authoritative changes", () => {
     const imported = structuredClone(template) as Record<string, any>;
     imported.review_points = [{ id: "external", status: "approved" }];
