@@ -5,6 +5,12 @@ const accessibleRoutes = [
   { name: "dashboard", path: "/dashboard" },
   { name: "client list", path: "/clients" },
   { name: "return workspace", path: "/clients/sample/years/2025" },
+  { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
+  { name: "mapping split", path: "/clients/sample/years/2025/mapping" },
+  { name: "review blockers", path: "/clients/sample/years/2025/review" },
+  { name: "stale calculation", path: "/clients/sample/years/2025/calculation/summary" },
+  { name: "import staging", path: "/imports/new" },
+  { name: "stale outputs", path: "/workpapers" },
   { name: "source entry", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry" },
   { name: "administration access", path: "/administration" },
 ];
@@ -56,6 +62,12 @@ for (const route of [
   { name: "dashboard", path: "/dashboard?fixture=visual" },
   { name: "clients", path: "/clients?fixture=visual" },
   { name: "return-workspace", path: "/clients/sample/years/2025" },
+  { name: "intake-blockers", path: "/clients/sample/years/2025/intake" },
+  { name: "mapping-split", path: "/clients/sample/years/2025/mapping" },
+  { name: "review-blockers", path: "/clients/sample/years/2025/review" },
+  { name: "calculation-stale", path: "/clients/sample/years/2025/calculation/summary" },
+  { name: "import-staging", path: "/imports/new" },
+  { name: "outputs-stale", path: "/workpapers" },
 ]) {
   test(`${route.name} visual baseline`, async ({ page }) => {
     await stabilize(page, route.path);
