@@ -85,7 +85,7 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
   }
 
   return <div className="return-page registry-entry-page">
-    <div className="return-page-top"><Link href={`/clients/${clientId}/years/${year}`}><ArrowLeft size={14}/> {clientName} · {year}</Link><span>Revision {initial.revision}</span><b>2025 registry v2025.1.0</b></div>
+    <div className="return-page-top"><Link href={`/clients/${clientId}/years/${year}`}><ArrowLeft size={14}/> {clientName} · {year}</Link><span>Revision {initial.revision}</span><b>2025 registry {registry?.registry_version ?? "year-pinned"}</b></div>
     <header><div><p>SOURCE ENTRY · YEAR-VERSIONED REGISTRY</p><h1>W-2 and information-return fields</h1><span>All registered fields are captured even when calculation treatment is conditional or future. Saving creates an immutable corrected version tied to explicit evidence.</span></div><button className="button primary" disabled={!selected || saving || !reason.trim() || !evidenceComplete} onClick={save}><Save size={13}/>{saving ? "Saving…" : "Save correction"}</button></header>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <div className="registry-entry-layout">

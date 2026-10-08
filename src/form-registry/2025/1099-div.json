@@ -1,5 +1,5 @@
 {
-  "form": "1099-DIV", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "form": "1099-DIV", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.1",
   "fields": [
     { "key": "ordinaryDividends", "label": "Total ordinary dividends", "type": "money", "calculation": "supported" },
     { "key": "qualifiedDividends", "label": "Qualified dividends", "type": "money", "calculation": "conditional" },
@@ -12,6 +12,7 @@
     { "key": "nondividendDistributions", "label": "Nondividend distributions", "type": "money", "calculation": "future" },
     { "key": "federalWithholding", "label": "Federal income tax withheld", "type": "money", "calculation": "supported" },
     { "key": "section199ADividends", "label": "Section 199A dividends", "type": "money", "calculation": "conditional" },
+    { "key": "investmentExpenses", "label": "Investment expenses", "type": "money", "calculation": "future" },
     { "key": "foreignTaxPaid", "label": "Foreign tax paid", "type": "money", "calculation": "future" },
     { "key": "foreignCountry", "label": "Foreign country or U.S. possession", "type": "string", "calculation": "conditional" },
     { "key": "cashLiquidationDistributions", "label": "Cash liquidation distributions", "type": "money", "calculation": "future" },

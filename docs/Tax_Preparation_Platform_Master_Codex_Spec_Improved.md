@@ -26,7 +26,7 @@
 - [x] Implement firm/client authorization checks, TIN masking, structured-log redaction and spreadsheet-formula neutralization utilities.
 - [x] Implement staged import preview, explicit per-change decisions, stale-preview rejection and exact-replay idempotency service foundations.
 - [x] Persist authorized JSON import previews, raw bytes, stable-ID paths, decisions, every replay attempt, pre/post snapshots and commits; materialize all five form families with internal IDs, effective revisions and supersession lineage; add atomic tax-year invalidation, chained audit events and guarded compensating rollback. Empty arrays do not delete records and imported review claims cannot grant authority.
-- [x] Add year-specific capture/support registries for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV, including repeatable/open-ended fields and 2025 NEC Box 3 treatment status.
+- [x] Add year-specific capture/support registries for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV, including repeatable/open-ended fields, 2025 NEC Box 3 treatment status, INT Box 14 tax-exempt-bond CUSIP, DIV Box 6 investment expenses and correctly typed MISC Box 11 fish-purchased-for-resale capture.
 - [x] Implement draft PDF cover/package manifest, XLSX source/review/mapping workpaper foundation and complete/source-only/blank JSON export services with hashes and injection-safe strings.
 - [x] Implement vendor-neutral tax-software adapter contracts and CCH/Drake planned adapters that advertise no unverified capability.
 - [x] Add repeatable PostgreSQL 16 development provisioning, transactional SQL migration tracking, synthetic seed data, append-only audit enforcement, database integration tests and a database-backed work-queue read path with production fallback protection.
@@ -59,7 +59,7 @@
 - [ ] Complete authentication, MFA/session behavior, firm membership, assignments and server-enforced persistence.
 - [x] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows. Verified all 21 migrations, repeatable synthetic seeding, firm-scoped creation and reads, assignment enforcement, optimistic person updates, revision invalidation and audit history through the live PostgreSQL integration suite on October 8, 2026.
 - [x] Complete secure source upload, scanning/quarantine, encrypted object storage and authorized source viewing. Unit and live PostgreSQL integration evidence covers file limits and signatures, fail-closed production scanner configuration, quarantine/promotion, AES-256-GCM authenticated encryption, checksum verification, duplicate warnings, firm/assignment authorization and the no-store sandboxed viewing proxy.
-- [ ] Complete every year-defined field and screen for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV.
+- [x] Complete every year-defined field and screen for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV. Exact 2025 registry-key regression tests cover all numbered boxes plus repeatable state/local rows, typed checkbox/code/open-label editors, issuer/recipient metadata, unknown raw-field preservation and immutable evidence-backed correction screens.
 - [ ] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history.
 - [ ] Complete activity mapping, receipts reconciliation, review points, overrides, audit history and dependency-based invalidation.
 - [ ] Complete approved, independently verified 2025 rule package and supported calculation dependency graph.

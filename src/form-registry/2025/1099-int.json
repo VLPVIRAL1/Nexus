@@ -1,5 +1,5 @@
 {
-  "form": "1099-INT", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.0",
+  "form": "1099-INT", "tax_year": 2025, "revision": "2025", "registry_version": "2025.1.1",
   "fields": [
     { "key": "interestIncome", "label": "Interest income", "type": "money", "calculation": "supported" },
     { "key": "earlyWithdrawalPenalty", "label": "Early withdrawal penalty", "type": "money", "calculation": "future" },
@@ -14,6 +14,7 @@
     { "key": "bondPremium", "label": "Bond premium", "type": "money", "calculation": "future" },
     { "key": "treasuryBondPremium", "label": "Bond premium on Treasury obligations", "type": "money", "calculation": "future" },
     { "key": "taxExemptBondPremium", "label": "Bond premium on tax-exempt bond", "type": "money", "calculation": "future" },
+    { "key": "taxExemptBondCusip", "label": "Tax-exempt and tax credit bond CUSIP number", "type": "string", "calculation": "not_applicable" },
     { "key": "stateRows", "label": "State information", "type": "repeatable_state", "calculation": "not_applicable" }
   ],
   "pdf_output": "conditional", "integration": "future"

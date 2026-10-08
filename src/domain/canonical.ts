@@ -120,7 +120,8 @@ export interface Form1099MISC extends PayerRecipientForm {
     federalWithholding: DecimalString | null; fishingBoatProceeds: DecimalString | null;
     medicalPayments: DecimalString | null; directSales: boolean | null;
     substitutePayments: DecimalString | null; cropInsuranceProceeds: DecimalString | null;
-    attorneyGrossProceeds: DecimalString | null; section409ADeferrals: DecimalString | null;
+    attorneyGrossProceeds: DecimalString | null; fishPurchasedForResale: DecimalString | null;
+    section409ADeferrals: DecimalString | null;
     nonqualifiedDeferredCompensation: DecimalString | null;
   };
 }
@@ -134,7 +135,7 @@ export interface Form1099INT extends PayerRecipientForm {
     foreignCountry: string | null; taxExemptInterest: DecimalString | null;
     privateActivityBondInterest: DecimalString | null; marketDiscount: DecimalString | null;
     bondPremium: DecimalString | null; treasuryBondPremium: DecimalString | null;
-    taxExemptBondPremium: DecimalString | null;
+    taxExemptBondPremium: DecimalString | null; taxExemptBondCusip: string | null;
   };
 }
 
@@ -146,7 +147,8 @@ export interface Form1099DIV extends PayerRecipientForm {
     section1202Gain: DecimalString | null; collectiblesGain: DecimalString | null;
     section897OrdinaryDividends: DecimalString | null; section897CapitalGain: DecimalString | null;
     nondividendDistributions: DecimalString | null; federalWithholding: DecimalString | null;
-    section199ADividends: DecimalString | null; foreignTaxPaid: DecimalString | null;
+    section199ADividends: DecimalString | null; investmentExpenses: DecimalString | null;
+    foreignTaxPaid: DecimalString | null;
     foreignCountry: string | null; cashLiquidationDistributions: DecimalString | null;
     noncashLiquidationDistributions: DecimalString | null; exemptInterestDividends: DecimalString | null;
     privateActivityBondInterestDividends: DecimalString | null;
