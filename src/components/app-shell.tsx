@@ -13,6 +13,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  ListChecks,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -68,7 +69,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
           <span className="nav-heading nav-heading-spaced">System</span>
-          <Link className="nav-link" href="/administration"><ShieldCheck size={17} /><span>Administration</span></Link>
+          <Link className={`nav-link ${pathname === "/administration" ? "active" : ""}`} href="/administration"><ShieldCheck size={17} /><span>Administration</span></Link>
+          <Link className={`nav-link ${pathname.startsWith("/administration/release-closure") ? "active" : ""}`} href="/administration/release-closure"><ListChecks size={17} /><span>Release closure</span></Link>
           <Link className="nav-link" href="/settings"><Settings size={17} /><span>Settings</span></Link>
         </nav>
         <div className="firm-card">

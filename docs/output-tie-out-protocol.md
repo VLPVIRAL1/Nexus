@@ -2,6 +2,8 @@
 
 Execute this protocol only after a qualified tax-rule owner has approved the exact synthetic calculation fixture and immutable rule package. Automated output tests remain necessary but do not replace this consumer inspection.
 
+Record every named expected/actual comparison in **Administration → Release closure → Output tie-out**. The service computes mismatch count and evidence hash and allows a different reviewer to approve only a zero-mismatch record. Keep artifact bytes and taxpayer values out of audit metadata and external ticket summaries.
+
 ## Evidence identity
 
 Record the Git commit, deployment, synthetic return ID, tax-year revision, calculation-run ID, input/result hashes, engine/rule/form-registry/template versions, artifact IDs and SHA-256 hashes. Record the inspector’s name, role, organization, date and evidence-system reference. Do not commit taxpayer data or artifact bytes.

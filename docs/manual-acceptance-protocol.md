@@ -2,6 +2,8 @@
 
 Automated checks do not satisfy this protocol. Execute it on a release candidate using synthetic data only. Store the completed, signed evidence in the approved evidence system and commit only its non-sensitive reference, decision and hash.
 
+Record each completed run in **Administration → Release closure → Manual acceptance**. The recorder must provide the evidence-system reference and scenario counts; a different reviewer may sign only a fully passing run. This application record complements, and does not replace, the controlled external evidence.
+
 ## Test record
 
 Record the exact Git commit, deployment identifier, date/time, tester name and role, operating system, browser/version, viewport/zoom, keyboard layout, assistive technology/version, display settings and synthetic fixture IDs. Each result must be `pass`, `fail` or `blocked` with observations and an issue/evidence reference; blank rows do not pass.

@@ -9,3 +9,4 @@
 | External AI workflow | No automatic upload | Security owner | Any real source sharing |
 | Reviewer separation | Independent reviewer by default | Firm admin | First draft approval |
 | Retention/recovery | Firm-specific reviewed policies | Security owner | Production-data gate |
+| Release evidence | Persist firm-scoped references, hashes and independent decisions; retain sensitive evidence in the approved external system | Product/security owners | Every release gate |

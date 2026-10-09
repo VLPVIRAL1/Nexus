@@ -24,6 +24,7 @@ import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-se
 import { executeRetentionDisposal, getRetentionState, placeLegalHold, previewRetentionDisposal, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
 import { AuthenticationAttemptLimitError, enforceAuthenticationAttemptLimit } from "../../src/server/auth-attempt-service";
 import { issueProvisionedExternalIdentitySession } from "../../src/server/supabase-auth-service";
+import { decideManualAcceptanceSession, decideOutputTieOut, decideReleaseGate, decideTaxReviewFixture, getReleaseClosureState, ingestProductionReadiness, saveInfrastructureControl, saveManualAcceptanceSession, saveOutputTieOut, saveReleaseGate, saveTaxReviewFixture } from "../../src/server/release-closure-service";
 
 const importCollections = {
   W2: "w2",
@@ -103,6 +104,8 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0019_retention_disposal.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0020_authentication_attempt_limits.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0021_expected_document_registry.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0022_external_identities.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0023_release_closure.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -121,10 +124,15 @@ suite("PostgreSQL foundation", () => {
 
   it("bounds and prefix-filters the firm client list", async () => {
     const context: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
-    expect(await listDashboardClients(context, { limit: 1 })).toHaveLength(1);
-    expect(await listDashboardClients(context, { query: "000123", limit: 10 })).toEqual([expect.objectContaining({ code: "000123" })]);
-    expect(await listDashboardClients(context, { query: "no-such-prefix", limit: 10 })).toEqual([]);
-  });
+    const [limited, matched, absent] = await Promise.all([
+      listDashboardClients(context, { limit: 1 }),
+      listDashboardClients(context, { query: "000123", limit: 10 }),
+      listDashboardClients(context, { query: "no-such-prefix", limit: 10 }),
+    ]);
+    expect(limited).toHaveLength(1);
+    expect(matched).toEqual([expect.objectContaining({ code: "000123" })]);
+    expect(absent).toEqual([]);
+  }, 15_000);
 
   it("lets only administrators manage compatible firm assignments and audits every change", async () => {
     const clientId = "30000000-0000-4000-8000-000000000001";
@@ -145,6 +153,58 @@ suite("PostgreSQL foundation", () => {
     const audit = await database.query("SELECT 1 FROM audit_events WHERE firm_id=$1 AND event_type='client.assignment_changed' AND record_id=$2", [admin.firmId, clientId]);
     await database.end();
     expect(audit.rowCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("governs all five release-closure workflows with firm scope, versions, hashes, and independent decisions", async () => {
+    const clientId = "30000000-0000-4000-8000-000000000001";
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: admin.firmId, role: "preparer", assignedClientIds: new Set([clientId]) };
+    const reviewer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000002", firmId: admin.firmId, role: "reviewer", assignedClientIds: new Set([clientId]) };
+    const initial = await getReleaseClosureState(admin);
+    expect(initial.gates).toHaveLength(7);
+    expect(initial.controls).toHaveLength(8);
+    expect(initial.scopes).toContainEqual(expect.objectContaining({ taxYearId: "40000000-0000-4000-8000-000000000001" }));
+
+    await expect(saveReleaseGate(preparer, { gateCode: "scope", status: "evidence_ready", ownerUserId: reviewer.userId, dueDate: null, evidenceReference: "SCOPE-UNAUTHORIZED", notes: "Must fail", expectedVersion: initial.gates.find(({ code }) => code === "scope")?.version ?? null })).rejects.toMatchObject({ code: "forbidden" });
+    const currentGate = initial.gates.find(({ code }) => code === "scope")!;
+    const gate = await saveReleaseGate(admin, { gateCode: "scope", status: "evidence_ready", ownerUserId: reviewer.userId, dueDate: "2026-10-31", evidenceReference: `SCOPE-${randomUUID()}`, notes: "Synthetic independent scope evidence.", expectedVersion: currentGate.version });
+    await expect(decideReleaseGate(admin, { gateCode: "scope", expectedVersion: gate.version, decision: "approved", note: "Self approval must fail." })).rejects.toMatchObject({ code: "forbidden" });
+    const decidedGate = await decideReleaseGate(reviewer, { gateCode: "scope", expectedVersion: gate.version, decision: "approved", note: "Synthetic independent scope acceptance." });
+    expect(decidedGate.version).toBe(gate.version + 1);
+
+    const fixtureCode = `SYNTH_${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
+    const mismatched = await saveTaxReviewFixture(preparer, { fixtureCode, title: "Synthetic tax boundary", sourceReference: "SYNTHETIC-IRS-SOURCE", rulePackageVersion: "2025-research", expectedValues: { "1040.line-1a": "100.00" }, actualValues: { "1040.line-1a": "99.00" }, expectedVersion: null });
+    expect(mismatched).toMatchObject({ mismatchCount: 1, evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await expect(decideTaxReviewFixture(reviewer, { id: mismatched.id, expectedVersion: mismatched.version, decision: "approved", note: "Mismatch must block." })).rejects.toMatchObject({ code: "conflict" });
+    const matched = await saveTaxReviewFixture(preparer, { fixtureCode, title: "Synthetic tax boundary", sourceReference: "SYNTHETIC-IRS-SOURCE", rulePackageVersion: "2025-research", expectedValues: { "1040.line-1a": "100.00" }, actualValues: { "1040.line-1a": "100.00" }, expectedVersion: mismatched.version });
+    await expect(decideTaxReviewFixture(preparer, { id: matched.id, expectedVersion: matched.version, decision: "approved", note: "Preparer cannot review." })).rejects.toMatchObject({ code: "forbidden" });
+    await decideTaxReviewFixture(reviewer, { id: matched.id, expectedVersion: matched.version, decision: "approved", note: "Synthetic values independently matched." });
+
+    const existingControl = initial.controls.find(({ code }) => code === "backup_restore")!;
+    await expect(saveInfrastructureControl(preparer, { controlCode: "backup_restore", providerName: "Unauthorized", status: "pass", evidenceReference: "NONE", details: "Must fail", observedAt: "2026-10-09T12:00:00.000Z", expiresAt: null, expectedVersion: existingControl.version })).rejects.toMatchObject({ code: "forbidden" });
+    const control = await saveInfrastructureControl(admin, { controlCode: "backup_restore", providerName: "Synthetic backup provider", status: "pass", evidenceReference: `RESTORE-${randomUUID()}`, details: "Synthetic restore evidence only; not production approval.", observedAt: "2026-10-09T12:00:00.000Z", expiresAt: "2027-01-09T12:00:00.000Z", expectedVersion: existingControl.version });
+    expect(control.version).toBe((existingControl.version ?? 0) + 1);
+    const readiness = await ingestProductionReadiness(admin, { ready: false, assessedAt: "2026-10-09T12:00:00.000Z", checks: [{ name: "Production configuration", passed: false, detail: "Synthetic required configuration is absent." }, { name: "Schema", passed: true, detail: "Migration is present." }] });
+    expect(readiness).toMatchObject({ ready: false, passedCount: 1, totalCount: 2, evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+
+    const manual = await saveManualAcceptanceSession(preparer, { protocol: "accessibility", title: "Synthetic assistive-technology protocol", testEnvironment: "Chromium and synthetic screen reader", participantRole: "Synthetic accessibility reviewer", assistiveTechnology: "Synthetic screen reader", scenariosTotal: 3, scenariosPassed: 3, result: "pass", findings: "All synthetic tasks completed.", evidenceReference: `A11Y-${randomUUID()}`, conductedAt: "2026-10-09T12:00:00.000Z" });
+    await decideManualAcceptanceSession(reviewer, { id: manual.id, expectedVersion: manual.version, decision: "signed", note: "Synthetic independent protocol review." });
+
+    const tieOut = await saveOutputTieOut(preparer, { taxYearId: "40000000-0000-4000-8000-000000000001", calculationRunId: null, artifactId: null, title: "Synthetic source-to-output tie-out", expectedValues: { "1040.line-1a": "100.00", "1040.line-25a": "10.00" }, actualValues: { "1040.line-1a": "100.00", "1040.line-25a": "10.00" }, evidenceReference: `TIEOUT-${randomUUID()}` });
+    expect(tieOut).toMatchObject({ mismatchCount: 0, evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await decideOutputTieOut(reviewer, { id: tieOut.id, expectedVersion: tieOut.version, decision: "approved", note: "Synthetic outputs independently matched." });
+
+    const state = await getReleaseClosureState(admin);
+    expect(state.gates.find(({ code }) => code === "scope")).toMatchObject({ status: "approved", decidedBy: "David Ross" });
+    expect(state.taxFixtures.find(({ fixtureCode: code }) => code === fixtureCode)).toMatchObject({ status: "approved", mismatchCount: 0, reviewedBy: "David Ross" });
+    expect(state.controls.find(({ code }) => code === "backup_restore")).toMatchObject({ status: "pass", providerName: "Synthetic backup provider" });
+    expect(state.readinessAssessments[0]).toMatchObject({ ready: false, passedCount: 1 });
+    expect(state.manualSessions.find(({ id }) => id === manual.id)).toMatchObject({ status: "signed", reviewedBy: "David Ross" });
+    expect(state.tieOuts.find(({ id }) => id === tieOut.id)).toMatchObject({ status: "approved", reviewedBy: "David Ross" });
+    const database = new pg.Client({ connectionString }); await database.connect();
+    const audit = await database.query("SELECT event_type FROM audit_events WHERE firm_id=$1 AND event_type LIKE ANY($2::text[])", [admin.firmId, ["release_gate.%", "tax_review.%", "infrastructure.%", "production_readiness.%", "manual_acceptance.%", "output_tie_out.%"]]);
+    await database.end();
+    expect(audit.rowCount).toBeGreaterThanOrEqual(10);
   });
 
   it("governs retention policies and legal holds with versions, scope, and audit history", async () => {

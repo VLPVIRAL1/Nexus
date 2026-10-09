@@ -1,6 +1,6 @@
 # Nexus Tax
 
-Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation includes a PostgreSQL-backed work queue, guarded client/year/person APIs, secure-intake foundations, canonical import/output services, and an unapproved deterministic 2025 calculation research package. It does not file, transmit, or claim production readiness.
+Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation includes a PostgreSQL-backed work queue, guarded client/year/person APIs, secure-intake foundations, canonical import/output services, an unapproved deterministic 2025 calculation research package and governed release-closure evidence workspaces. It does not file, transmit, or claim production readiness.
 
 ## Prerequisites
 
@@ -46,6 +46,8 @@ npm run readiness:production # fail-closed production configuration and ownershi
 For production authentication, configure the Supabase and Nexus auth variables in `.env.example`, enable TOTP MFA and the recovery redirect in the selected Supabase project, then explicitly link each approved provider subject with `npm run auth:link -- --subject=<supabase-user-uuid> --user-email=<local-user-email>`. Never use a service-role key in the browser or repository.
 
 The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production provider activation, storage infrastructure, recovery evidence and acceptance gates remain open.
+
+Administrators and assigned preparer/reviewer roles use **Administration → Release closure** to maintain release gates, independent tax fixtures, security/infrastructure controls, human acceptance sessions and source-to-output tie-outs. These records enforce separation and evidence identity; they do not grant missing external approvals.
 
 ## Safety boundary
 

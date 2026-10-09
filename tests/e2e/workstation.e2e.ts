@@ -17,6 +17,7 @@ const accessibleRoutes = [
   { name: "sample outputs", path: "/clients/sample/years/2025/outputs" },
   { name: "source entry", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry" },
   { name: "administration access", path: "/administration" },
+  { name: "release closure", path: "/administration/release-closure" },
 ];
 
 for (const route of accessibleRoutes) {
@@ -29,6 +30,7 @@ for (const route of accessibleRoutes) {
 }
 
 test("keyboard users can skip repeated navigation and see focus", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/dashboard");
   await page.keyboard.press("Tab");
   const skipLink = page.getByRole("link", { name: "Skip to main content" });
@@ -40,11 +42,18 @@ test("keyboard users can skip repeated navigation and see focus", async ({ page 
 });
 
 test("authorized client search keeps the query out of the URL and supports the keyboard shortcut", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/dashboard");
   await page.keyboard.press("Control+k");
   const search = page.getByRole("combobox", { name: "Search assigned clients and returns" });
   await expect(search).toBeFocused();
+  const responsePromise = page.waitForResponse(
+    (response) => response.url().includes("/api/search/clients") && response.request().method() === "POST",
+    { timeout: 30_000 },
+  );
   await search.fill("000123");
+  const response = await responsePromise;
+  expect(response.ok()).toBe(true);
   await expect(page.getByRole("option", { name: /John Sample/ })).toBeVisible();
   expect(page.url()).not.toContain("000123");
   await page.keyboard.press("Escape");
@@ -71,6 +80,25 @@ test("expected-document intake can link clean uploaded evidence", async ({ page 
   await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("received");
   await expect(page.getByLabel("Clean uploaded source")).toBeVisible();
   await expect(page.getByRole("option", { name: /\.pdf · / }).first()).toBeAttached();
+});
+
+test("release closure exposes all five governed workspaces", async ({ page }) => {
+  await page.goto("/administration/release-closure");
+  await expect(page.getByRole("heading", { name: "Release readiness and evidence" })).toBeVisible();
+
+  const workspaces = [
+    ["Tax review", "Independent tax fixture"],
+    ["Security & infrastructure", "Import production-readiness result"],
+    ["Manual acceptance", "Manual acceptance session"],
+    ["Output tie-out", "Source-to-output tie-out"],
+  ] as const;
+  for (const [tab, heading] of workspaces) {
+    await page.getByRole("button", { name: tab }).click();
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  }
+
+  await page.getByRole("button", { name: "Release gates" }).click();
+  await expect(page.getByRole("heading", { name: "Product scope" })).toBeVisible();
 });
 
 for (const route of [

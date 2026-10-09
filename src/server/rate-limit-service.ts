@@ -20,6 +20,8 @@ const limits = {
   "assignment.modify": 30,
   "retention.modify": 20,
   "retention.dispose": 5,
+  "release_closure.modify": 30,
+  "release_closure.decide": 20,
   "client.search": 60,
 } as const;
 
