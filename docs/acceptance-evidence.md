@@ -21,7 +21,7 @@ This register tracks Section 124 without converting implementation evidence into
 | AC-15 Malicious or oversized input | Security owner | Unsafe-key, signature, size, active-PDF, formula-neutralization and fail-closed scanner tests | Blocked | Approved production scanner/key deployment and security review |
 | AC-16 Job failure/retry and recovery | Infrastructure owner | Durable claim/retry/idempotency fixture; October 9 coherent local restore exercise | Blocked | Managed backup restore and accepted production RPO/RTO exercise |
 | AC-17 Output tie-out | Engineering owner | PDF manifest/page tests; XLSX formula cached-result tests; five persisted artifact modes and SHA-256 download checks | Blocked | Execute `output-tie-out-protocol.md` using an independently approved calculation fixture |
-| AC-18 Drake-inspired UI task | Design owner | 27 Playwright auth/WCAG/keyboard/visual checks and nine committed visual baselines | Blocked | Manual assistive-technology and representative-preparer protocol in `manual-acceptance-protocol.md` |
+| AC-18 Drake-inspired UI task | Design owner | 28 Playwright auth/WCAG/keyboard/visual checks and nine committed visual baselines | Blocked | Manual assistive-technology and representative-preparer protocol in `manual-acceptance-protocol.md` |
 | AC-19 Rule/template update | Tax rule owner | Immutable version/hash manifests, revision staleness triggers and unapproved-package activation blocker | Blocked | Approved initial package, then witnessed prior-run reproduction/update exercise |
 | AC-20 No false filing/integration claims | Product owner | Planned adapters advertise no capability; all controlled pages are draft-only and not official IRS forms | Technical pass | Product owner scope-gate sign-off |
 

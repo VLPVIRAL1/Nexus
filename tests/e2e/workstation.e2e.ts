@@ -14,6 +14,7 @@ const accessibleRoutes = [
   { name: "stale calculation", path: "/clients/sample/years/2025/calculation/summary" },
   { name: "import staging", path: "/imports/new" },
   { name: "stale outputs", path: "/workpapers" },
+  { name: "sample outputs", path: "/clients/sample/years/2025/outputs" },
   { name: "source entry", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry" },
   { name: "administration access", path: "/administration" },
 ];
