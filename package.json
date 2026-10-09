@@ -19,11 +19,15 @@
     "db:prisma:migrate": "prisma migrate dev",
     "worker:artifacts": "node --conditions=react-server --import tsx scripts/artifact-worker.ts",
     "recovery:exercise": "tsx scripts/recovery-exercise.ts",
-    "performance:exercise": "tsx scripts/performance-exercise.ts"
+    "performance:exercise": "tsx scripts/performance-exercise.ts",
+    "auth:link": "tsx scripts/link-external-identity.ts",
+    "readiness:production": "tsx scripts/production-readiness.ts",
+    "acceptance:technical": "npm run db:migrate && npm run db:seed && npm run typecheck && npm test && npm run test:integration && npm run build && CI=true npm run test:e2e && npm audit --audit-level=high && npm run recovery:exercise && npm run performance:exercise"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@prisma/client": "6.12.0",
+    "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-table": "8.21.3",
     "decimal.js": "10.6.0",
     "exceljs": "4.4.0",

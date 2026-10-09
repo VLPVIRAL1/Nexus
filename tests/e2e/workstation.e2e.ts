@@ -2,6 +2,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 const accessibleRoutes = [
+  { name: "login", path: "/login" },
+  { name: "account recovery", path: "/auth/recovery" },
   { name: "dashboard", path: "/dashboard" },
   { name: "client list", path: "/clients" },
   { name: "return workspace", path: "/clients/sample/years/2025" },

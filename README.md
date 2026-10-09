@@ -39,9 +39,13 @@ npm run build      # production build
 npm run db:migrate # apply pending PostgreSQL migrations transactionally
 npm run test:integration # verify live PostgreSQL constraints and seed state
 npm run recovery:exercise # restore the local synthetic database and verify coherent hashes/history
+npm run acceptance:technical # full technical release suite including browser, recovery and performance evidence
+npm run readiness:production # fail-closed production configuration and ownership check
 ```
 
-The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production identity/storage, official-template rendering, recovery evidence and acceptance gates remain open.
+For production authentication, configure the Supabase and Nexus auth variables in `.env.example`, enable TOTP MFA and the recovery redirect in the selected Supabase project, then explicitly link each approved provider subject with `npm run auth:link -- --subject=<supabase-user-uuid> --user-email=<local-user-email>`. Never use a service-role key in the browser or repository.
+
+The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production provider activation, storage infrastructure, recovery evidence and acceptance gates remain open.
 
 ## Safety boundary
 

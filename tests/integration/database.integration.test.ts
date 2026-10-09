@@ -6,6 +6,7 @@ import { getClientProfile, listDashboardClients } from "../../src/server/client-
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
 import template from "../../examples/2025/blank-taxpayer-template.json";
+import { readPath, registryEntryFields, registryFieldPath, type RegistryField } from "../../src/form-registry/2025";
 import { commitPersistedImport, getImportState, rollbackPersistedImport, stageCanonicalImport } from "../../src/server/import-persistence-service";
 import { attestCompleteness, getIntakeState, saveExpectedDocument, saveIntakeAnswers } from "../../src/server/intake-service";
 import { phase1IntakeQuestions } from "../../src/domain/intake";
@@ -22,6 +23,56 @@ import { getAssignmentState, setClientAssignment } from "../../src/server/assign
 import { enforceRateLimit, RateLimitError } from "../../src/server/rate-limit-service";
 import { executeRetentionDisposal, getRetentionState, placeLegalHold, previewRetentionDisposal, releaseLegalHold, saveRetentionPolicy } from "../../src/server/retention-service";
 import { AuthenticationAttemptLimitError, enforceAuthenticationAttemptLimit } from "../../src/server/auth-attempt-service";
+import { issueProvisionedExternalIdentitySession } from "../../src/server/supabase-auth-service";
+
+const importCollections = {
+  W2: "w2",
+  "1099-NEC": "form_1099_nec",
+  "1099-MISC": "form_1099_misc",
+  "1099-INT": "form_1099_int",
+  "1099-DIV": "form_1099_div",
+} as const;
+
+function comprehensiveImportRecord(formType: keyof typeof importCollections, ordinal: number) {
+  const record: Record<string, any> = {
+    id: randomUUID(),
+    external_source_id: `ac03-${formType.toLowerCase()}-${randomUUID()}`,
+    source_document_id: randomUUID(),
+    form_year: 2025,
+    recipient_role: "taxpayer",
+    corrected: false,
+    void: false,
+    raw_fields: [{ id: randomUUID(), label: `${formType} raw label`, code: "RAW", value: `raw-${ordinal}`, page: 1, reason: "Synthetic AC-03 preservation evidence" }],
+    unmapped_source_fields: [{ id: randomUUID(), label: `${formType} unmapped label`, code: "UNMAPPED", value: `unmapped-${ordinal}`, page: 1, reason: "No registered destination" }],
+    version: 1,
+  };
+  registryEntryFields(formType).forEach((field, index) => setFixturePath(record, registryFieldPath(formType, field.key), registryFixtureValue(field, ordinal, index)));
+  return record;
+}
+
+function registryFixtureValue(field: RegistryField, ordinal: number, index: number): unknown {
+  const seed = ordinal * 100 + index + 1;
+  if (field.type === "money") return `${seed}.12`;
+  if (field.type === "boolean") return true;
+  if (field.type === "checkbox_group") return { statutoryEmployee: true, retirementPlan: true, thirdPartySickPay: false };
+  if (field.type === "repeatable_code_money") return [{ id: randomUUID(), code: "D", amount: `${seed}.34` }, { id: randomUUID(), code: "DD", amount: `${seed + 1}.56` }];
+  if (field.type === "repeatable_open_label_money") return [{ id: randomUUID(), label: "CASDI", amount: `${seed}.78`, classification: "informational" }];
+  if (field.type === "repeatable_state") return [{ id: randomUUID(), state: "TX", payerStateId: `TX-${seed}`, stateIncome: `${seed}.90`, stateTaxWithheld: `${seed}.21`, stateWages: `${seed}.43` }];
+  if (field.type === "repeatable_local") return [{ id: randomUUID(), localWages: `${seed}.65`, localTaxWithheld: `${seed}.87`, localityName: "Synthetic locality" }];
+  if (field.key.endsWith(".tin")) return `12-345${String(seed).padStart(4, "0").slice(-4)}`;
+  if (field.key.endsWith(".country")) return "US";
+  if (field.key.endsWith(".stateProvince")) return "TX";
+  if (field.key.endsWith(".postalCode")) return "75001";
+  return `AC03 ${field.label} ${seed}`;
+}
+
+function setFixturePath(target: Record<string, any>, path: string[], value: unknown) {
+  let cursor = target;
+  path.forEach((segment, index) => {
+    if (index === path.length - 1) cursor[segment] = value;
+    else cursor = cursor[segment] ??= {};
+  });
+}
 
 const connectionString = process.env.DATABASE_URL;
 const suite = connectionString ? describe : describe.skip;
@@ -245,6 +296,30 @@ suite("PostgreSQL foundation", () => {
     }
   });
 
+  it("maps a provisioned Supabase subject to one firm membership before issuing an MFA-backed session", async () => {
+    const subject = `supabase-${randomUUID()}`;
+    const userAgent = "Nexus Supabase integration test";
+    const now = new Date();
+    const client = new pg.Client({ connectionString });
+    await client.connect();
+    let token: string | null = null;
+    try {
+      await client.query(
+        "INSERT INTO external_identities(provider_code,provider_subject,user_id,linked_email) VALUES('supabase',$1,'20000000-0000-4000-8000-000000000001','maya@example.invalid')",
+        [subject],
+      );
+      const session = await issueProvisionedExternalIdentitySession("supabase", subject, null, now, userAgent, now);
+      token = session.token;
+      const context = await resolveSession(session.token, userAgent, now);
+      expect(context).toMatchObject({ userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer" });
+      await expect(issueProvisionedExternalIdentitySession("supabase", "unprovisioned-subject", null, now, userAgent, now)).rejects.toThrow("Authentication required");
+    } finally {
+      if (token) await client.query("DELETE FROM auth_sessions WHERE token_hash=$1", [sha256(token)]);
+      await client.query("DELETE FROM external_identities WHERE provider_code='supabase' AND provider_subject=$1", [subject]);
+      await client.end();
+    }
+  });
+
   it("denies direct-object access across firms and detects stale person edits", async () => {
     const context: AuthorizationContext = {
       userId: "20000000-0000-4000-8000-000000000001",
@@ -316,6 +391,91 @@ suite("PostgreSQL foundation", () => {
       const sourceRecord = await client.query("SELECT effective,version,import_batch_id FROM source_form_records WHERE tax_year_id='40000000-0000-4000-8000-000000000001' AND external_source_id=$1", [externalSourceId]);
       expect(sourceRecord.rows).toEqual([{ effective: false, version: 1, import_batch_id: preview.batchId }]);
     } finally { await client.end(); }
+  });
+
+  it("round-trips every registered field and repeated row across all five source families", async () => {
+    const context: AuthorizationContext = {
+      userId: "20000000-0000-4000-8000-000000000001",
+      firmId: "10000000-0000-4000-8000-000000000001",
+      role: "preparer",
+      assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]),
+    };
+    const payload = structuredClone(template) as Record<string, any>;
+    const expectedRecords = Object.keys(importCollections).map((formType, index) => {
+      const typedForm = formType as keyof typeof importCollections;
+      const record = comprehensiveImportRecord(typedForm, index + 1);
+      payload.forms[importCollections[typedForm]] = [record];
+      return { formType: typedForm, collection: importCollections[typedForm], record };
+    });
+    payload.metadata = { acceptanceScenario: "AC-03", fixtureId: randomUUID() };
+
+    const raw = new TextEncoder().encode(JSON.stringify(payload));
+    const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "ac03-five-form-round-trip.json", raw);
+    for (const { collection, record } of expectedRecords) {
+      expect(preview.changes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: `forms.${collection}[id=${record.id}]`, kind: "add", importedValue: record }),
+      ]));
+    }
+    const committed = await commitPersistedImport(
+      context,
+      "30000000-0000-4000-8000-000000000001",
+      2025,
+      preview.batchId,
+      preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })),
+    );
+    expect(committed.replayed).toBe(false);
+
+    for (const { formType, collection, record } of expectedRecords) {
+      const committedRecord = (committed.result as any).forms[collection].find(({ id }: { id: string }) => id === record.id);
+      expect(committedRecord).toBeDefined();
+      for (const field of registryEntryFields(formType)) {
+        const path = registryFieldPath(formType, field.key);
+        expect(readPath(committedRecord, path), `${formType} ${field.key}`).toEqual(readPath(record, path));
+      }
+      expect(committedRecord.raw_fields).toEqual(record.raw_fields);
+      expect(committedRecord.unmapped_source_fields).toEqual(record.unmapped_source_fields);
+    }
+
+    const database = new pg.Client({ connectionString });
+    await database.connect();
+    try {
+      const persisted = await database.query<{ form_type: string; external_source_id: string; normalized_data: Record<string, unknown>; raw_fields: unknown[]; unmapped_fields: unknown[] }>(
+        "SELECT form_type,external_source_id,normalized_data,raw_fields,unmapped_fields FROM source_form_records WHERE import_batch_id=$1 AND effective ORDER BY form_type",
+        [preview.batchId],
+      );
+      expect(persisted.rowCount).toBe(5);
+      expect(new Set(persisted.rows.map(({ form_type }) => form_type))).toEqual(new Set(Object.keys(importCollections)));
+      for (const row of persisted.rows) {
+        const expected = expectedRecords.find(({ record }) => record.external_source_id === row.external_source_id);
+        expect(expected).toBeDefined();
+        expect(row.normalized_data).toEqual(expected?.record);
+        expect(row.raw_fields).toEqual(expected?.record.raw_fields);
+        expect(row.unmapped_fields).toEqual(expected?.record.unmapped_source_fields);
+      }
+    } finally {
+      await database.end();
+    }
+
+    if (committed.committedRevision == null) throw new Error("Expected AC-03 committed revision.");
+    const calculation = await runPersistedCalculation(context, "30000000-0000-4000-8000-000000000001", 2025, committed.committedRevision);
+    const artifact = await generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, committed.committedRevision, "source_only_json");
+    const downloaded = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, artifact.id);
+    const exported = JSON.parse(downloaded.bytes.toString()) as { sourceForms: Array<Record<string, any>>; metadata: Record<string, unknown> };
+    expect(calculation.revision).toBe(committed.committedRevision);
+    expect(exported.metadata).toMatchObject({ exportMode: "source_only", exclusionManifest: expect.any(Array) });
+    for (const { formType, record } of expectedRecords) {
+      const exportedRecord = exported.sourceForms.find(({ external_source_id: externalId }) => externalId === record.external_source_id);
+      expect(exportedRecord, `${formType} source-only export`).toBeDefined();
+      for (const field of registryEntryFields(formType)) {
+        const path = registryFieldPath(formType, field.key);
+        expect(readPath(exportedRecord ?? {}, path), `${formType} exported ${field.key}`).toEqual(readPath(record, path));
+      }
+      expect(exportedRecord?.raw_fields).toEqual(record.raw_fields);
+      expect(exportedRecord?.unmapped_source_fields).toEqual(record.unmapped_source_fields);
+    }
+
+    const rollback = await rollbackPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId);
+    expect(rollback.rolledBackRevision).toBe(committed.committedRevision + 1);
   });
 
   it("persists evidence-backed intake, document disposition, attestation, and revision invalidation", async () => {

@@ -42,11 +42,26 @@ model User {
   auditEvents AuditEvent[]
   authSessions AuthSession[]
   importAttempts ImportAttempt[]
+  externalIdentities ExternalIdentity[]
   committedImports ImportBatch[] @relation("CommittedImports")
   rolledBackImports ImportBatch[] @relation("RolledBackImports")
   expectedDocuments ExpectedDocument[]
   completenessAttestations CompletenessAttestation[]
   createdAt   DateTime     @default(now())
+}
+
+model ExternalIdentity {
+  id              String   @id @default(uuid()) @db.Uuid
+  providerCode    String   @map("provider_code")
+  providerSubject String   @map("provider_subject")
+  userId          String   @map("user_id") @db.Uuid
+  linkedEmail     String?  @map("linked_email")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  @@unique([providerCode, providerSubject])
+  @@unique([providerCode, userId])
+  @@map("external_identities")
 }
 
 model Membership {

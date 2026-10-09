@@ -9,6 +9,7 @@ import {
   FileClock,
   FileSpreadsheet,
   LayoutDashboard,
+  LogOut,
   Search,
   Settings,
   ShieldCheck,
@@ -30,6 +31,9 @@ const nav = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [identity, setIdentity] = useState({ displayName: "Workspace user", firmName: "Firm workspace", role: "member" });
+  useEffect(() => { const controller = new AbortController(); void fetch("/api/auth/me", { cache: "no-store", signal: controller.signal }).then(async (response) => response.ok ? response.json() : null).then((value) => { if (value) setIdentity(value); }).catch(() => undefined); return () => controller.abort(); }, []);
+  async function signOut() { await fetch("/api/auth/logout", { method: "POST" }); window.location.assign("/login"); }
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to main content</a>
@@ -43,12 +47,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <ClientSearch />
         <div className="topbar-actions">
-          <span className="environment"><span /> Development</span>
+          <span className="environment"><span /> Secure session</span>
           <button className="icon-button" aria-label="Notifications"><Bell size={17} /><span className="notification-dot" /></button>
-          <button className="user-menu">
-            <span className="avatar">MC</span>
-            <span className="user-copy"><strong>Maya Chen</strong><small>Preparer</small></span>
-            <ChevronDown size={14} />
+          <button className="user-menu" onClick={signOut} aria-label={`Sign out ${identity.displayName}`} title="Sign out">
+            <span className="avatar">{initials(identity.displayName)}</span>
+            <span className="user-copy"><strong>{identity.displayName}</strong><small>{identity.role.replaceAll("_", " ")}</small></span>
+            <LogOut size={14} />
           </button>
         </div>
       </header>
@@ -69,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="firm-card">
           <Building2 size={17} />
-          <span><strong>Meridian Tax Group</strong><small>Firm workspace</small></span>
+          <span><strong>{identity.firmName}</strong><small>Firm workspace</small></span>
           <ChevronDown size={14} />
         </div>
       </aside>
@@ -77,6 +81,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "NU"; }
 
 function ClientSearch() {
   const [query, setQuery] = useState("");
