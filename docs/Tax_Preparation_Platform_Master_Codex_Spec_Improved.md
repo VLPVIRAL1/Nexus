@@ -3899,7 +3899,7 @@ Do not claim pixel parity from public documentation alone. Validate the proposed
 |---|---|
 | Palette | Navy `#17365D` main toolbar; blue `#245A81` actions/selection accents; workspace gray `#F2F4F7`; white entry surface; divider `#CBD2D9`; body text `#1F2937` |
 | Status | Red error, amber warning, blue information, green verified; each also has text/icon and accessible contrast |
-| Font | Segoe UI with system sans-serif fallback; body 14px; labels 13–14px; headings 16–18px; tabular numerals for financial data |
+| Font | Bundled Inter Variable with Segoe UI and system sans-serif fallbacks; body 14px; labels 13–14px; headings 16–18px; tabular numerals for financial data |
 | Density | Compact rows 30–32px; inputs 32px; comfortable option 38–40px; no text shrinking to fit |
 | Spacing | 4px base; 8px within groups; 12–16px between sections; thin borders; 2–4px corner radius |
 | Navigation | Approximately 208px left rail; optional 220px source-instance list; resizable contextual pane; dimensions adapt to viewport |

@@ -1,7 +1,4 @@
-import { existsSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
-
-const localChromium = "/usr/bin/chromium";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -20,7 +17,6 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     colorScheme: "light",
     reducedMotion: "reduce",
-    ...(existsSync(localChromium) ? { launchOptions: { executablePath: localChromium } } : {}),
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {

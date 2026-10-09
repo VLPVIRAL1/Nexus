@@ -5,7 +5,7 @@ This file follows the binding product specification. The UI/UX Pro Max search in
 ## Direction
 
 - Professional desktop tax workstation; dense, fast, restrained, and review-oriented.
-- Segoe UI with system sans-serif fallback; 14px body, 13–14px labels, 16–18px headings.
+- Bundled Inter Variable with Segoe UI and system sans-serif fallbacks; 14px body, 13–14px labels, 16–18px headings.
 - Navy `#17365D` command chrome, blue `#245A81` actions, gray `#F2F4F7` workspace, white entry surfaces, divider `#CBD2D9`, body `#1F2937`.
 - Compact rows 30–32px and inputs 32px; comfortable mode 38–40px.
 - 4px spacing base, thin borders, 2–4px corners, tabular financial numerals.
