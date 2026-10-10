@@ -21,6 +21,7 @@ check("Supabase publishable key", value("SUPABASE_PUBLISHABLE_KEY").length >= 20
 check("Browser Supabase endpoint", value("NEXT_PUBLIC_SUPABASE_URL") === value("SUPABASE_URL") && httpsUrl("NEXT_PUBLIC_SUPABASE_URL"), "Browser and server Supabase URLs must match.");
 check("Browser publishable key", value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY").length >= 20 && value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") === value("SUPABASE_PUBLISHABLE_KEY"), "A browser publishable key is required and must match the server key.");
 check("Authentication flow encryption", base64Bytes("NEXUS_AUTH_FLOW_KEY") === 32, "NEXUS_AUTH_FLOW_KEY must decode to exactly 32 bytes.");
+check("Server action encryption", base64Bytes("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY") === 32, "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must decode to exactly 32 bytes for stable self-hosted builds.");
 check("Authentication attempt hashing", strong("AUTH_RATE_LIMIT_SECRET"), "AUTH_RATE_LIMIT_SECRET must contain at least 32 characters.");
 check("Trusted network boundary", /^[a-z0-9-]{2,64}$/.test(value("NEXUS_TRUSTED_NETWORK_HEADER")), "Name the proxy-overwritten client-IP header.");
 check("Recovery redirect", httpsUrl("NEXUS_AUTH_RECOVERY_REDIRECT_URL"), "Recovery redirect must use HTTPS.");
@@ -39,8 +40,8 @@ if (value("DATABASE_URL")) {
   const database = new pg.Client({ connectionString: value("DATABASE_URL"), connectionTimeoutMillis: 8_000 });
   try {
     await database.connect();
-    const migrations = await database.query<{ present: boolean }>("SELECT EXISTS(SELECT 1 FROM _migrations WHERE name='0022_external_identities.sql') AS present");
-    check("Production schema", migrations.rows[0]?.present === true, "Migration 0022 must be present.");
+    const migrations = await database.query<{ present: boolean }>("SELECT EXISTS(SELECT 1 FROM _migrations WHERE name='0023_release_closure.sql') AS present");
+    check("Production schema", migrations.rows[0]?.present === true, "Migration 0023 must be present.");
     const identities = await database.query<{ count: string }>("SELECT count(*)::text AS count FROM external_identities WHERE provider_code='supabase'");
     check("Provisioned identities", Number(identities.rows[0]?.count ?? 0) > 0, "At least one Supabase identity must be explicitly linked.");
   } catch {

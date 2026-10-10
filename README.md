@@ -4,7 +4,7 @@ Nexus Tax is a professional, draft-only U.S. individual tax preparation and revi
 
 ## Prerequisites
 
-- Node.js 22 or newer
+- Node.js 24.x
 - npm 10 or newer
 - PostgreSQL 16 or newer for persisted workflows
 
@@ -44,6 +44,8 @@ npm run readiness:production # fail-closed production configuration and ownershi
 ```
 
 For production authentication, configure the Supabase and Nexus auth variables in `.env.example`, enable TOTP MFA and the recovery redirect in the selected Supabase project, then explicitly link each approved provider subject with `npm run auth:link -- --subject=<supabase-user-uuid> --user-email=<local-user-email>`. Never use a service-role key in the browser or repository.
+
+Production hosting is explicitly defined for a Hostinger Business Web Hosting **Node.js Web App** connected to this repository. Use `npm run hostinger:build` and `npm run hostinger:start`; do not deploy Nexus as BusAcTa.com's static FTP bundle. The complete hPanel, environment, domain, worker and verification procedure is in [HOSTINGER_DEPLOY.md](HOSTINGER_DEPLOY.md).
 
 The blank canonical template is at `examples/2025/blank-taxpayer-template.json`. Current PDF pages are controlled internal previews, never official filing forms. The 2025 tax package remains `research_unapproved` until qualified independent review; production provider activation, storage infrastructure, recovery evidence and acceptance gates remain open.
 

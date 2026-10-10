@@ -4,7 +4,7 @@
 
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
-**Last updated:** October 9, 2026
+**Last updated:** October 10, 2026
 **Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards, governed release-closure workspaces and an unapproved calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
 
 ### Completed and verified
@@ -58,6 +58,7 @@
 - [x] Add a security and infrastructure evidence workspace for eight production controls plus immutable ingestion of the complete `readiness:production` JSON result, with administrator-only mutation and no credential storage.
 - [x] Add a manual acceptance recorder for assistive-technology and representative-preparer sessions, scenario counts, findings and evidence references; require a different reviewer and a fully passing session before signature.
 - [x] Add a firm- and tax-year-scoped source-to-output tie-out workspace with expected/actual named values, hashes, mismatch counts, optimistic revisions and independent mismatch-blocked approval.
+- [x] Define an explicit Hostinger Business Web Hosting managed-Node deployment contract: GitHub-connected Next.js builds, Node.js 24 pinning, migration and fail-closed production-readiness build command, supervised web/artifact-worker start command, CI runtime smoke coverage, environment inventory and domain/rollback/verification runbook. Hostinger account activation and the external production approvals below remain operator-owned gates.
 
 ### In progress / not complete
 

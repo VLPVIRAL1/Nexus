@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
@@ -22,6 +25,8 @@
     "performance:exercise": "tsx scripts/performance-exercise.ts",
     "auth:link": "tsx scripts/link-external-identity.ts",
     "readiness:production": "tsx scripts/production-readiness.ts",
+    "hostinger:build": "npm run db:migrate && npm run readiness:production && npm run build",
+    "hostinger:start": "node scripts/hostinger-runtime.mjs",
     "acceptance:technical": "npm run db:migrate && npm run db:seed && npm run typecheck && npm test && npm run test:integration && npm run build && CI=true npm run test:e2e && npm audit --audit-level=high && npm run recovery:exercise && npm run performance:exercise"
   },
   "dependencies": {

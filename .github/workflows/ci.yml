@@ -47,9 +47,9 @@ jobs:
       - run: npm audit --audit-level=high
       - name: Smoke test production server
         run: |
-          npm start > /tmp/nexus-server.log 2>&1 &
+          APP_ENV=development npm run hostinger:start > /tmp/nexus-server.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid"' EXIT
+          trap 'kill "$server_pid"; wait "$server_pid" || true' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:3000/api/health > /tmp/health.json; then
               break
@@ -57,5 +57,8 @@ jobs:
             sleep 1
           done
           grep '"status":"ok"' /tmp/health.json
+          grep 'Hostinger runtime started' /tmp/nexus-server.log
+          grep 'Artifact worker' /tmp/nexus-server.log
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/dashboard
+          curl --fail --silent --output /dev/null http://127.0.0.1:3000/administration/release-closure
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/clients/sample/years/2025
