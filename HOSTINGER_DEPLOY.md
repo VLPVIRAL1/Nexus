@@ -34,6 +34,8 @@ Hostinger supplies the listening port to the application. Do not hard-code `PORT
 
 Enter values in Hostinger's environment-variable interface. Never add production values to GitHub, this guide, build logs or `.env.example`.
 
+Use [`.env.hostinger.example`](.env.hostinger.example) as the copy-ready variable list. Replace every angle-bracket placeholder in Hostinger hPanel; do not commit a populated copy.
+
 ### Runtime and database
 
 | Name | Requirement |
