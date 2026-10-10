@@ -59,6 +59,7 @@
 - [x] Add a manual acceptance recorder for assistive-technology and representative-preparer sessions, scenario counts, findings and evidence references; require a different reviewer and a fully passing session before signature.
 - [x] Add a firm- and tax-year-scoped source-to-output tie-out workspace with expected/actual named values, hashes, mismatch counts, optimistic revisions and independent mismatch-blocked approval.
 - [x] Define an explicit Hostinger Business Web Hosting managed-Node deployment contract: GitHub-connected Next.js builds, Node.js 24 pinning, migration and fail-closed production-readiness build command, supervised web/artifact-worker start command, CI runtime smoke coverage, environment inventory and domain/rollback/verification runbook. Hostinger account activation and the external production approvals below remain operator-owned gates.
+- [x] Migrate the complete Nexus PostgreSQL schema and synthetic application dataset to the approved Supabase project `tlhjzjtflljldvzgrnek`. On October 10, 2026, verify all 23 repository migrations, 41 public tables, repeatable seeding, zero invalid indexes, zero unvalidated constraints, all 23 live-database integration tests and application health/database connectivity. Production Supabase Auth subject provisioning and acceptance remain the external gate below.
 
 ### In progress / not complete
 
