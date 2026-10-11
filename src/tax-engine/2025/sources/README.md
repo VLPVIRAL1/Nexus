@@ -1,6 +1,6 @@
 # 2025 federal rule sources
 
-These files are immutable research inputs for `us-federal-1040-2025-supported-v1`.
+These files are immutable research inputs for the 2025 supported review packages, including `us-federal-1040-2025-supported-v2-review`.
 Their IRS URLs, retrieval date, and SHA-256 hashes are recorded in
 `../rule-package.ts`. The calculation runtime reads only committed rules and the
 committed tax-table registry; it never fetches an IRS page during calculation.

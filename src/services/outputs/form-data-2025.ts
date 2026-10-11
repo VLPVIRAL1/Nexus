@@ -23,6 +23,12 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
       money("2b", "Taxable interest", forms.form1040.taxableInterest, "form-1040.taxable-interest"),
       money("3a", "Qualified dividends", forms.form1040.qualifiedDividends, "form-1040.qualified-dividends"),
       money("3b", "Ordinary dividends", forms.form1040.ordinaryDividends, "form-1040.ordinary-dividends"),
+      money("4a", "IRA distributions", forms.form1040.iraDistributions, "form-1040.ira-distributions"),
+      money("4b", "Taxable IRA distributions", forms.form1040.taxableIraDistributions, "form-1040.taxable-ira-distributions"),
+      money("5a", "Pensions and annuities", forms.form1040.pensionsAndAnnuities, "form-1040.pensions"),
+      money("5b", "Taxable pensions and annuities", forms.form1040.taxablePensionsAndAnnuities, "form-1040.taxable-pensions"),
+      money("7", "Capital gain or loss", forms.form1040.capitalGainOrLoss, "schedule-d.net-gain-loss"),
+      money("8", "Additional income from Schedule 1", forms.form1040.schedule1AdditionalIncome, "schedule-1.additional-income"),
       money("9", "Total income", forms.form1040.totalIncome, "form-1040.total-income"),
       money("11", "Adjusted gross income", forms.form1040.adjustedGrossIncome, "form-1040.adjusted-gross-income"),
       money("12", "Standard deduction", forms.form1040.standardDeduction, "form-1040.standard-deduction"),
@@ -48,6 +54,27 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("31", "Net profit or loss", activity.netProfit, "schedule-c.net-profit"),
   ], `Activity ${index + 1}: ${activity.activityId}`)));
 
+  forms.form8949.forEach((transaction, index) => pages.push(page("Form 8949", "Sales and Other Dispositions of Capital Assets — simple review profile", [
+      money("1d", "Proceeds", transaction.proceeds, "form-8949.proceeds"),
+      money("1e", "Cost or other basis", transaction.costBasis, "form-8949.cost-basis"),
+      money("1g", "Adjustment", transaction.adjustment, "form-8949.adjustment"),
+      money("1h", "Gain or loss", transaction.gainOrLoss, "schedule-d.net-gain-loss"),
+    ], `${transaction.term === "short" ? "Short" : "Long"}-term ${index + 1}: ${transaction.description}`)));
+  if (forms.form8949.length || Number(forms.scheduleD.netGainOrLoss) !== 0) {
+    pages.push(page("Schedule D", "Capital Gains and Losses — supported transaction summary", [
+      money("7", "Net short-term gain or loss", forms.scheduleD.shortTermGainOrLoss, "schedule-d.net-gain-loss"),
+      money("15", "Net long-term gain or loss", forms.scheduleD.longTermGainOrLoss, "schedule-d.net-gain-loss"),
+      money("16", "Combined net gain or loss", forms.scheduleD.netGainOrLoss, "schedule-d.net-gain-loss"),
+      money("21", "Deductible loss", forms.scheduleD.deductibleLoss, "schedule-d.net-gain-loss"),
+    ]));
+  }
+
+  forms.form8889.forEach((distribution, index) => pages.push(page("Form 8889", "Health Savings Accounts — fully qualified distribution review", [
+    money("14a", "Total distributions", distribution.grossDistribution, "form-8889.distributions"),
+    money("15", "Qualified medical expenses", distribution.qualifiedMedicalExpenses, "form-8889.distributions"),
+    money("16", "Taxable HSA distributions", distribution.taxableDistribution, "form-8889.distributions"),
+  ], `Owner ${index + 1}: ${distribution.owner}`)));
+
   forms.scheduleSE.forEach((owner, index) => pages.push(page("Schedule SE", "Self-Employment Tax — supported regular method", [
     money("2", "Net profit from Schedule C", owner.netProfit, "schedule-se.net-profit"),
     money("4a", "Net earnings from self-employment", owner.netEarnings, "schedule-se.net-earnings"),
@@ -58,12 +85,13 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("13", "Deductible one-half of self-employment tax", owner.deductibleHalf, "schedule-1.se-deduction"),
   ], `Owner ${index + 1}: ${owner.owner}`)));
 
-  if (forms.scheduleC.length || forms.scheduleSE.length) {
+  if (forms.scheduleC.length || forms.scheduleSE.length || Number(forms.schedule1.unemploymentCompensation) !== 0) {
     pages.push(page("Schedule 1", "Additional Income and Adjustments to Income — supported lines", [
       money("3", "Business income or loss", forms.schedule1.businessIncome, "schedule-c.net-profit"),
+      money("7", "Unemployment compensation", forms.schedule1.unemploymentCompensation, "schedule-1.unemployment"),
       money("15", "Deductible part of self-employment tax", forms.schedule1.deductiblePartOfSelfEmploymentTax, "schedule-1.se-deduction"),
     ]));
-    pages.push(page("Schedule 2", "Additional Taxes — supported lines", [
+    if (forms.scheduleSE.length) pages.push(page("Schedule 2", "Additional Taxes — supported lines", [
       money("4", "Self-employment tax", forms.schedule2.selfEmploymentTax, "schedule-se.tax"),
     ]));
   }
@@ -95,7 +123,11 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (!forms) return required;
   if (forms.scheduleB.required) required.push("Schedule B");
   if (forms.scheduleC.length) required.push("Schedule C");
+  if (forms.form8949.length) required.push("Form 8949");
+  if (forms.form8949.length || Number(forms.scheduleD.netGainOrLoss) !== 0) required.push("Schedule D");
+  if (forms.form8889.length) required.push("Form 8889");
   if (forms.scheduleSE.length) required.push("Schedule SE", "Schedule 1", "Schedule 2");
+  else if (Number(forms.schedule1.unemploymentCompensation) !== 0) required.push("Schedule 1");
   if (Number(forms.form8995.deduction) > 0) required.push("Form 8995");
   const incomeTaxTrace = output.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax");
   if (incomeTaxTrace?.ruleId === "QD-CAPITAL-GAIN-WORKSHEET") required.push("Qualified Dividends Tax Worksheet");

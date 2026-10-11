@@ -151,6 +151,11 @@ function sourceSummary(source: Record<string, unknown>) {
   if (type === "1099-MISC") { grossIncome = sumKeys(boxes, ["rents", "royalties", "otherIncome", "fishingBoatProceeds", "medicalPayments", "substitutePayments", "cropInsuranceProceeds", "attorneyGrossProceeds", "nonqualifiedDeferredCompensation"]); federalWithholding = numeric(boxes.federalWithholding); destination = "Activity / Schedule 1 mapping review"; }
   if (type === "1099-INT") { grossIncome = numeric(boxes.interestIncome); federalWithholding = numeric(boxes.federalWithholding); destination = "Form 1040 interest / Schedule B"; }
   if (type === "1099-DIV") { grossIncome = numeric(boxes.ordinaryDividends); qualifiedAmount = numeric(boxes.qualifiedDividends); federalWithholding = numeric(boxes.federalWithholding); destination = "Form 1040 dividends / Schedule B"; }
+  if (type === "1099-B") { grossIncome = numeric(boxes.proceeds) - numeric(boxes.costBasis) + numeric(boxes.adjustmentAmount); federalWithholding = numeric(boxes.federalWithholding); destination = "Form 8949 / Schedule D"; }
+  if (type === "1099-G") { grossIncome = numeric(boxes.unemploymentCompensation); federalWithholding = numeric(boxes.federalWithholding); destination = "Schedule 1 unemployment"; }
+  if (type === "1099-K") { grossIncome = numeric(boxes.grossPaymentAmount); federalWithholding = numeric(boxes.federalWithholding); destination = "Schedule C / mapping reconciliation"; }
+  if (type === "1099-R") { grossIncome = numeric(boxes.taxableAmount); federalWithholding = numeric(boxes.federalWithholding); destination = boxes.iraSepSimple ? "Form 1040 IRA distributions" : "Form 1040 pensions and annuities"; }
+  if (type === "1099-SA") { grossIncome = Math.max(0, numeric(boxes.grossDistribution) - numeric(boxes.qualifiedMedicalExpenses)); destination = "Form 8889 HSA distributions"; }
   const stateRows = Array.isArray(source.stateRows) ? source.stateRows : [];
   const stateWithholding = stateRows.reduce((total, row) => total + numeric(record(row).stateTaxWithheld), 0);
   return { grossIncome, qualifiedAmount, federalWithholding, stateWithholding, destination, reviewStatus: source.corrected ? "Corrected active version" : "Active" };

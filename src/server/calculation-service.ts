@@ -8,8 +8,8 @@ import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025,
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 
-const engineVersion = "nexus-federal-2025-v1";
-const formRegistryVersion = "2025-supported-forms-v1";
+const engineVersion = "nexus-federal-2025-v2-review";
+const formRegistryVersion = "2025-supported-forms-v2-review";
 
 export async function runPersistedCalculation(context: AuthorizationContext, clientId: string, year: number, expectedRevision: number) {
   if (year !== 2025) throw new WorkflowError("invalid", "Only the 2025 federal calculation package is available.");
@@ -59,7 +59,7 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     client.query("SELECT 1 FROM dependents WHERE tax_year_id=$1 LIMIT 1", [taxYearId]),
     client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,owner_role,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
     client.query<{ id: string; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type='schedule_c' AND implementation_status='supported' ORDER BY name,id", [taxYearId]),
-    client.query<{ target_activity_id: string; allocated_amount: string }>(`SELECT sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type='schedule_c' AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
+    client.query<{ source_record_id: string; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type='schedule_c' AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
     client.query<{ code: string; message: string }>("SELECT code,message FROM validation_issues WHERE tax_year_id=$1 AND resolved_at IS NULL AND severity IN ('blocking','error') AND category <> 'calculation_engine' AND code <> 'OVERRIDE_RECALCULATION_REQUIRED' ORDER BY code", [taxYearId]),
     client.query<{ override_point: string; override_value: string }>("SELECT override_point,override_value::text FROM manual_overrides WHERE tax_year_id=$1 AND active AND override_status='approved'", [taxYearId]),
   ]);
@@ -67,7 +67,7 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   const answer = (id: string) => answers.get(id) ?? "unknown";
   const unsupportedApplicableTopics = phase1IntakeQuestions.filter((question) => {
     const value = answer(question.id);
-    return value === "yes" ? !question.supportedWhenYes : value === "no" ? question.supportedWhenYes : false;
+    return value === "yes" ? !question.supportedWhenYes : value === "no" ? !(question.supportedWhenNo ?? !question.supportedWhenYes) : false;
   }).map(({ affirmativeTreatment }) => affirmativeTreatment);
   unsupportedApplicableTopics.push(...externalBlockers.rows.map(({ code, message }) => `${code}: ${message}`));
   const roles = new Set(people.rows.map(({ role }) => role));
@@ -79,16 +79,37 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   const sourcesByType = Map.groupBy(sources.rows, ({ form_type }) => form_type);
   const wages = (sourcesByType.get("W2") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), wages: amountAt(source.normalized_data, ["federal.box1", "box_1_wages_tips_other_compensation", "box1"]), federalWithholding: amountAt(source.normalized_data, ["federal.box2", "box_2_federal_income_tax_withheld", "box2"]), socialSecurityWages: amountAt(source.normalized_data, ["federal.box3", "box_3_social_security_wages", "box3"]) }));
   const interest = (sourcesByType.get("1099-INT") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryInterest: amountAt(source.normalized_data, ["boxes.interestIncome", "box_1_interest_income"]), treasuryInterest: amountAt(source.normalized_data, ["boxes.usSavingsBondInterest", "box_3_interest_on_us_savings_bonds_and_treasury_obligations"]), taxExemptInterest: amountAt(source.normalized_data, ["boxes.taxExemptInterest", "box_8_tax_exempt_interest"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
-  const dividends = (sourcesByType.get("1099-DIV") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryDividends: amountAt(source.normalized_data, ["boxes.ordinaryDividends", "box_1a_total_ordinary_dividends"]), qualifiedDividends: amountAt(source.normalized_data, ["boxes.qualifiedDividends", "box_1b_qualified_dividends"]), exemptInterestDividends: amountAt(source.normalized_data, ["boxes.exemptInterestDividends", "box_12_exempt_interest_dividends"]), section199ADividends: amountAt(source.normalized_data, ["boxes.section199ADividends", "box_5_section_199a_dividends"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
+  const dividends = (sourcesByType.get("1099-DIV") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryDividends: amountAt(source.normalized_data, ["boxes.ordinaryDividends", "box_1a_total_ordinary_dividends"]), qualifiedDividends: amountAt(source.normalized_data, ["boxes.qualifiedDividends", "box_1b_qualified_dividends"]), capitalGainDistributions: amountAt(source.normalized_data, ["boxes.capitalGainDistributions", "box_2a_total_capital_gain_distributions"]), exemptInterestDividends: amountAt(source.normalized_data, ["boxes.exemptInterestDividends", "box_12_exempt_interest_dividends"]), section199ADividends: amountAt(source.normalized_data, ["boxes.section199ADividends", "box_5_section_199a_dividends"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
+  const brokerTransactions = (sourcesByType.get("1099-B") ?? []).map((source) => ({
+    id: source.id, description: stringAt(source.normalized_data, ["boxes.description"]) ?? "",
+    term: (stringAt(source.normalized_data, ["boxes.term"]) ?? "") as "short" | "long",
+    proceeds: amountAt(source.normalized_data, ["boxes.proceeds"]), costBasis: amountAt(source.normalized_data, ["boxes.costBasis"]),
+    federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]), basisReportedToIrs: booleanAt(source.normalized_data, "boxes.basisReportedToIrs"),
+    adjustmentAmount: amountAt(source.normalized_data, ["boxes.adjustmentAmount"]), adjustmentCode: stringAt(source.normalized_data, ["boxes.adjustmentCode"]) ?? "",
+  }));
+  const retirementDistributions = (sourcesByType.get("1099-R") ?? []).map((source) => ({
+    id: source.id, owner: owner(source.owner_role), grossDistribution: amountAt(source.normalized_data, ["boxes.grossDistribution"]),
+    taxableAmount: amountAt(source.normalized_data, ["boxes.taxableAmount"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]),
+    distributionCode: stringAt(source.normalized_data, ["boxes.distributionCode"]) ?? "", iraSepSimple: booleanAt(source.normalized_data, "boxes.iraSepSimple"),
+    taxableAmountNotDetermined: booleanAt(source.normalized_data, "boxes.taxableAmountNotDetermined"),
+  }));
+  const governmentPayments = (sourcesByType.get("1099-G") ?? []).map((source) => ({ id: source.id, unemploymentCompensation: amountAt(source.normalized_data, ["boxes.unemploymentCompensation"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]) }));
   const mappedByActivity = new Map<string, string[]>();
-  for (const mapping of mappings.rows) mappedByActivity.set(mapping.target_activity_id, [...(mappedByActivity.get(mapping.target_activity_id) ?? []), mapping.allocated_amount]);
+  const mappedBySource = new Map<string, string[]>();
+  for (const mapping of mappings.rows) {
+    mappedByActivity.set(mapping.target_activity_id, [...(mappedByActivity.get(mapping.target_activity_id) ?? []), mapping.allocated_amount]);
+    mappedBySource.set(mapping.source_record_id, [...(mappedBySource.get(mapping.source_record_id) ?? []), mapping.allocated_amount]);
+  }
   const scheduleCActivities = activities.rows.map((activity) => {
     const details = activity.details ?? {};
     const rawExpenses = details.expenses && typeof details.expenses === "object" && !Array.isArray(details.expenses) ? details.expenses as Record<string, unknown> : {};
     const expenses = Object.fromEntries(supportedExpenseCategories.flatMap((category) => typeof rawExpenses[category] === "string" || typeof rawExpenses[category] === "number" ? [[category, asDecimalString(money(rawExpenses[category] as string | number))]] : [])) as Partial<Record<SupportedExpenseCategory, string>>;
     return { id: activity.id, name: activity.name, owner: owner(activity.owner_role), grossReceipts: addMoney([...(mappedByActivity.get(activity.id) ?? []), activity.additional_receipts]), expenses, qbiEligible: details.qbiEligible === true, receiptBasis: "source_plus_additional_receipts" as const };
   });
+  const paymentCardReceipts = (sourcesByType.get("1099-K") ?? []).map((source) => ({ id: source.id, grossPaymentAmount: amountAt(source.normalized_data, ["boxes.grossPaymentAmount"]), mappedScheduleCAmount: addMoney(mappedBySource.get(source.id) ?? []), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]) }));
+  const hsaDistributions = (sourcesByType.get("1099-SA") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), grossDistribution: amountAt(source.normalized_data, ["boxes.grossDistribution"]), qualifiedMedicalExpenses: amountAt(source.normalized_data, ["boxes.qualifiedMedicalExpenses"]), earningsOnExcessContributions: amountAt(source.normalized_data, ["boxes.earningsOnExcessContributions"]), distributionCode: stringAt(source.normalized_data, ["boxes.distributionCode"]) ?? "", accountType: (stringAt(source.normalized_data, ["boxes.accountType"]) ?? "") as "HSA" | "Archer MSA" | "Medicare Advantage MSA" }));
   const businessWithholding = [...(sourcesByType.get("1099-NEC") ?? []), ...(sourcesByType.get("1099-MISC") ?? [])].map((source) => ({ sourceId: source.id, sourceType: source.form_type as "1099-NEC" | "1099-MISC", federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
+  addUnsupportedSourceFacts(unsupportedApplicableTopics, sources.rows);
   const override = overrides.rows.find(({ override_point }) => override_point === "form-1040.income-tax");
   return {
     calculationId, inputRevision: revision, filingStatus: roles.has("spouse") ? "married_filing_jointly" : "single",
@@ -97,7 +118,7 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
       treatmentScreens: { earnedIncomeCredit: screen(answer("deductions.credits")), otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
     },
     scheduleBScreening: { foreignAccount: answer("schedule_b.foreign_account"), foreignTrust: answer("schedule_b.foreign_trust"), otherScheduleBTrigger: answer("schedule_b.other_trigger") },
-    wages, interest, dividends, scheduleCActivities, businessWithholding,
+    wages, interest, dividends, scheduleCActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, paymentCardReceipts, hsaDistributions,
     ...(override ? { approvedOverrides: { form1040IncomeTax: override.override_value } } : {}),
   };
 }
@@ -105,6 +126,20 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
 function screen(value: "yes" | "no" | "unknown") { return value === "yes" ? "applies" as const : value === "no" ? "ruled_out" as const : "unknown" as const; }
 function objectAtPath(value: Record<string, unknown>, path: string): unknown { return path.split(".").reduce<unknown>((current, segment) => current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>)[segment] : undefined, value); }
 function stringAt(value: Record<string, unknown>, paths: string[]) { for (const path of paths) { const found=objectAtPath(value,path); if(typeof found==="string"&&found.trim()) return found.trim(); } return null; }
+function booleanAt(value: Record<string, unknown>, path: string) { return objectAtPath(value, path) === true; }
+function addUnsupportedSourceFacts(blockers:string[],sources:Array<{id:string;form_type:string;normalized_data:Record<string,unknown>}>){
+  const amountIsPresent=(data:Record<string,unknown>,path:string)=>{const value=objectAtPath(data,path);return (typeof value==="string"||typeof value==="number")&&Number(value)!==0;};
+  const fields:Record<string,string[]>={
+    "1099-NEC":["boxes.excessGoldenParachutePayments"],
+    "1099-INT":["boxes.earlyWithdrawalPenalty","boxes.investmentExpenses","boxes.foreignTaxPaid","boxes.privateActivityBondInterest","boxes.marketDiscount","boxes.bondPremium","boxes.treasuryBondPremium","boxes.taxExemptBondPremium"],
+    "1099-DIV":["boxes.unrecaptured1250Gain","boxes.section1202Gain","boxes.collectiblesGain","boxes.section897OrdinaryDividends","boxes.section897CapitalGain","boxes.nondividendDistributions","boxes.investmentExpenses","boxes.foreignTaxPaid","boxes.cashLiquidationDistributions","boxes.noncashLiquidationDistributions","boxes.privateActivityBondInterestDividends"],
+    "1099-B":["boxes.accruedMarketDiscount","boxes.washSaleLossDisallowed","boxes.profitLossClosedContracts","boxes.unrealizedPriorYear","boxes.unrealizedCurrentYear","boxes.aggregateProfitLoss","boxes.bartering"],
+    "1099-G":["boxes.stateLocalTaxRefunds","boxes.rtaaPayments","boxes.taxableGrants","boxes.agriculturePayments","boxes.marketGain"],
+    "1099-R":["boxes.capitalGain","boxes.employeeContributions","boxes.netUnrealizedAppreciation","boxes.otherAmount","boxes.totalEmployeeContributions","boxes.allocableIrRothContribution"],
+    "1099-SA":["boxes.fairMarketValueAtDeath"],
+  };
+  for(const source of sources){for(const path of fields[source.form_type]??[])if(amountIsPresent(source.normalized_data,path))blockers.push(`${source.form_type} ${source.id} contains unsupported nonzero ${path.replace("boxes.","")}.`);if(source.form_type==="1099-G"&&booleanAt(source.normalized_data,"boxes.tradeBusiness"))blockers.push(`1099-G ${source.id} is marked as a trade or business payment, which is outside the unemployment-only profile.`);if(source.form_type==="1099-B"&&(booleanAt(source.normalized_data,"boxes.collectiblesOrQof")||booleanAt(source.normalized_data,"boxes.lossNotAllowed")))blockers.push(`1099-B ${source.id} contains an unsupported collectibles/QOF or loss-not-allowed indicator.`);if(source.form_type==="1099-R"&&(objectAtPath(source.normalized_data,"boxes.taxableAmount")==null||typeof objectAtPath(source.normalized_data,"boxes.iraSepSimple")!=="boolean"))blockers.push(`1099-R ${source.id} requires an explicit taxable amount and IRA/SEP/SIMPLE indicator.`);}
+}
 function canonicalJson(value: unknown): string { if(Array.isArray(value))return`[${value.map(canonicalJson).join(",")}]`;if(value&&typeof value==="object")return`{${Object.entries(value as Record<string,unknown>).filter(([,child])=>child!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([key,child])=>`${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`;return JSON.stringify(value); }
 async function refreshCalculationDiagnostics(client:pg.PoolClient,taxYearId:string,revision:number,diagnostics:Array<{code:string;severity:string;message:string;path:string|null}>,approval:string){await client.query("UPDATE validation_issues SET resolved_revision=$2,resolved_at=now(),resolution='Superseded by current calculation run' WHERE tax_year_id=$1 AND category='calculation_engine' AND resolved_at IS NULL",[taxYearId,revision]);for(const diagnostic of diagnostics)await client.query("INSERT INTO validation_issues(tax_year_id,code,severity,category,field_path,message,resolution_action,creation_revision) VALUES($1,$2,$3,'calculation_engine',$4,$5,'Resolve the cited dependency and run a new calculation.',$6)",[taxYearId,diagnostic.code,diagnostic.severity,diagnostic.path,diagnostic.message,revision]);if(approval!=="approved")await client.query("INSERT INTO validation_issues(tax_year_id,code,severity,category,message,resolution_action,creation_revision) VALUES($1,'TAX_RULE_PACKAGE_UNAPPROVED','blocking','calculation_engine','The 2025 research rule package has not received independent tax-professional approval.','Obtain and record qualified independent tax-rule approval before a supported draft.',$2)",[taxYearId,revision]);}
 async function authorizedTaxYear(client:pg.PoolClient,context:AuthorizationContext,clientId:string,year:number,action:"client.view"|"calculation.run",lock:boolean){const result=await client.query<{id:string;revision:number;firm_id:string;calculation_status:string}>(`SELECT ty.id,ty.revision,c.firm_id,ty.calculation_status FROM tax_years ty JOIN clients c ON c.id=ty.client_id WHERE c.id=$1 AND ty.tax_year=$2 AND c.firm_id=$3 AND c.archived_at IS NULL ${lock?"FOR UPDATE OF ty":""}`,[clientId,year,context.firmId]);const row=result.rows[0];if(!row)throw new WorkflowError("not_found","Tax year was not found.");if(!authorize(context,action,{firmId:row.firm_id,clientId}))throw new WorkflowError("forbidden","Calculation access is not permitted.");return{taxYearId:row.id,revision:row.revision,calculationStatus:row.calculation_status};}

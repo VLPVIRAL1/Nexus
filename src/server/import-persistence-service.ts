@@ -235,6 +235,11 @@ const formTypes = {
   form_1099_misc: "1099-MISC",
   form_1099_int: "1099-INT",
   form_1099_div: "1099-DIV",
+  form_1099_b: "1099-B",
+  form_1099_g: "1099-G",
+  form_1099_k: "1099-K",
+  form_1099_r: "1099-R",
+  form_1099_sa: "1099-SA",
 } as const;
 
 async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: string, importBatchId: string, createdById: string, snapshot: Record<string, unknown>): Promise<number> {

@@ -1,0 +1,12 @@
+{
+  "form": "1099-SA", "tax_year": 2025, "revision": "rev-april-2025", "registry_version": "2025.2.0-review", "source_url": "https://www.irs.gov/pub/irs-pdf/f1099sa.pdf", "source_revision": "April 2025 continuous-use form",
+  "fields": [
+    { "key": "grossDistribution", "label": "1 Gross distribution", "type": "money", "calculation": "supported" },
+    { "key": "earningsOnExcessContributions", "label": "2 Earnings on excess contributions", "type": "money", "calculation": "conditional" },
+    { "key": "distributionCode", "label": "3 Distribution code", "type": "string", "calculation": "conditional" },
+    { "key": "fairMarketValueAtDeath", "label": "4 FMV on date of death", "type": "money", "calculation": "future" },
+    { "key": "accountType", "label": "5 HSA, Archer MSA, or Medicare Advantage MSA", "type": "string", "calculation": "conditional" },
+    { "key": "qualifiedMedicalExpenses", "label": "Qualified medical expenses substantiated by preparer", "type": "money", "calculation": "supported" }
+  ],
+  "pdf_output": "form_8889_review", "integration": "future"
+}

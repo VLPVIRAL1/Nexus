@@ -20,16 +20,18 @@
       "Keep source file names exactly as provided.",
       "Do not calculate tax.",
       "Do not modify schema_version.",
-      "Do not add unsupported form families to forms; list the document in source_documents, upload the original separately, and flag it for manual review."
+      "Do not add unsupported form families to forms; list the document in source_documents, upload the original separately, and flag it for manual review.",
+      "For Form 1099-K, create accepted Schedule C mappings for the entire gross payment amount before calculation.",
+      "For Form 1099-SA, enter qualifiedMedicalExpenses only from reviewed substantiation; do not infer it from the distribution form."
     ]
   },
   "client": {}, "taxpayer": {}, "spouse": null, "dependents": [],
   "source_documents": [],
-  "forms": { "w2": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [] },
+  "forms": { "w2": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [] },
   "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
   "mappings": [], "payments": {}, "review_points": [],
   "metadata": {
-    "template": "nexus-taxpayer-import-2025-v1.0.0",
-    "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV"]
+    "template": "nexus-taxpayer-import-2025-v1.1.0-review",
+    "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"]
   }
 }

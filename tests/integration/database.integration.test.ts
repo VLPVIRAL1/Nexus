@@ -1,7 +1,7 @@
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createTaxYear, upsertPerson } from "../../src/server/client-workflow-service";
+import { createClient, createTaxYear, upsertPerson } from "../../src/server/client-workflow-service";
 import { getClientProfile, listDashboardClients } from "../../src/server/client-repository";
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
@@ -25,6 +25,7 @@ import { executeRetentionDisposal, getRetentionState, placeLegalHold, previewRet
 import { AuthenticationAttemptLimitError, enforceAuthenticationAttemptLimit } from "../../src/server/auth-attempt-service";
 import { issueProvisionedExternalIdentitySession } from "../../src/server/supabase-auth-service";
 import { decideManualAcceptanceSession, decideOutputTieOut, decideReleaseGate, decideTaxReviewFixture, getReleaseClosureState, ingestProductionReadiness, saveInfrastructureControl, saveManualAcceptanceSession, saveOutputTieOut, saveReleaseGate, saveTaxReviewFixture } from "../../src/server/release-closure-service";
+import { createSupportedReviewExample2025 } from "../../src/services/outputs/json-export-service";
 
 const importCollections = {
   W2: "w2",
@@ -32,6 +33,11 @@ const importCollections = {
   "1099-MISC": "form_1099_misc",
   "1099-INT": "form_1099_int",
   "1099-DIV": "form_1099_div",
+  "1099-B": "form_1099_b",
+  "1099-G": "form_1099_g",
+  "1099-K": "form_1099_k",
+  "1099-R": "form_1099_r",
+  "1099-SA": "form_1099_sa",
 } as const;
 
 function comprehensiveImportRecord(formType: keyof typeof importCollections, ordinal: number) {
@@ -47,11 +53,11 @@ function comprehensiveImportRecord(formType: keyof typeof importCollections, ord
     unmapped_source_fields: [{ id: randomUUID(), label: `${formType} unmapped label`, code: "UNMAPPED", value: `unmapped-${ordinal}`, page: 1, reason: "No registered destination" }],
     version: 1,
   };
-  registryEntryFields(formType).forEach((field, index) => setFixturePath(record, registryFieldPath(formType, field.key), registryFixtureValue(field, ordinal, index)));
+  registryEntryFields(formType).forEach((field, index) => setFixturePath(record, registryFieldPath(formType, field.key), registryFixtureValue(field, ordinal, index, formType)));
   return record;
 }
 
-function registryFixtureValue(field: RegistryField, ordinal: number, index: number): unknown {
+function registryFixtureValue(field: RegistryField, ordinal: number, index: number, formType: string): unknown {
   const seed = ordinal * 100 + index + 1;
   if (field.type === "money") return `${seed}.12`;
   if (field.type === "boolean") return true;
@@ -59,7 +65,7 @@ function registryFixtureValue(field: RegistryField, ordinal: number, index: numb
   if (field.type === "repeatable_code_money") return [{ id: randomUUID(), code: "D", amount: `${seed}.34` }, { id: randomUUID(), code: "DD", amount: `${seed + 1}.56` }];
   if (field.type === "repeatable_open_label_money") return [{ id: randomUUID(), label: "CASDI", amount: `${seed}.78`, classification: "informational" }];
   if (field.type === "repeatable_state") return [{ id: randomUUID(), state: "TX", payerStateId: `TX-${seed}`, stateIncome: `${seed}.90`, stateTaxWithheld: `${seed}.21`, stateWages: `${seed}.43` }];
-  if (field.type === "repeatable_local") return [{ id: randomUUID(), localWages: `${seed}.65`, localTaxWithheld: `${seed}.87`, localityName: "Synthetic locality" }];
+  if (field.type === "repeatable_local") return [{ id: randomUUID(), [formType === "1099-R" ? "localDistribution" : "localWages"]: `${seed}.65`, localTaxWithheld: `${seed}.87`, localityName: "Synthetic locality" }];
   if (field.key.endsWith(".tin")) return `12-345${String(seed).padStart(4, "0").slice(-4)}`;
   if (field.key.endsWith(".country")) return "US";
   if (field.key.endsWith(".stateProvince")) return "TX";
@@ -453,7 +459,7 @@ suite("PostgreSQL foundation", () => {
     } finally { await client.end(); }
   });
 
-  it("round-trips every registered field and repeated row across all five source families", async () => {
+  it("round-trips every registered field and repeated row across all ten supported source families", async () => {
     const context: AuthorizationContext = {
       userId: "20000000-0000-4000-8000-000000000001",
       firmId: "10000000-0000-4000-8000-000000000001",
@@ -470,7 +476,7 @@ suite("PostgreSQL foundation", () => {
     payload.metadata = { acceptanceScenario: "AC-03", fixtureId: randomUUID() };
 
     const raw = new TextEncoder().encode(JSON.stringify(payload));
-    const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "ac03-five-form-round-trip.json", raw);
+    const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "ac03-ten-form-round-trip.json", raw);
     for (const { collection, record } of expectedRecords) {
       expect(preview.changes).toEqual(expect.arrayContaining([
         expect.objectContaining({ path: `forms.${collection}[id=${record.id}]`, kind: "add", importedValue: record }),
@@ -503,7 +509,7 @@ suite("PostgreSQL foundation", () => {
         "SELECT form_type,external_source_id,normalized_data,raw_fields,unmapped_fields FROM source_form_records WHERE import_batch_id=$1 AND effective ORDER BY form_type",
         [preview.batchId],
       );
-      expect(persisted.rowCount).toBe(5);
+      expect(persisted.rowCount).toBe(10);
       expect(new Set(persisted.rows.map(({ form_type }) => form_type))).toEqual(new Set(Object.keys(importCollections)));
       for (const row of persisted.rows) {
         const expected = expectedRecords.find(({ record }) => record.external_source_id === row.external_source_id);
@@ -572,11 +578,11 @@ suite("PostgreSQL foundation", () => {
     expect(complete).toMatchObject({ revision: attestation.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true }, expectedDocuments: expect.arrayContaining([expect.objectContaining({ registryId: "w2", sourceDocumentId: uploaded.id })]), sourceDocuments: expect.arrayContaining([expect.objectContaining({ id: uploaded.id, documentType: "W2" })]), documentRegistry: expect.arrayContaining([expect.objectContaining({ id: "prior_year_return", suggested: true }), expect.objectContaining({ id: "w2" })]) });
 
     const invalidated = await saveIntakeAnswers(context, "30000000-0000-4000-8000-000000000001", 2025, complete.revision, [{
-      questionId: "income.investment_sales", answer: "yes", evidence: "Synthetic unsupported fact",
+      questionId: "income.social_security", answer: "yes", evidence: "Synthetic unsupported fact",
     }]);
     expect(invalidated.blockerCount).toBe(1);
     const changed = await getIntakeState(context, "30000000-0000-4000-8000-000000000001", 2025);
-    expect(changed.blockingQuestionIds).toContain("income.investment_sales");
+    expect(changed.blockingQuestionIds).toContain("income.social_security");
     expect(changed.attestation?.current).toBe(false);
   });
 
@@ -705,6 +711,28 @@ suite("PostgreSQL foundation", () => {
     await database.end();
     expect(stored.rows[0]?.input_snapshot).toMatchObject({ calculationId: expect.any(String), inputRevision: before.revision });
     expect(stored.rows[0]?.result_hash).toBe(run.resultHash);
+  });
+
+  it("imports the supported review example and produces traceable draft 1040 dependent-form output", async () => {
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const client = await createClient(admin, { clientCode: `REVIEW-${randomUUID()}`, displayName: "Synthetic Expanded Review" });
+    await createTaxYear(admin, client.id, { year: 2025 });
+    await upsertPerson(admin, client.id, 2025, { role: "taxpayer", legalName: "Synthetic Review Taxpayer", dateOfBirth: "1985-01-01", address: {}, facts: {}, expectedVersion: null });
+    let intake = await getIntakeState(admin, client.id, 2025);
+    const preview = await stageCanonicalImport(admin, client.id, 2025, "nexus-2025-supported-review-example.json", new TextEncoder().encode(JSON.stringify(createSupportedReviewExample2025())));
+    const committed = await commitPersistedImport(admin, client.id, 2025, preview.batchId, preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })));
+    if (committed.committedRevision == null) throw new Error("Expected committed review-example revision.");
+    const answered = await saveIntakeAnswers(admin, client.id, 2025, committed.committedRevision, phase1IntakeQuestions.map((question) => ({ questionId: question.id, answer: question.supportedWhenNo === true ? "no" as const : question.supportedWhenYes ? "yes" as const : "no" as const, evidence: "Synthetic supported-profile interview" })));
+    const documented = await saveExpectedDocument(admin, client.id, 2025, answered.revision, { registryId: "prior_year_return", documentKey: "prior_year_return", label: "Prior-year return reviewed", status: "not_applicable", evidence: "Synthetic first-year taxpayer fixture has no prior-year filing.", sourceDocumentId: null, expectedVersion: null });
+    const attested = await attestCompleteness(admin, client.id, 2025, documented.revision, "Synthetic completeness review for expanded source-form fixture", null);
+    const calculation = await runPersistedCalculation(admin, client.id, 2025, attested.revision);
+    expect(calculation).toMatchObject({ status: "partial", result: { status: "calculated_draft", forms: { form1040: { wages: "60000", iraDistributions: "5000", taxableIraDistributions: "4000", capitalGainOrLoss: "3000", schedule1AdditionalIncome: "2000", federalWithholding: "7800" }, scheduleD: { netGainOrLoss: "3000" }, schedule1: { unemploymentCompensation: "2000" }, form8889: [expect.objectContaining({ taxableDistribution: "0" })] } } });
+    const artifact = await generatePersistedArtifact(admin, client.id, 2025, attested.revision, "return_package_pdf");
+    const downloaded = await downloadPersistedArtifact(admin, client.id, 2025, artifact.id);
+    expect(downloaded.bytes.subarray(0, 4).toString()).toBe("%PDF");
+    expect((calculation.result as any).dependencyManifest).toEqual(expect.arrayContaining([expect.objectContaining({ nodeId: "form-8949", status: "evaluated" }), expect.objectContaining({ nodeId: "form-8889", status: "evaluated" })]));
+    intake = await getIntakeState(admin, client.id, 2025);
+    expect(intake).toMatchObject({ revision: attested.revision, missingQuestionIds: [], blockingQuestionIds: [], attestation: { current: true } });
   });
 
   it("persists content-addressed output bytes, enforces sensitive exports, replays identical jobs, and stales artifacts on change", async () => {

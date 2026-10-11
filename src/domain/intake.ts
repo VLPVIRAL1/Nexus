@@ -4,6 +4,7 @@ export interface IntakeQuestion {
   prompt: string;
   affirmativeTreatment: string;
   supportedWhenYes: boolean;
+  supportedWhenNo?: boolean;
   required: boolean;
 }
 
@@ -12,10 +13,10 @@ export const phase1IntakeQuestions: IntakeQuestion[] = [
   { id: "identity.claimable_dependent", group: "identity", prompt: "Can another person claim the taxpayer or spouse as a dependent?", affirmativeTreatment: "Dependent filing profile", supportedWhenYes: false, required: true },
   { id: "identity.age_or_blindness", group: "identity", prompt: "Was either spouse age 65 or older or blind at year end?", affirmativeTreatment: "Additional standard deduction", supportedWhenYes: false, required: true },
   { id: "identity.special_election", group: "identity", prompt: "Does any special filing election or nonstandard filing-status treatment apply?", affirmativeTreatment: "Special filing election", supportedWhenYes: false, required: true },
-  { id: "income.investment_sales", group: "income", prompt: "Were there sales of stocks, digital assets, or other capital property?", affirmativeTreatment: "Form 8949 / Schedule D", supportedWhenYes: false, required: true },
-  { id: "income.retirement", group: "income", prompt: "Was any retirement, pension, annuity, or IRA income received?", affirmativeTreatment: "Retirement income", supportedWhenYes: false, required: true },
+  { id: "income.investment_sales", group: "income", prompt: "Were there capital transactions reported on Form 1099-B?", affirmativeTreatment: "Form 8949 / Schedule D", supportedWhenYes: true, supportedWhenNo: true, required: true },
+  { id: "income.retirement", group: "income", prompt: "Was any retirement, pension, annuity, or IRA income received?", affirmativeTreatment: "Retirement income", supportedWhenYes: true, supportedWhenNo: true, required: true },
   { id: "income.social_security", group: "income", prompt: "Were Social Security benefits received?", affirmativeTreatment: "Taxable benefit worksheet", supportedWhenYes: false, required: true },
-  { id: "income.unemployment", group: "income", prompt: "Was unemployment compensation received?", affirmativeTreatment: "Schedule 1 income", supportedWhenYes: false, required: true },
+  { id: "income.unemployment", group: "income", prompt: "Was unemployment compensation received?", affirmativeTreatment: "Schedule 1 income", supportedWhenYes: true, supportedWhenNo: true, required: true },
   { id: "income.rental_farm_k1", group: "income", prompt: "Was there rental, farm, royalty, partnership, S corporation, estate, or trust income?", affirmativeTreatment: "Schedule E/F or K-1", supportedWhenYes: false, required: true },
   { id: "income.foreign", group: "income", prompt: "Was foreign income received or were foreign financial accounts held?", affirmativeTreatment: "Foreign reporting assessment", supportedWhenYes: false, required: true },
   { id: "income.other", group: "income", prompt: "Was any other taxable receipt received that is not represented by attached source forms?", affirmativeTreatment: "Other income assessment", supportedWhenYes: false, required: true },

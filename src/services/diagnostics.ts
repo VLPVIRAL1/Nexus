@@ -27,7 +27,7 @@ export function validateReturn(data: CanonicalTaxReturnData): Diagnostic[] {
         recordId: answer?.id ?? null, fieldPath: `intake.${question.id}`, message: `Required intake answer is ${answer ? "unknown" : "missing"}: ${question.prompt}`,
         resolutionAction: "Answer the intake question and attach supporting evidence where appropriate.",
       });
-    } else if (answer.answer === "yes" && !question.supportedWhenYes) {
+    } else if ((answer.answer === "yes" && !question.supportedWhenYes) || (answer.answer === "no" && !(question.supportedWhenNo ?? !question.supportedWhenYes))) {
       issues.push({
         code: `UNSUPPORTED_${question.id.toUpperCase().replaceAll(".", "_")}`, severity: "blocking", category: "calculation_support",
         recordId: answer.id, fieldPath: `intake.${question.id}`, message: `${question.affirmativeTreatment} is outside the Phase 1 calculation boundary.`,

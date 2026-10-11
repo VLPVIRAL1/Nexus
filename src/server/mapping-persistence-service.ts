@@ -58,6 +58,9 @@ const sourceFieldRegistry: Record<string, SourceFieldDefinition[]> = {
     { path: "boxes.section409ADeferrals", label: "Box 12 · Section 409A deferrals", suggestedTarget: null, taxCharacter: "Unsupported special treatment" },
     { path: "boxes.nonqualifiedDeferredCompensation", label: "Box 14 · Nonqualified deferred compensation", suggestedTarget: null, taxCharacter: "Unsupported special treatment" },
   ],
+  "1099-K": [
+    { path: "boxes.grossPaymentAmount", label: "Box 1a · Gross payment amount", suggestedTarget: "schedule_c", taxCharacter: "Business gross receipts; full reconciliation required" },
+  ],
 };
 
 export async function createActivity(context: AuthorizationContext, clientId: string, year: number, expectedRevision: number, input: ActivityInput) {

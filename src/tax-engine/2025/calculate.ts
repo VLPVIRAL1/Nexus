@@ -74,8 +74,50 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
       qualifiedAmount,
       exemptAmount: read(item.exemptInterestDividends, `dividends.${index}.exemptInterestDividends`),
       section199AAmount,
+      capitalGainDistributionAmount: read(item.capitalGainDistributions ?? "0.00", `dividends.${index}.capitalGainDistributions`),
       withholdingAmount: read(item.federalWithholding, `dividends.${index}.federalWithholding`),
     };
+  });
+
+  const brokerTransactions = (input.brokerTransactions ?? []).map((item, index) => {
+    const proceeds = read(item.proceeds, `brokerTransactions.${index}.proceeds`);
+    const costBasis = read(item.costBasis, `brokerTransactions.${index}.costBasis`);
+    const withholdingAmount = read(item.federalWithholding, `brokerTransactions.${index}.federalWithholding`);
+    const adjustment = read(item.adjustmentAmount, `brokerTransactions.${index}.adjustmentAmount`);
+    if (item.term !== "short" && item.term !== "long") blocking("FORM_8949_TERM_REQUIRED", "Each brokerage transaction must be classified as short- or long-term.", `brokerTransactions.${index}.term`);
+    if (!adjustment.isZero() || item.adjustmentCode.trim()) blocking("FORM_8949_ADJUSTMENT_UNSUPPORTED", "The review profile supports only transactions with no Form 8949 adjustment code or amount.", `brokerTransactions.${index}`);
+    if (!item.description.trim()) blocking("FORM_8949_DESCRIPTION_REQUIRED", "A property description is required for each brokerage transaction.", `brokerTransactions.${index}.description`);
+    return { ...item, proceeds, costBasis, adjustment, withholdingAmount, gainOrLoss: proceeds.minus(costBasis).plus(adjustment) };
+  });
+  const retirementDistributions = (input.retirementDistributions ?? []).map((item, index) => {
+    const gross = read(item.grossDistribution, `retirementDistributions.${index}.grossDistribution`);
+    const taxable = read(item.taxableAmount, `retirementDistributions.${index}.taxableAmount`);
+    const withholdingAmount = read(item.federalWithholding, `retirementDistributions.${index}.federalWithholding`);
+    if (item.distributionCode.trim() !== "7") blocking("RETIREMENT_DISTRIBUTION_CODE_UNSUPPORTED", "The review profile supports only normal Form 1099-R code 7 distributions.", `retirementDistributions.${index}.distributionCode`);
+    if (item.taxableAmountNotDetermined) blocking("RETIREMENT_TAXABLE_AMOUNT_UNDETERMINED", "A determined taxable amount is required for the supported retirement-distribution profile.", `retirementDistributions.${index}.taxableAmountNotDetermined`);
+    if (taxable.gt(gross)) blocking("RETIREMENT_TAXABLE_EXCEEDS_GROSS", "Taxable retirement distributions cannot exceed the gross distribution.", `retirementDistributions.${index}.taxableAmount`);
+    return { ...item, gross, taxable, withholdingAmount };
+  });
+  const governmentPayments = (input.governmentPayments ?? []).map((item, index) => ({
+    ...item,
+    unemployment: read(item.unemploymentCompensation, `governmentPayments.${index}.unemploymentCompensation`),
+    withholdingAmount: read(item.federalWithholding, `governmentPayments.${index}.federalWithholding`),
+  }));
+  const paymentCardReceipts = (input.paymentCardReceipts ?? []).map((item, index) => {
+    const gross = read(item.grossPaymentAmount, `paymentCardReceipts.${index}.grossPaymentAmount`);
+    const mapped = read(item.mappedScheduleCAmount, `paymentCardReceipts.${index}.mappedScheduleCAmount`);
+    const withholdingAmount = read(item.federalWithholding, `paymentCardReceipts.${index}.federalWithholding`);
+    if (!mapped.eq(gross)) blocking("FORM_1099_K_RECONCILIATION_REQUIRED", "Every supported Form 1099-K gross-payment amount must be fully reconciled to accepted Schedule C mappings.", `paymentCardReceipts.${index}.mappedScheduleCAmount`);
+    return { ...item, gross, mapped, withholdingAmount };
+  });
+  const hsaDistributions = (input.hsaDistributions ?? []).map((item, index) => {
+    const gross = read(item.grossDistribution, `hsaDistributions.${index}.grossDistribution`);
+    const qualified = read(item.qualifiedMedicalExpenses, `hsaDistributions.${index}.qualifiedMedicalExpenses`);
+    const excessEarnings = read(item.earningsOnExcessContributions, `hsaDistributions.${index}.earningsOnExcessContributions`);
+    if (item.accountType !== "HSA" || item.distributionCode.trim() !== "1") blocking("HSA_DISTRIBUTION_PROFILE_UNSUPPORTED", "The review profile supports only normal code 1 HSA distributions.", `hsaDistributions.${index}`);
+    if (!excessEarnings.isZero()) blocking("HSA_EXCESS_CONTRIBUTION_EARNINGS_UNSUPPORTED", "Earnings on excess HSA contributions require treatment outside the supported review profile.", `hsaDistributions.${index}.earningsOnExcessContributions`);
+    if (!qualified.eq(gross)) blocking("HSA_NONQUALIFIED_DISTRIBUTION_UNSUPPORTED", "The supported HSA profile requires qualified medical expenses to equal the gross distribution.", `hsaDistributions.${index}.qualifiedMedicalExpenses`);
+    return { ...item, gross, qualified, taxable: Decimal.max(0, gross.minus(qualified)) };
   });
 
   const scheduleC = input.scheduleCActivities.map((activity, activityIndex) => {
@@ -106,6 +148,19 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const qualifiedDividends = whole(sum(dividends.map(({ qualifiedAmount }) => qualifiedAmount)));
   const section199ADividends = whole(sum(dividends.map(({ section199AAmount }) => section199AAmount)));
   const businessIncome = whole(sum(scheduleC.map(({ netProfit }) => netProfit)));
+  const shortTermGainOrLoss = whole(sum(brokerTransactions.filter(({ term }) => term === "short").map(({ gainOrLoss }) => gainOrLoss)));
+  const capitalGainDistributions = whole(sum(dividends.map(({ capitalGainDistributionAmount }) => capitalGainDistributionAmount)));
+  const longTermGainOrLoss = whole(sum([...brokerTransactions.filter(({ term }) => term === "long").map(({ gainOrLoss }) => gainOrLoss), capitalGainDistributions]));
+  const netCapitalGainOrLoss = whole(shortTermGainOrLoss.plus(longTermGainOrLoss));
+  const netCapitalGainForPreferentialTax = Decimal.max(0, whole(longTermGainOrLoss.plus(Decimal.min(0, shortTermGainOrLoss))));
+  if (netCapitalGainOrLoss.lt(-3000)) blocking("CAPITAL_LOSS_CARRYOVER_REQUIRED", "Net capital losses over $3,000 require carryover support outside this review profile.", "forms.scheduleD");
+  const capitalGainOrLoss = Decimal.max(-3000, netCapitalGainOrLoss);
+  const iraGross = whole(sum(retirementDistributions.filter(({ iraSepSimple }) => iraSepSimple).map(({ gross }) => gross)));
+  const iraTaxable = whole(sum(retirementDistributions.filter(({ iraSepSimple }) => iraSepSimple).map(({ taxable }) => taxable)));
+  const pensionGross = whole(sum(retirementDistributions.filter(({ iraSepSimple }) => !iraSepSimple).map(({ gross }) => gross)));
+  const pensionTaxable = whole(sum(retirementDistributions.filter(({ iraSepSimple }) => !iraSepSimple).map(({ taxable }) => taxable)));
+  const unemploymentCompensation = whole(sum(governmentPayments.map(({ unemployment }) => unemployment)));
+  const hsaTaxableDistribution = whole(sum(hsaDistributions.map(({ taxable }) => taxable)));
 
   const scheduleSE = roles
     .filter((owner) => input.filingStatus === "married_filing_jointly" || owner === "taxpayer")
@@ -125,9 +180,10 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   if (medicareCompensation.gt(constants2025.additionalMedicareThreshold[input.filingStatus])) {
     blocking("ADDITIONAL_MEDICARE_TAX_REQUIRED", "Known wages and self-employment earnings exceed the Phase 1 Additional Medicare Tax screening threshold.", "forms.schedule2");
   }
-  const totalIncome = whole(wageTotal.plus(taxableInterest).plus(ordinaryDividends).plus(businessIncome));
+  const schedule1AdditionalIncome = whole(businessIncome.plus(unemploymentCompensation).plus(hsaTaxableDistribution));
+  const totalIncome = whole(wageTotal.plus(taxableInterest).plus(ordinaryDividends).plus(iraTaxable).plus(pensionTaxable).plus(capitalGainOrLoss).plus(schedule1AdditionalIncome));
   const adjustedGrossIncome = whole(totalIncome.minus(deductibleHalf));
-  if (adjustedGrossIncome.gt(constants2025.netInvestmentIncomeThreshold[input.filingStatus]) && taxableInterest.plus(ordinaryDividends).gt(0)) {
+  if (adjustedGrossIncome.gt(constants2025.netInvestmentIncomeThreshold[input.filingStatus]) && taxableInterest.plus(ordinaryDividends).plus(Decimal.max(0, netCapitalGainOrLoss)).gt(0)) {
     blocking("NET_INVESTMENT_INCOME_TAX_REVIEW_REQUIRED", "Income and investment-income facts cross the NIIT screening threshold; Form 8960 is outside Phase 1.", "forms.schedule2");
   }
   const standardDeduction = amount(constants2025.standardDeduction[input.filingStatus]);
@@ -149,8 +205,9 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const qbiDeduction = Decimal.min(qbiComponent.plus(reitComponent), incomeLimitation);
   const taxableIncome = nonnegative(whole(taxableBeforeQbi.minus(qbiDeduction)));
 
-  const preferential = qualifiedDividends.gt(0)
-    ? qualifiedDividendTax2025(taxableIncome, qualifiedDividends, input.filingStatus)
+  const preferentialIncome = whole(qualifiedDividends.plus(netCapitalGainForPreferentialTax));
+  const preferential = preferentialIncome.gt(0)
+    ? qualifiedDividendTax2025(taxableIncome, preferentialIncome, input.filingStatus)
     : null;
   const calculatedIncomeTax = preferential?.tax ?? ordinaryIncomeTax2025(taxableIncome, input.filingStatus);
   const incomeTax = input.approvedOverrides?.form1040IncomeTax == null
@@ -163,6 +220,10 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     ...interest.map(({ withholdingAmount }) => withholdingAmount),
     ...dividends.map(({ withholdingAmount }) => withholdingAmount),
     ...businessWithholding,
+    ...brokerTransactions.map(({ withholdingAmount }) => withholdingAmount),
+    ...retirementDistributions.map(({ withholdingAmount }) => withholdingAmount),
+    ...governmentPayments.map(({ withholdingAmount }) => withholdingAmount),
+    ...paymentCardReceipts.map(({ withholdingAmount }) => withholdingAmount),
   ]));
   const refund = Decimal.max(0, federalWithholding.minus(totalTax));
   const amountOwed = Decimal.max(0, totalTax.minus(federalWithholding));
@@ -173,13 +234,16 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     || input.scheduleBScreening.otherScheduleBTrigger === "yes";
 
   addTrace(trace, "schedule-c.net-profit", "Schedule C, line 31", "SCH-C-NET-PROFIT", { grossReceipts: dollars(sum(scheduleC.map(({ grossReceipts }) => grossReceipts))), expenses: dollars(sum(scheduleC.map(({ expenses }) => expenses))) }, businessIncome);
+  addTrace(trace, "schedule-d.net-gain-loss", "Schedule D, line 16", "SCHEDULE-D-SIMPLE-TRANSACTIONS", { shortTerm: shortTermGainOrLoss.toFixed(0), longTerm: longTermGainOrLoss.toFixed(0) }, netCapitalGainOrLoss);
+  addTrace(trace, "schedule-1.unemployment", "Schedule 1, line 7", "FORM-1099-G-UNEMPLOYMENT", { sourceCount: String(governmentPayments.length) }, unemploymentCompensation);
+  addTrace(trace, "form-8889.distributions", "Form 8889, lines 14a-16", "FORM-8889-FULLY-QUALIFIED", { sourceCount: String(hsaDistributions.length), grossDistribution: dollars(sum(hsaDistributions.map(({ gross }) => gross))) }, hsaTaxableDistribution);
   addTrace(trace, "schedule-se.tax", "Schedule SE, line 12", "SCH-SE-REGULAR", { netProfit: businessIncome.toFixed(0), wageBase: String(constants2025.socialSecurityWageBase) }, selfEmploymentTax);
   addTrace(trace, "schedule-1.se-deduction", "Schedule 1, line 15", "SCH-SE-DEDUCTIBLE-HALF", { selfEmploymentTax: selfEmploymentTax.toFixed(0) }, deductibleHalf);
   addTrace(trace, "form-8995.deduction", "Form 8995, line 15", "FORM-8995-SIMPLIFIED", { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0) }, qbiDeduction);
   addTrace(trace, "form-1040.taxable-income", "Form 1040, line 15", "FORM-1040-TAXABLE-INCOME", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0) }, taxableIncome);
-  addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", input.approvedOverrides?.form1040IncomeTax != null ? "APPROVED-MANUAL-OVERRIDE" : preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0), calculatedIncomeTax: calculatedIncomeTax.toFixed(0) }, incomeTax);
+  addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", input.approvedOverrides?.form1040IncomeTax != null ? "APPROVED-MANUAL-OVERRIDE" : preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0), netCapitalGain: netCapitalGainForPreferentialTax.toFixed(0), calculatedIncomeTax: calculatedIncomeTax.toFixed(0) }, incomeTax);
   addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
-  addTrace(trace, "form-1040.payments", "Form 1040, line 25d", "ACTIVE-SOURCE-WITHHOLDING", { sourceCount: String(wages.length + interest.length + dividends.length + businessWithholding.length) }, federalWithholding);
+  addTrace(trace, "form-1040.payments", "Form 1040, line 25d", "ACTIVE-SOURCE-WITHHOLDING", { sourceCount: String(wages.length + interest.length + dividends.length + businessWithholding.length + brokerTransactions.length + retirementDistributions.length + governmentPayments.length + paymentCardReceipts.length) }, federalWithholding);
 
   diagnostics.push({
     code: "TAX_RULE_PACKAGE_REVIEW_PENDING",
@@ -205,13 +269,17 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     forms: {
       scheduleB: { required: scheduleBRequired, taxableInterest: taxableInterest.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0) },
       scheduleC: scheduleC.map(({ activity, grossReceipts, expenses, netProfit }) => ({ activityId: activity.id, grossReceipts: grossReceipts.toFixed(0), expenses: expenses.toFixed(0), netProfit: netProfit.toFixed(0) })),
+      form8949: brokerTransactions.map(({ id, description, term, proceeds, costBasis, adjustment, gainOrLoss, basisReportedToIrs }) => ({ transactionId: id, description, term, proceeds: proceeds.toFixed(0), costBasis: costBasis.toFixed(0), adjustment: adjustment.toFixed(0), gainOrLoss: gainOrLoss.toFixed(0), basisReportedToIrs })),
+      scheduleD: { shortTermGainOrLoss: shortTermGainOrLoss.toFixed(0), longTermGainOrLoss: longTermGainOrLoss.toFixed(0), netGainOrLoss: netCapitalGainOrLoss.toFixed(0), deductibleLoss: Decimal.min(0, capitalGainOrLoss).toFixed(0) },
+      form8889: hsaDistributions.map(({ owner, gross, qualified, taxable }) => ({ owner, grossDistribution: gross.toFixed(0), qualifiedMedicalExpenses: qualified.toFixed(0), taxableDistribution: taxable.toFixed(0) })),
       scheduleSE,
       form8995: { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0), deduction: qbiDeduction.toFixed(0) },
-      schedule1: { businessIncome: businessIncome.toFixed(0), deductiblePartOfSelfEmploymentTax: deductibleHalf.toFixed(0) },
-      schedule2: { selfEmploymentTax: selfEmploymentTax.toFixed(0) },
+      schedule1: { businessIncome: businessIncome.toFixed(0), unemploymentCompensation: unemploymentCompensation.toFixed(0), deductiblePartOfSelfEmploymentTax: deductibleHalf.toFixed(0) },
+      schedule2: { selfEmploymentTax: selfEmploymentTax.toFixed(0), additionalHsaTax: "0" },
       form1040: {
         wages: wageTotal.toFixed(0), taxExemptInterest: taxExemptInterest.toFixed(0), taxableInterest: taxableInterest.toFixed(0),
-        qualifiedDividends: qualifiedDividends.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0), totalIncome: totalIncome.toFixed(0),
+        qualifiedDividends: qualifiedDividends.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0), iraDistributions: iraGross.toFixed(0), taxableIraDistributions: iraTaxable.toFixed(0),
+        pensionsAndAnnuities: pensionGross.toFixed(0), taxablePensionsAndAnnuities: pensionTaxable.toFixed(0), capitalGainOrLoss: capitalGainOrLoss.toFixed(0), schedule1AdditionalIncome: schedule1AdditionalIncome.toFixed(0), totalIncome: totalIncome.toFixed(0),
         adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0),
         taxableIncome: taxableIncome.toFixed(0), incomeTax: incomeTax.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0), totalTax: totalTax.toFixed(0),
         federalWithholding: federalWithholding.toFixed(0), refund: refund.toFixed(0), amountOwed: amountOwed.toFixed(0),
@@ -225,12 +293,15 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
 const dependencies: Record<string, string[]> = {
   "schedule-b": ["interest", "dividends", "schedule-b-screening"],
   "schedule-c": ["business-receipts", "business-expenses"],
+  "form-8949": ["broker-transactions"],
+  "schedule-d": ["form-8949"],
+  "form-8889": ["hsa-distributions"],
   "schedule-se": ["schedule-c", "w2-social-security-wages"],
-  "schedule-1": ["schedule-c", "schedule-se"],
-  "schedule-2": ["schedule-se"],
+  "schedule-1": ["schedule-c", "schedule-se", "government-payments", "form-8889"],
+  "schedule-2": ["schedule-se", "form-8889"],
   "form-8995": ["schedule-c", "schedule-se", "qualified-dividends"],
-  "qualified-dividend-worksheet": ["form-8995", "qualified-dividends"],
-  "form-1040": ["schedule-1", "schedule-2", "schedule-b", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
+  "qualified-dividend-worksheet": ["form-8995", "qualified-dividends", "schedule-d"],
+  "form-1040": ["schedule-1", "schedule-2", "schedule-b", "schedule-d", "retirement-distributions", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
 };
 
 function validateEligibility(input: CalculationInput2025, blocking: (code: string, message: string, path?: string | null) => void): void {

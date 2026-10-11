@@ -155,7 +155,43 @@ export interface Form1099DIV extends PayerRecipientForm {
   };
 }
 
-export type SourceForm = W2Record | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV;
+export interface Form1099B extends PayerRecipientForm {
+  formType: "1099-B";
+  boxes: {
+    description: string | null; dateAcquired: string | null; dateSold: string | null;
+    proceeds: DecimalString | null; costBasis: DecimalString | null; accruedMarketDiscount: DecimalString | null;
+    washSaleLossDisallowed: DecimalString | null; term: "short" | "long" | null;
+    collectiblesOrQof: boolean | null; federalWithholding: DecimalString | null;
+    noncoveredSecurity: boolean | null; reportedGrossOrNet: string | null; lossNotAllowed: boolean | null;
+    profitLossClosedContracts: DecimalString | null; unrealizedPriorYear: DecimalString | null;
+    unrealizedCurrentYear: DecimalString | null; aggregateProfitLoss: DecimalString | null;
+    basisReportedToIrs: boolean | null; bartering: DecimalString | null; cusip: string | null;
+    adjustmentCode: string | null; adjustmentAmount: DecimalString | null;
+  };
+}
+
+export interface Form1099G extends PayerRecipientForm {
+  formType: "1099-G";
+  boxes: { unemploymentCompensation: DecimalString | null; stateLocalTaxRefunds: DecimalString | null; refundTaxYear: string | null; federalWithholding: DecimalString | null; rtaaPayments: DecimalString | null; taxableGrants: DecimalString | null; agriculturePayments: DecimalString | null; tradeBusiness: boolean | null; marketGain: DecimalString | null };
+}
+
+export interface Form1099K extends PayerRecipientForm {
+  formType: "1099-K";
+  boxes: { grossPaymentAmount: DecimalString | null; cardNotPresentTransactions: DecimalString | null; merchantCategoryCode: string | null; paymentTransactionCount: string | null; federalWithholding: DecimalString | null; january: DecimalString | null; february: DecimalString | null; march: DecimalString | null; april: DecimalString | null; may: DecimalString | null; june: DecimalString | null; july: DecimalString | null; august: DecimalString | null; september: DecimalString | null; october: DecimalString | null; november: DecimalString | null; december: DecimalString | null };
+}
+
+export interface Form1099R extends PayerRecipientForm {
+  formType: "1099-R";
+  boxes: { grossDistribution: DecimalString | null; taxableAmount: DecimalString | null; taxableAmountNotDetermined: boolean | null; totalDistribution: boolean | null; capitalGain: DecimalString | null; federalWithholding: DecimalString | null; employeeContributions: DecimalString | null; netUnrealizedAppreciation: DecimalString | null; distributionCode: string | null; iraSepSimple: boolean | null; otherAmount: DecimalString | null; otherPercentage: string | null; totalEmployeeContributions: DecimalString | null; totalDistributionPercentage: string | null; allocableIrRothContribution: DecimalString | null; firstYearDesignatedRoth: string | null; dateOfPayment: string | null };
+  localRows: Array<{ id: UUID; localDistribution: DecimalString | null; localTaxWithheld: DecimalString | null; localityName: string | null }>;
+}
+
+export interface Form1099SA extends PayerRecipientForm {
+  formType: "1099-SA";
+  boxes: { grossDistribution: DecimalString | null; earningsOnExcessContributions: DecimalString | null; distributionCode: string | null; fairMarketValueAtDeath: DecimalString | null; accountType: "HSA" | "Archer MSA" | "Medicare Advantage MSA" | null; qualifiedMedicalExpenses: DecimalString | null };
+}
+
+export type SourceForm = W2Record | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV | Form1099B | Form1099G | Form1099K | Form1099R | Form1099SA;
 
 export interface IntakeAnswer {
   id: UUID;

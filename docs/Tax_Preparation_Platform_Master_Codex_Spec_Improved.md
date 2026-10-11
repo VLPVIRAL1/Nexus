@@ -5,7 +5,19 @@
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
 **Last updated:** October 11, 2026
-**Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards, governed release-closure workspaces and an unapproved calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
+**Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards, governed release-closure workspaces and an expanded, unapproved 2025 calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
+
+### October 11, 2026 review-release implementation slice
+
+The following seven reviewable source-code capabilities are implemented and technically verified. “Complete” here means functional within the explicit supported 2025 review profile; it does not mean IRS filing certification or universal U.S. tax coverage.
+
+- [x] Create and persist a firm-scoped client, 2025 tax year and taxpayer/spouse profile.
+- [x] Create and persist a draft federal return workspace with guarded intake, source, calculation, review and output states.
+- [x] Download, validate, preview, explicitly decide and commit canonical JSON; preserve stable IDs, history, rollback and source lineage.
+- [x] Download an identifier-free ten-family blank JSON template and a schema-valid synthetic review example directly from the application.
+- [x] Capture, edit, import and export every registered field for W-2, 1099-NEC, 1099-MISC, 1099-INT, 1099-DIV, 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA. Unsupported facts are retained and block calculation instead of being ignored.
+- [x] Calculate the supported profile through traceable draft Form 1040 lines plus conditional Schedule 1, Schedule 2, Schedule B, Schedule C, Schedule D, Schedule SE, Form 8949, Form 8889, Form 8995 and the qualified-dividend/capital-gain worksheet; generate controlled PDF and XLSX review artifacts.
+- [x] Prove the import-to-1040 workflow with a live PostgreSQL acceptance fixture covering W-2, simple basis-known 1099-B sales, normal code-7 1099-R income, 1099-G unemployment and fully qualified 1099-SA distributions; separately prove fully reconciled 1099-K-to-Schedule-C treatment. The committed rule package remains `research_unapproved` pending qualified independent tax review.
 
 ### Completed and verified
 
@@ -63,14 +75,15 @@
 - [x] Make the global import entry a real persisted workflow selector instead of a synthetic wizard; expose an identifier-free, schema-valid 2025 blank template as a direct versioned download that does not require a client, database write, artifact worker or calculation run; link the same download from return imports and outputs; and publish a fail-closed 2025 source-form catalog that distinguishes the five typed Phase 1 families from document-only unsupported information returns.
 - [x] Replace the real persisted tax-year landing screen's synthetic W-2 workstation data and inert controls with an assigned-client workflow hub linking every implemented intake, source, import, mapping, review, calculation and output surface. Retain the synthetic workstation only as an explicitly synthetic UI fixture.
 - [x] Make the Hostinger production gate verify the approved Supabase project and explicit `draft_pilot` release mode; add a filing-readiness boundary for future official-paper and IRS MeF tracks and expose both as unavailable instead of providing a false filing action.
+- [x] Expand the 2025 review profile with complete typed vertical slices for 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA: canonical schema/template, persisted import/export/lineage, registry entry, source-document types, expected-document links, calculation blockers, deterministic supported treatments, Form 8949/Schedule D/Form 8889 and Form 1040/Schedule 1 lines, workpaper destinations, synthetic example download and unit/live-PostgreSQL evidence.
 
 ### In progress / not complete
 
 - [ ] Activate and independently validate production authentication: configure the approved Supabase project and trusted ingress, provision pilot subjects, verify production cookies/recovery/MFA/revocation, and obtain security-owner acceptance. Application login, TOTP enrollment/challenge, recovery, external-subject mapping, firm selection, session behavior, assignments and server-enforced persistence are implemented and tested.
 - [x] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows. Verified all 23 migrations, repeatable synthetic seeding, firm-scoped creation and reads, assignment enforcement, optimistic person updates, revision invalidation and audit history through the live PostgreSQL integration suite.
 - [x] Complete secure source upload, scanning/quarantine, encrypted object storage and authorized source viewing. Unit and live PostgreSQL integration evidence covers file limits and signatures, fail-closed production scanner configuration, quarantine/promotion, AES-256-GCM authenticated encryption, checksum verification, duplicate warnings, firm/assignment authorization and the no-store sandboxed viewing proxy.
-- [x] Complete every year-defined field and screen for W-2, 1099-NEC, 1099-MISC, 1099-INT and 1099-DIV. Exact 2025 registry-key regression tests cover all numbered boxes plus repeatable state/local rows, typed checkbox/code/open-label editors, issuer/recipient metadata, unknown raw-field preservation and immutable evidence-backed correction screens.
-- [x] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history. Evidence covers bounded unsafe-key/schema validation, stable-ID diffs, explicit use-imported/keep-existing/review-later semantics, exact replay, stale-preview rejection, protected manual values, immutable materialization and evidence-backed lineage, non-contributing void/duplicate states, guarded compensating rollback, complete attempt history and an AC-03 persisted five-family all-field/repeated-row/raw/unmapped import-to-source-export round trip.
+- [x] Complete every registered field and screen for the original five source families plus the expanded 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA review families. Exact year-pinned registry-key regression tests cover numbered boxes, repeatable state/local rows, typed checkbox/code/open-label editors, issuer/recipient metadata, unknown raw-field preservation and immutable evidence-backed correction screens.
+- [x] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history. Evidence covers bounded unsafe-key/schema validation, stable-ID diffs, explicit use-imported/keep-existing/review-later semantics, exact replay, stale-preview rejection, protected manual values, immutable materialization and evidence-backed lineage, non-contributing void/duplicate states, guarded compensating rollback, complete attempt history and an AC-03 persisted ten-family all-field/repeated-row/raw/unmapped import-to-source-export round trip.
 - [x] Complete activity mapping, receipts reconciliation, review points, overrides, audit history and dependency-based invalidation. Evidence covers cent-perfect amount/percentage splits and residual disclosure, unsupported-destination blockers, additional-receipt safeguards, immutable mapping revisions, assigned reviewer separation, changed-after-review state, independently approved/reverted registered overrides, append-only chained audits and consistent calculation/output/job/review invalidation after every relevant revision path.
 - [ ] Complete approved, independently verified 2025 rule package and supported calculation dependency graph.
 - [x] Complete Forms 1040, Schedules 1/2/B/C/SE, simplified Form 8995, qualified-dividend worksheet, traces and dependency manifests for the supported envelope. Engine and renderer tests verify required-form selection, all supported page families, owner-specific repeated schedules, named line/worksheet trace nodes, cycle-safe dependency order and explicit blocked manifests. Tax-rule activation remains separately gated by the independent approval item above.
@@ -85,7 +98,7 @@
 **Document purpose:** Master product and implementation specification; this document does not itself authorize deployment, external uploads, integrations, or filing  
 **Initial product:** U.S. Individual Income Tax Preparation Platform (Form 1040)  
 **Initial tax-year target:** 2025, with year-versioned architecture  
-**Initial source-document scope:** Form W-2, Form 1099-NEC, Form 1099-MISC, Form 1099-INT, Form 1099-DIV  
+**Initial source-document scope:** Form W-2, Form 1099-NEC, Form 1099-MISC, Form 1099-INT, Form 1099-DIV; the October 11 review-profile amendment adds typed 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA vertical slices
 **Long-term vision:** Full tax preparation, calculation, return generation, workpapers, source reconciliation, and integrations with professional tax systems such as CCH Axcess Tax, Drake Tax, and other supported tax platforms.
 
 
@@ -93,7 +106,7 @@
 **Primary design reference:** Drake Tax desktop workflow and compact data presentation  
 **Secondary design reference:** ProConnect navigation, input-to-return review, and diagnostics  
 **Initial release mode:** Professional preparation and review pilot; all generated returns remain drafts  
-**Scope decision:** Preserve the original five source-form families and year-versioned canonical architecture. Full vendor parity, state calculation, live integrations, and filing are future releases.
+**Scope decision:** Preserve the original five source-form families and year-versioned canonical architecture, and add the five October 11, 2026 review-profile vertical slices without expanding the release into official filing. Full vendor parity, state calculation, live integrations, and filing remain future releases.
 
 ## How to use this revision
 
@@ -292,7 +305,7 @@ Every automatic mapping, calculation, duplicate decision, or generated form line
 
 ## Phase 1 — Professional draft preparation and review pilot
 
-Deliver client/year management; year-specific taxpayer, spouse and dependent profiles; all five source-form families; secure source uploads/viewing; canonical JSON templates, import and export; immutable provenance; safe re-import; correction and duplicate resolution; activity mapping and reconciliation; review points; audit history; deterministic supported federal calculation; traceable Form 1040 preview; required implemented supporting schedules; draft PDF and XLSX workpapers.
+Deliver client/year management; year-specific taxpayer, spouse and dependent profiles; the ten typed review-release source-form families identified in the October 11 amendment; secure source uploads/viewing; canonical JSON templates, import and export; immutable provenance; safe re-import; correction and duplicate resolution; activity mapping and reconciliation; review points; audit history; deterministic supported federal calculation; traceable Form 1040 preview; required implemented supporting schedules; draft PDF and XLSX workpapers.
 
 There are two explicitly labelled outcomes:
 
@@ -3468,7 +3481,7 @@ This is required for auditability.
 
 Phase 1 is complete only when the end-to-end gates in Section 124 pass. It must demonstrate both a supported reviewed draft and a partial draft that correctly refuses approval.
 
-A preparer must be able to create a client/year, complete intake, attach source files, download/import the canonical template, preserve all five source-form families and unknown fields, verify provenance, resolve duplicates/corrections, allocate income, record supported business facts, review diagnostics, calculate a supported case, navigate every material result back to inputs, produce the required draft forms and workpaper, and export/restore canonical data without loss.
+A preparer must be able to create a client/year, complete intake, attach source files, download/import the canonical template, preserve all ten typed review-release source-form families and unknown fields, verify provenance, resolve duplicates/corrections, allocate income, record supported business facts, review diagnostics, calculate a supported case, navigate every material result back to inputs, produce the required draft forms and workpaper, and export/restore canonical data without loss.
 
 A reviewer must be able to flag and verify values, inspect overrides, request changes, see prior/current values, and approve only the unchanged supported draft. Re-import, concurrent editing, calculation retries, source replacement and rule updates must not leave false approvals.
 

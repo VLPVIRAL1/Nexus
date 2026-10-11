@@ -39,6 +39,7 @@ export interface DividendInput2025 {
   qualifiedDividends: DollarInput;
   exemptInterestDividends: DollarInput;
   section199ADividends: DollarInput;
+  capitalGainDistributions?: DollarInput;
   federalWithholding: DollarInput;
 }
 
@@ -54,8 +55,54 @@ export interface ScheduleCActivityInput2025 {
 
 export interface BusinessWithholdingInput2025 {
   sourceId: string;
-  sourceType: "1099-NEC" | "1099-MISC";
+  sourceType: "1099-NEC" | "1099-MISC" | "1099-K";
   federalWithholding: DollarInput;
+}
+
+export interface BrokerTransactionInput2025 {
+  id: string;
+  description: string;
+  term: "short" | "long";
+  proceeds: DollarInput;
+  costBasis: DollarInput;
+  federalWithholding: DollarInput;
+  basisReportedToIrs: boolean;
+  adjustmentAmount: DollarInput;
+  adjustmentCode: string;
+}
+
+export interface RetirementDistributionInput2025 {
+  id: string;
+  owner: PersonRole2025;
+  grossDistribution: DollarInput;
+  taxableAmount: DollarInput;
+  federalWithholding: DollarInput;
+  distributionCode: string;
+  iraSepSimple: boolean;
+  taxableAmountNotDetermined: boolean;
+}
+
+export interface GovernmentPaymentInput2025 {
+  id: string;
+  unemploymentCompensation: DollarInput;
+  federalWithholding: DollarInput;
+}
+
+export interface PaymentCardInput2025 {
+  id: string;
+  grossPaymentAmount: DollarInput;
+  mappedScheduleCAmount: DollarInput;
+  federalWithholding: DollarInput;
+}
+
+export interface HsaDistributionInput2025 {
+  id: string;
+  owner: PersonRole2025;
+  grossDistribution: DollarInput;
+  qualifiedMedicalExpenses: DollarInput;
+  earningsOnExcessContributions: DollarInput;
+  distributionCode: string;
+  accountType: "HSA" | "Archer MSA" | "Medicare Advantage MSA";
 }
 
 export interface EligibilityInput2025 {
@@ -100,6 +147,11 @@ export interface CalculationInput2025 {
   dividends: DividendInput2025[];
   scheduleCActivities: ScheduleCActivityInput2025[];
   businessWithholding: BusinessWithholdingInput2025[];
+  brokerTransactions?: BrokerTransactionInput2025[];
+  retirementDistributions?: RetirementDistributionInput2025[];
+  governmentPayments?: GovernmentPaymentInput2025[];
+  paymentCardReceipts?: PaymentCardInput2025[];
+  hsaDistributions?: HsaDistributionInput2025[];
   approvedOverrides?: { form1040IncomeTax?: DollarInput };
 }
 
@@ -142,16 +194,25 @@ export interface CalculationOutput2025 {
   forms: {
     scheduleB: { required: boolean; taxableInterest: string; ordinaryDividends: string };
     scheduleC: Array<{ activityId: string; grossReceipts: string; expenses: string; netProfit: string }>;
+    form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustment: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
+    scheduleD: { shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string };
+    form8889: Array<{ owner: PersonRole2025; grossDistribution: string; qualifiedMedicalExpenses: string; taxableDistribution: string }>;
     scheduleSE: ScheduleSEOutput2025[];
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
-    schedule1: { businessIncome: string; deductiblePartOfSelfEmploymentTax: string };
-    schedule2: { selfEmploymentTax: string };
+    schedule1: { businessIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string };
+    schedule2: { selfEmploymentTax: string; additionalHsaTax: string };
     form1040: {
       wages: string;
       taxExemptInterest: string;
       taxableInterest: string;
       qualifiedDividends: string;
       ordinaryDividends: string;
+      iraDistributions: string;
+      taxableIraDistributions: string;
+      pensionsAndAnnuities: string;
+      taxablePensionsAndAnnuities: string;
+      capitalGainOrLoss: string;
+      schedule1AdditionalIncome: string;
       totalIncome: string;
       adjustedGrossIncome: string;
       standardDeduction: string;

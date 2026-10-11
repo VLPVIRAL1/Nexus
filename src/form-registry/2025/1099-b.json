@@ -1,0 +1,29 @@
+{
+  "form": "1099-B", "tax_year": 2025, "revision": "2025", "registry_version": "2025.2.0-review", "source_url": "https://www.irs.gov/pub/irs-prior/f1099b--2025.pdf", "source_revision": "2025",
+  "fields": [
+    { "key": "description", "label": "1a Description of property", "type": "string", "calculation": "supported" },
+    { "key": "dateAcquired", "label": "1b Date acquired", "type": "string", "calculation": "supported" },
+    { "key": "dateSold", "label": "1c Date sold or disposed", "type": "string", "calculation": "supported" },
+    { "key": "proceeds", "label": "1d Proceeds", "type": "money", "calculation": "supported" },
+    { "key": "costBasis", "label": "1e Cost or other basis", "type": "money", "calculation": "supported" },
+    { "key": "accruedMarketDiscount", "label": "1f Accrued market discount", "type": "money", "calculation": "future" },
+    { "key": "washSaleLossDisallowed", "label": "1g Wash sale loss disallowed", "type": "money", "calculation": "future" },
+    { "key": "term", "label": "2 Type of gain or loss (short or long)", "type": "string", "calculation": "supported" },
+    { "key": "collectiblesOrQof", "label": "3 Collectibles or QOF indicator", "type": "boolean", "calculation": "future" },
+    { "key": "federalWithholding", "label": "4 Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "noncoveredSecurity", "label": "5 Noncovered security", "type": "boolean", "calculation": "conditional" },
+    { "key": "reportedGrossOrNet", "label": "6 Reported gross or net", "type": "string", "calculation": "conditional" },
+    { "key": "lossNotAllowed", "label": "7 Loss not allowed", "type": "boolean", "calculation": "future" },
+    { "key": "profitLossClosedContracts", "label": "8 Profit or loss realized in 2025", "type": "money", "calculation": "future" },
+    { "key": "unrealizedPriorYear", "label": "9 Unrealized profit or loss prior year", "type": "money", "calculation": "future" },
+    { "key": "unrealizedCurrentYear", "label": "10 Unrealized profit or loss current year", "type": "money", "calculation": "future" },
+    { "key": "aggregateProfitLoss", "label": "11 Aggregate profit or loss", "type": "money", "calculation": "future" },
+    { "key": "basisReportedToIrs", "label": "12 Basis reported to IRS", "type": "boolean", "calculation": "supported" },
+    { "key": "bartering", "label": "13 Bartering", "type": "money", "calculation": "future" },
+    { "key": "cusip", "label": "CUSIP number", "type": "string", "calculation": "not_applicable" },
+    { "key": "adjustmentCode", "label": "Form 8949 adjustment code", "type": "string", "calculation": "conditional" },
+    { "key": "adjustmentAmount", "label": "Form 8949 adjustment amount", "type": "money", "calculation": "conditional" },
+    { "key": "stateRows", "label": "14-16 State information", "type": "repeatable_state", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "form_8949_schedule_d_review", "integration": "future"
+}

@@ -1,0 +1,25 @@
+{
+  "form": "1099-R", "tax_year": 2025, "revision": "2025", "registry_version": "2025.2.0-review", "source_url": "https://www.irs.gov/pub/irs-prior/f1099r--2025.pdf", "source_revision": "2025",
+  "fields": [
+    { "key": "grossDistribution", "label": "1 Gross distribution", "type": "money", "calculation": "supported" },
+    { "key": "taxableAmount", "label": "2a Taxable amount", "type": "money", "calculation": "supported" },
+    { "key": "taxableAmountNotDetermined", "label": "2b Taxable amount not determined", "type": "boolean", "calculation": "conditional" },
+    { "key": "totalDistribution", "label": "2b Total distribution", "type": "boolean", "calculation": "supported" },
+    { "key": "capitalGain", "label": "3 Capital gain", "type": "money", "calculation": "future" },
+    { "key": "federalWithholding", "label": "4 Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "employeeContributions", "label": "5 Employee contributions/designated Roth contributions or insurance premiums", "type": "money", "calculation": "future" },
+    { "key": "netUnrealizedAppreciation", "label": "6 Net unrealized appreciation", "type": "money", "calculation": "future" },
+    { "key": "distributionCode", "label": "7 Distribution code", "type": "string", "calculation": "conditional" },
+    { "key": "iraSepSimple", "label": "7 IRA/SEP/SIMPLE", "type": "boolean", "calculation": "supported" },
+    { "key": "otherAmount", "label": "8 Other", "type": "money", "calculation": "future" },
+    { "key": "otherPercentage", "label": "8 Other percentage", "type": "string", "calculation": "future" },
+    { "key": "totalEmployeeContributions", "label": "9a Total employee contributions", "type": "money", "calculation": "future" },
+    { "key": "totalDistributionPercentage", "label": "9b Total distribution percentage", "type": "string", "calculation": "future" },
+    { "key": "allocableIrRothContribution", "label": "10 Allocable amount to IRR within 5 years", "type": "money", "calculation": "future" },
+    { "key": "firstYearDesignatedRoth", "label": "11 First year of designated Roth contribution", "type": "string", "calculation": "future" },
+    { "key": "dateOfPayment", "label": "13 Date of payment", "type": "string", "calculation": "not_applicable" },
+    { "key": "stateRows", "label": "14-16 State information", "type": "repeatable_state", "calculation": "not_applicable" },
+    { "key": "localRows", "label": "17-19 Local information", "type": "repeatable_local", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "form_1040_retirement_review", "integration": "future"
+}

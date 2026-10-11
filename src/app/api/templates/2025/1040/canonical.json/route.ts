@@ -9,7 +9,7 @@ export async function GET() {
   return new Response(body, {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="taxpayer-import-template-2025-v1.0.0.json"',
+      "Content-Disposition": 'attachment; filename="taxpayer-import-template-2025-v1.1.0-review.json"',
       "Cache-Control": "public, max-age=3600, immutable",
       ETag: `"sha256-${digest}"`,
       "X-Content-Type-Options": "nosniff",

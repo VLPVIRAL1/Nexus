@@ -137,7 +137,7 @@ function rowColumns(type: RegistryField["type"], formType: string, rows: Record<
     const wageKey = formType === "W2" || rows.some((row) => "stateWages" in row) ? "stateWages" : "stateIncome";
     return [{ key: "state", label: "State", placeholder: "IL" }, { key: "payerStateId", label: "State ID" }, { key: wageKey, label: formType === "W2" ? "State wages" : "State income", money: true }, { key: "stateTaxWithheld", label: "State tax withheld", money: true }];
   }
-  if (type === "repeatable_local") return [{ key: "localWages", label: "Local wages", money: true }, { key: "localTaxWithheld", label: "Local tax withheld", money: true }, { key: "localityName", label: "Locality" }];
+  if (type === "repeatable_local") return [{ key: formType === "1099-R" ? "localDistribution" : "localWages", label: formType === "1099-R" ? "Local distribution" : "Local wages", money: true }, { key: "localTaxWithheld", label: "Local tax withheld", money: true }, { key: "localityName", label: "Locality" }];
   if (type === "repeatable_code_money") return [{ key: "code", label: "Code", placeholder: "DD" }, { key: "amount", label: "Amount", money: true }];
   return [{ key: "label", label: "Label" }, { key: "amount", label: "Amount", money: true }, { key: "classification", label: "Classification" }];
 }

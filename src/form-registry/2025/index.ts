@@ -3,11 +3,16 @@ import nec from "./1099-nec.json";
 import misc from "./1099-misc.json";
 import interest from "./1099-int.json";
 import dividends from "./1099-div.json";
+import brokerage from "./1099-b.json";
+import government from "./1099-g.json";
+import payments from "./1099-k.json";
+import retirement from "./1099-r.json";
+import hsa from "./1099-sa.json";
 
 export type RegistryFieldType="money"|"string"|"boolean"|"repeatable_state"|"repeatable_local"|"repeatable_code_money"|"repeatable_open_label_money"|"checkbox_group";
 export interface RegistryField{key:string;label:string;type:RegistryFieldType;calculation:string}
-export interface FormRegistry{form:string;tax_year:number;revision:string;registry_version:string;fields:RegistryField[];pdf_output:string;integration:string}
-export const formRegistries2025:Record<string,FormRegistry>={W2:w2 as FormRegistry,"1099-NEC":nec as FormRegistry,"1099-MISC":misc as FormRegistry,"1099-INT":interest as FormRegistry,"1099-DIV":dividends as FormRegistry};
+export interface FormRegistry{form:string;tax_year:number;revision:string;registry_version:string;source_url?:string;source_revision?:string;fields:RegistryField[];pdf_output:string;integration:string}
+export const formRegistries2025:Record<string,FormRegistry>={W2:w2 as FormRegistry,"1099-NEC":nec as FormRegistry,"1099-MISC":misc as FormRegistry,"1099-INT":interest as FormRegistry,"1099-DIV":dividends as FormRegistry,"1099-B":brokerage as FormRegistry,"1099-G":government as FormRegistry,"1099-K":payments as FormRegistry,"1099-R":retirement as FormRegistry,"1099-SA":hsa as FormRegistry};
 const addressFields=(prefix:string):RegistryField[]=>[
   {key:`${prefix}.name`,label:`${title(prefix)} name`,type:"string",calculation:"not_applicable"},
   {key:`${prefix}.tin`,label:`${title(prefix)} TIN`,type:"string",calculation:"not_applicable"},

@@ -109,8 +109,11 @@ test("global import entry downloads the blank template and routes to the persist
   await expect(page.getByRole("link", { name: "Stage JSON" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/imports");
   const response = await request.get("/api/templates/2025/1040/canonical.json");
   expect(response.ok()).toBe(true);
-  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.0.0.json");
-  expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [] });
+  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.1.0-review.json");
+  expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] });
+  const example = await request.get("/api/examples/2025/supported-review-return.json");
+  expect(example.ok()).toBe(true);
+  expect(await example.json()).toMatchObject({ tax_year: 2025, forms: { w2: [expect.any(Object)], form_1099_b: [expect.any(Object)], form_1099_g: [expect.any(Object)], form_1099_r: [expect.any(Object)], form_1099_sa: [expect.any(Object)] }, metadata: { synthetic_review_example: true } });
 });
 
 for (const route of [

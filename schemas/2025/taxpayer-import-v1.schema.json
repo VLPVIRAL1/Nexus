@@ -17,13 +17,18 @@
     "source_documents": { "type": "array" },
     "forms": {
       "type": "object",
-      "required": ["w2", "form_1099_nec", "form_1099_misc", "form_1099_int", "form_1099_div"],
+      "required": ["w2", "form_1099_nec", "form_1099_misc", "form_1099_int", "form_1099_div", "form_1099_b", "form_1099_g", "form_1099_k", "form_1099_r", "form_1099_sa"],
       "properties": {
         "w2": { "type": "array" },
         "form_1099_nec": { "type": "array" },
         "form_1099_misc": { "type": "array" },
         "form_1099_int": { "type": "array" },
-        "form_1099_div": { "type": "array" }
+        "form_1099_div": { "type": "array" },
+        "form_1099_b": { "type": "array" },
+        "form_1099_g": { "type": "array" },
+        "form_1099_k": { "type": "array" },
+        "form_1099_r": { "type": "array" },
+        "form_1099_sa": { "type": "array" }
       },
       "additionalProperties": false
     },

@@ -133,13 +133,14 @@ describe("2025 supported return graph", () => {
       { owner: "taxpayer", netProfit: "10000", netEarnings: "9235", socialSecurityWages: "170000", socialSecurityTax: "756", medicareTax: "268", selfEmploymentTax: "1024", deductibleHalf: "512" },
       { owner: "spouse", netProfit: "8000", netEarnings: "7388", socialSecurityWages: "20000", socialSecurityTax: "916", medicareTax: "214", selfEmploymentTax: "1130", deductibleHalf: "565" },
     ]);
-    expect(result.forms?.schedule1).toEqual({ businessIncome: "18000", deductiblePartOfSelfEmploymentTax: "1077" });
-    expect(result.forms?.schedule2).toEqual({ selfEmploymentTax: "2154" });
+    expect(result.forms?.schedule1).toEqual({ businessIncome: "18000", unemploymentCompensation: "0", deductiblePartOfSelfEmploymentTax: "1077" });
+    expect(result.forms?.schedule2).toEqual({ selfEmploymentTax: "2154", additionalHsaTax: "0" });
     expect(result.forms?.form8995).toEqual({ qbi: "16923", section199ADividends: "0", incomeLimitationBase: "178023", deduction: "3385" });
     expect(result.forms?.scheduleB.required).toBe(true);
     expect(result.forms?.form1040).toMatchObject({ taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000", qbiDeduction: "3385" });
     expect(result.forms?.form1040).toEqual({
       wages: "190000", taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000",
+      iraDistributions: "0", taxableIraDistributions: "0", pensionsAndAnnuities: "0", taxablePensionsAndAnnuities: "0", capitalGainOrLoss: "0", schedule1AdditionalIncome: "18000",
       totalIncome: "214600", adjustedGrossIncome: "213523", standardDeduction: "31500", qbiDeduction: "3385", taxableIncome: "178638",
       incomeTax: "28848", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", refund: "0", amountOwed: "3402",
     });
@@ -153,6 +154,45 @@ describe("2025 supported return graph", () => {
     }));
     expect(result.forms?.form8995).toEqual({ qbi: "0", section199ADividends: "1000", incomeLimitationBase: "45250", deduction: "200" });
     expect(result.forms?.form1040.taxableIncome).toBe("45050");
+  });
+
+  it("calculates the five expanded review-profile source forms through their dependent forms", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2", owner: "taxpayer", wages: "60000.00", federalWithholding: "7000.00", socialSecurityWages: "60000.00" }],
+      brokerTransactions: [{ id: "b1", description: "10 shares SYN", term: "long", proceeds: "10000.00", costBasis: "7000.00", federalWithholding: "100.00", basisReportedToIrs: true, adjustmentAmount: "0.00", adjustmentCode: "" }],
+      retirementDistributions: [{ id: "r1", owner: "taxpayer", grossDistribution: "5000.00", taxableAmount: "4000.00", federalWithholding: "500.00", distributionCode: "7", iraSepSimple: true, taxableAmountNotDetermined: false }],
+      governmentPayments: [{ id: "g1", unemploymentCompensation: "2000.00", federalWithholding: "200.00" }],
+      paymentCardReceipts: [{ id: "k1", grossPaymentAmount: "5000.00", mappedScheduleCAmount: "5000.00", federalWithholding: "50.00" }],
+      hsaDistributions: [{ id: "sa1", owner: "taxpayer", grossDistribution: "1000.00", qualifiedMedicalExpenses: "1000.00", earningsOnExcessContributions: "0.00", distributionCode: "1", accountType: "HSA" }],
+      scheduleCActivities: [{ id: "c1", name: "Card receipts business", owner: "taxpayer", grossReceipts: "5000.00", expenses: {}, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8949[0]).toMatchObject({ term: "long", proceeds: "10000", costBasis: "7000", gainOrLoss: "3000" });
+    expect(result.forms?.scheduleD).toEqual({ shortTermGainOrLoss: "0", longTermGainOrLoss: "3000", netGainOrLoss: "3000", deductibleLoss: "0" });
+    expect(result.forms?.form8889[0]).toMatchObject({ grossDistribution: "1000", qualifiedMedicalExpenses: "1000", taxableDistribution: "0" });
+    expect(result.forms?.schedule1).toMatchObject({ businessIncome: "5000", unemploymentCompensation: "2000" });
+    expect(result.forms?.form1040).toMatchObject({ iraDistributions: "5000", taxableIraDistributions: "4000", capitalGainOrLoss: "3000", schedule1AdditionalIncome: "7000", federalWithholding: "7850" });
+    expect(result.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax")).toMatchObject({ ruleId: "QD-CAPITAL-GAIN-WORKSHEET", operands: expect.objectContaining({ netCapitalGain: "3000" }) });
+    expect(result.dependencyManifest.find(({ nodeId }) => nodeId === "form-8949")?.status).toBe("evaluated");
+  });
+
+  it("taxes short-term brokerage gains as ordinary income", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2", owner: "taxpayer", wages: "60000.00", federalWithholding: "0.00", socialSecurityWages: "60000.00" }],
+      brokerTransactions: [{ id: "b1", description: "Short-term shares", term: "short", proceeds: "10000.00", costBasis: "7000.00", federalWithholding: "0.00", basisReportedToIrs: true, adjustmentAmount: "0.00", adjustmentCode: "" }],
+    }));
+    expect(result.forms?.form1040.capitalGainOrLoss).toBe("3000");
+    expect(result.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax")).toMatchObject({ ruleId: "IRS-TAX-TABLE", operands: expect.objectContaining({ netCapitalGain: "0" }) });
+  });
+
+  it("blocks expanded forms outside the explicit review profiles", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      retirementDistributions: [{ id: "r1", owner: "taxpayer", grossDistribution: "5000.00", taxableAmount: "5000.00", federalWithholding: "0.00", distributionCode: "1", iraSepSimple: true, taxableAmountNotDetermined: false }],
+      paymentCardReceipts: [{ id: "k1", grossPaymentAmount: "5000.00", mappedScheduleCAmount: "4000.00", federalWithholding: "0.00" }],
+      hsaDistributions: [{ id: "sa1", owner: "taxpayer", grossDistribution: "1000.00", qualifiedMedicalExpenses: "900.00", earningsOnExcessContributions: "0.00", distributionCode: "1", accountType: "HSA" }],
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["RETIREMENT_DISTRIBUTION_CODE_UNSUPPORTED", "FORM_1099_K_RECONCILIATION_REQUIRED", "HSA_NONQUALIFIED_DISTRIBUTION_UNSUPPORTED"]));
   });
 
   it("blocks unknown applicability and unsupported cases without emitting forms", () => {

@@ -123,7 +123,7 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
   const missingQuestionIds = phase1IntakeQuestions.filter(({ required, id }) => required && (!answerByQuestion.has(id) || answerByQuestion.get(id)?.answer === "unknown")).map(({ id }) => id);
   const blockingQuestionIds = phase1IntakeQuestions.filter((question) => {
     const answer = answerByQuestion.get(question.id)?.answer;
-    return answer === "yes" ? !question.supportedWhenYes : answer === "no" ? question.supportedWhenYes : false;
+    return answer === "yes" ? !question.supportedWhenYes : answer === "no" ? !(question.supportedWhenNo ?? !question.supportedWhenYes) : false;
   }).map(({ id }) => id);
   const documents = await client.query<{ id: string; registry_id: string | null; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
     "SELECT id,registry_id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],

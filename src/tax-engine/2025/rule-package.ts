@@ -24,14 +24,14 @@ export const ruleSources2025: RuleSource2025[] = [
 ];
 
 export const rulePackage2025 = {
-  id: "us-federal-1040-2025-supported-v1",
+  id: "us-federal-1040-2025-supported-v2-review",
   taxYear: 2025,
-  version: "0.1.0-research.1",
-  effectiveRevision: "2026-02-13-qbi-correction",
+  version: "0.2.0-research.1",
+  effectiveRevision: "2026-10-11-expanded-review-profile",
   status: "research_unapproved" as const,
   reviewer: null,
   taxTableSha256: "349208c4f25adbdb81cc418c75843364ae15dd36fbe762bc2adf2829a238d10a",
-  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD"],
+  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
   sources: ruleSources2025,
 };
 

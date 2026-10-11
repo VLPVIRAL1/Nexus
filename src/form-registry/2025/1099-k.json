@@ -1,0 +1,27 @@
+{
+  "form": "1099-K", "tax_year": 2025, "revision": "continuous-use-rev-2024", "registry_version": "2025.2.0-review", "source_url": "https://www.irs.gov/pub/irs-prior/f1099k--2024.pdf", "source_revision": "March 2024 continuous-use form applicable to 2025 reporting",
+  "fields": [
+    { "key": "filerType", "label": "Filer type", "type": "string", "calculation": "not_applicable" },
+    { "key": "paymentSettlementEntityName", "label": "Payment settlement entity name and telephone", "type": "string", "calculation": "not_applicable" },
+    { "key": "electronicPaymentFacilitatorName", "label": "Electronic payment facilitator name and telephone", "type": "string", "calculation": "not_applicable" },
+    { "key": "grossPaymentAmount", "label": "1a Gross amount of payment card/third-party network transactions", "type": "money", "calculation": "conditional" },
+    { "key": "cardNotPresentTransactions", "label": "1b Card not present transactions", "type": "money", "calculation": "conditional" },
+    { "key": "merchantCategoryCode", "label": "2 Merchant category code", "type": "string", "calculation": "not_applicable" },
+    { "key": "paymentTransactionCount", "label": "3 Number of payment transactions", "type": "string", "calculation": "not_applicable" },
+    { "key": "federalWithholding", "label": "4 Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "january", "label": "5a January", "type": "money", "calculation": "conditional" },
+    { "key": "february", "label": "5b February", "type": "money", "calculation": "conditional" },
+    { "key": "march", "label": "5c March", "type": "money", "calculation": "conditional" },
+    { "key": "april", "label": "5d April", "type": "money", "calculation": "conditional" },
+    { "key": "may", "label": "5e May", "type": "money", "calculation": "conditional" },
+    { "key": "june", "label": "5f June", "type": "money", "calculation": "conditional" },
+    { "key": "july", "label": "5g July", "type": "money", "calculation": "conditional" },
+    { "key": "august", "label": "5h August", "type": "money", "calculation": "conditional" },
+    { "key": "september", "label": "5i September", "type": "money", "calculation": "conditional" },
+    { "key": "october", "label": "5j October", "type": "money", "calculation": "conditional" },
+    { "key": "november", "label": "5k November", "type": "money", "calculation": "conditional" },
+    { "key": "december", "label": "5l December", "type": "money", "calculation": "conditional" },
+    { "key": "stateRows", "label": "6-8 State information", "type": "repeatable_state", "calculation": "not_applicable" }
+  ],
+  "pdf_output": "schedule_c_reconciliation_review", "integration": "future"
+}

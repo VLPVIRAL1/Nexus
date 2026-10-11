@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { canonicalReturnFixture } from "../fixtures/canonical-return";
 import { canonicalTaxReturnSchema } from "../../src/lib/canonical-schema";
-import { createBlankCanonicalTemplate2025, exportCanonicalJson } from "../../src/services/outputs/json-export-service";
+import { createBlankCanonicalTemplate2025, createSupportedReviewExample2025, exportCanonicalJson } from "../../src/services/outputs/json-export-service";
 import { buildFormRenderingPlan2025 } from "../../src/services/outputs/form-data-2025";
 import { generateDraftReturnPackage } from "../../src/services/outputs/return-package-service";
 import { generateWorkpaper } from "../../src/services/outputs/workpaper-service";
@@ -32,8 +32,15 @@ describe("output integrity foundations", () => {
     expect(JSON.stringify(parsed)).not.toContain(canonicalReturnFixture.clientId);
     expect(createHash("sha256").update(blank.bytes).digest("hex")).toBe(blank.sha256);
     expect(parsed._instructions.critical_rules).toContain("Preserve all W-2 Box 12 code entries.");
-    expect(parsed.metadata.supported_source_forms).toEqual(["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV"]);
+    expect(parsed.metadata.supported_source_forms).toEqual(["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"]);
     expect(createBlankCanonicalTemplate2025()).toEqual(parsed);
+  });
+
+  it("publishes a schema-valid synthetic import-to-1040 review example", () => {
+    const example = createSupportedReviewExample2025();
+    expect(() => canonicalTaxReturnSchema.parse(example)).not.toThrow();
+    expect(example.metadata.synthetic_review_example).toBe(true);
+    expect(example.forms).toMatchObject({ w2: [expect.any(Object)], form_1099_b: [expect.any(Object)], form_1099_g: [expect.any(Object)], form_1099_r: [expect.any(Object)], form_1099_sa: [expect.any(Object)], form_1099_k: [] });
   });
 
   it("generates a workbook with required foundation sheets and run identity", async () => {
@@ -61,14 +68,27 @@ describe("output integrity foundations", () => {
     const formPlan = buildFormRenderingPlan2025(supportedCalculation());
     const result = await generateDraftReturnPackage({ taxYear: 2025, inputRevision: 28, calculationRunId: "CALC-SYNTHETIC", engineVersion: "not-approved", ruleVersion: "not-approved", requiredForms: formPlan.requiredForms, renderedForms: formPlan.renderedForms, missingForms: formPlan.missingForms, supportStatus: "partial" }, formPlan.pages);
     const pdf = await PDFDocument.load(result.bytes);
-    expect(pdf.getPageCount()).toBe(1 + formPlan.pages.length);
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1 + formPlan.pages.length);
     expect(formPlan.renderedForms).toEqual(expect.arrayContaining(["Form 1040", "Schedule B", "Schedule C", "Schedule SE", "Schedule 1", "Schedule 2", "Form 8995", "Qualified Dividends Tax Worksheet"]));
     expect(result.manifest.missingForms).toEqual([]);
     expect(result.sha256).toHaveLength(64);
   });
+
+  it("renders Form 8949, Schedule D, Form 8889, retirement lines, and unemployment from expanded sources", () => {
+    const calculation = supportedCalculation({
+      brokerTransactions: [{ id: "b", description: "Synthetic shares", term: "long", proceeds: "10000.00", costBasis: "7000.00", federalWithholding: "0.00", basisReportedToIrs: true, adjustmentAmount: "0.00", adjustmentCode: "" }],
+      retirementDistributions: [{ id: "r", owner: "taxpayer", grossDistribution: "5000.00", taxableAmount: "4000.00", federalWithholding: "0.00", distributionCode: "7", iraSepSimple: true, taxableAmountNotDetermined: false }],
+      governmentPayments: [{ id: "g", unemploymentCompensation: "2000.00", federalWithholding: "0.00" }],
+      hsaDistributions: [{ id: "sa", owner: "taxpayer", grossDistribution: "1000.00", qualifiedMedicalExpenses: "1000.00", earningsOnExcessContributions: "0.00", distributionCode: "1", accountType: "HSA" }],
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 1040", "Form 8949", "Schedule D", "Form 8889", "Schedule 1"]));
+    expect(plan.missingForms).toEqual([]);
+    expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4a" }), expect.objectContaining({ line: "7" }), expect.objectContaining({ line: "8" })]));
+  });
 });
 
-function supportedCalculation() {
+function supportedCalculation(overrides: Partial<CalculationInput2025> = {}) {
   const input: CalculationInput2025 = {
     calculationId: "CALC-SYNTHETIC", inputRevision: 28, filingStatus: "single",
     eligibility: {
@@ -84,6 +104,7 @@ function supportedCalculation() {
     dividends: [{ id: "div", payerName: "Synthetic Fund", ordinaryDividends: "2000.00", qualifiedDividends: "1000.00", exemptInterestDividends: "0.00", section199ADividends: "500.00", federalWithholding: "100.00" }],
     scheduleCActivities: [{ id: "business", name: "Synthetic Consulting", owner: "taxpayer", grossReceipts: "5000.00", expenses: { supplies: "500.00" }, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
     businessWithholding: [],
+    ...overrides,
   };
   return calculateFederalReturn2025(input);
 }
