@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { canonicalReturnFixture } from "../fixtures/canonical-return";
 import { canonicalTaxReturnSchema } from "../../src/lib/canonical-schema";
-import { exportCanonicalJson } from "../../src/services/outputs/json-export-service";
+import { createBlankCanonicalTemplate2025, exportCanonicalJson } from "../../src/services/outputs/json-export-service";
 import { buildFormRenderingPlan2025 } from "../../src/services/outputs/form-data-2025";
 import { generateDraftReturnPackage } from "../../src/services/outputs/return-package-service";
 import { generateWorkpaper } from "../../src/services/outputs/workpaper-service";
@@ -31,6 +31,9 @@ describe("output integrity foundations", () => {
     expect(parsed).toMatchObject({ client: {}, taxpayer: {}, spouse: null, dependents: [], source_documents: [], mappings: [] });
     expect(JSON.stringify(parsed)).not.toContain(canonicalReturnFixture.clientId);
     expect(createHash("sha256").update(blank.bytes).digest("hex")).toBe(blank.sha256);
+    expect(parsed._instructions.critical_rules).toContain("Preserve all W-2 Box 12 code entries.");
+    expect(parsed.metadata.supported_source_forms).toEqual(["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV"]);
+    expect(createBlankCanonicalTemplate2025()).toEqual(parsed);
   });
 
   it("generates a workbook with required foundation sheets and run identity", async () => {

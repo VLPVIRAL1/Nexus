@@ -16,7 +16,7 @@ export function ClientProfile({ client,initialAssignmentState }: { client: Clien
   const [showAssignments,setShowAssignments]=useState(false);
   const [assignments,setAssignments]=useState(initialAssignmentState.assignments);
   const [assignmentSaving,setAssignmentSaving]=useState<string|null>(null);
-  const [year, setYear] = useState(2025);
+  const year = 2025;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   async function createYear() {
@@ -37,7 +37,7 @@ export function ClientProfile({ client,initialAssignmentState }: { client: Clien
       </div>
       {error?<p className="form-error" role="alert">{error}</p>:null}
       {showAssignments&&initialAssignmentState.canManage?<section className="panel work-queue"><div className="panel-heading"><div><h2>Client assignments</h2><p>Assignment scope is enforced on every server request. Firm roles continue to control the actions each assigned user may perform.</p></div></div><div className="table-wrap"><table><thead><tr><th>Firm member</th><th>Firm role</th>{(Object.keys(assignmentLabels) as AssignmentKind[]).map((kind)=><th key={kind}>{assignmentLabels[kind]}</th>)}</tr></thead><tbody>{initialAssignmentState.members.map((member)=><tr key={member.id}><td><strong>{member.displayName}</strong><small className="cell-subtext">{member.email}</small></td><td>{member.role.replaceAll("_"," ")}</td>{(Object.keys(assignmentLabels) as AssignmentKind[]).map((kind)=>{const checked=assignments.some((item)=>item.userId===member.id&&item.kind===kind);const key=`${member.id}:${kind}`;return <td key={kind}><label><span className="sr-only">{assignmentLabels[kind]} assignment for {member.displayName}</span><input type="checkbox" checked={checked} disabled={!member.allowedKinds.includes(kind)||assignmentSaving!==null} onChange={(event)=>toggleAssignment(member.id,kind,event.target.checked)}/>{assignmentSaving===key?<small> Saving…</small>:null}</label></td>})}</tr>)}</tbody></table></div></section>:null}
-      {showCreateYear ? <section className="panel inline-create"><label><span>Tax year</span><input type="number" min={2025} max={2200} value={year} onChange={(event) => setYear(Number(event.target.value))} /></label><button className="button primary" type="button" disabled={saving} onClick={createYear}>{saving ? "Creating…" : "Create"}</button><button className="button secondary" type="button" onClick={() => setShowCreateYear(false)}>Cancel</button></section> : null}
+      {showCreateYear ? <section className="panel inline-create"><label><span>Tax year</span><input type="number" min={2025} max={2025} value={year} readOnly /></label><p>Only the approved Phase 1 target year can be created. Later years require their own versioned form and rule packages.</p><button className="button primary" type="button" disabled={saving} onClick={createYear}>{saving ? "Creating…" : "Create"}</button><button className="button secondary" type="button" onClick={() => setShowCreateYear(false)}>Cancel</button></section> : null}
       <section className="panel work-queue">
         <div className="panel-heading"><div><h2>Tax years</h2><p>Each year has an isolated revision and calculation state.</p></div></div>
         <div className="table-wrap">

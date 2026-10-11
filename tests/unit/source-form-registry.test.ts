@@ -1,5 +1,6 @@
 import { describe,expect,it } from "vitest";
 import { formRegistries2025,registryFieldPath,validateRegisteredSourceData } from "../../src/form-registry/2025";
+import { sourceFormCatalog2025,typedSourceForms2025 } from "../../src/form-registry/2025/source-form-catalog";
 
 describe("2025 source form registry",()=>{
   it("publishes all five year-pinned form layouts and canonical paths",()=>{expect(Object.keys(formRegistries2025).sort()).toEqual(["1099-DIV","1099-INT","1099-MISC","1099-NEC","W2"]);expect(registryFieldPath("W2","box1")).toEqual(["federal","box1"]);expect(registryFieldPath("1099-NEC","box3")).toEqual(["boxes","excessGoldenParachutePayments"]);expect(registryFieldPath("1099-MISC","box14")).toEqual(["boxes","nonqualifiedDeferredCompensation"]);});
@@ -12,6 +13,7 @@ describe("2025 source form registry",()=>{
     expect(formRegistries2025["1099-MISC"].fields.find(({key})=>key==="box11")).toMatchObject({type:"money",label:"Fish purchased for resale"});
   });
   it("validates registered money, boolean, repeatable, and checkbox values while preserving unknown fields",()=>{expect(()=>validateRegisteredSourceData("W2",{federal:{box1:"100.00"},box12:[],box13:{retirementPlan:true},unknownFutureField:{raw:"preserved"}})).not.toThrow();expect(()=>validateRegisteredSourceData("1099-NEC",{boxes:{nonemployeeCompensation:100}})).toThrow("decimal string");expect(()=>validateRegisteredSourceData("1099-DIV",{stateRows:{state:"UT"}})).toThrow("must be an array");});
+  it("publishes an explicit fail-closed catalog for common 2025 information returns",()=>{expect(new Set(sourceFormCatalog2025.map(({form})=>form)).size).toBe(sourceFormCatalog2025.length);expect(typedSourceForms2025.map(form=>form==="W-2"?"W2":form).sort()).toEqual(Object.keys(formRegistries2025).sort());expect(sourceFormCatalog2025.find(({form})=>form==="1099-R")).toMatchObject({support:"document_only_blocking"});expect(sourceFormCatalog2025.find(({form})=>form==="1099-B")).toMatchObject({support:"document_only_blocking"});});
 });
 
 function keys(formType:string){return formRegistries2025[formType].fields.map(({key})=>key);}

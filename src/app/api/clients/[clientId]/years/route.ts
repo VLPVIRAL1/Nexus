@@ -5,7 +5,7 @@ import { createTaxYear } from "@/server/client-workflow-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
 const routeParams = z.object({ clientId: z.string().uuid() });
-const bodySchema = z.object({ year: z.number().int().min(2025).max(2200) }).strict();
+const bodySchema = z.object({ year: z.literal(2025) }).strict();
 
 export async function POST(request: Request, { params }: { params: Promise<{ clientId: string }> }) {
   try {

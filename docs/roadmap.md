@@ -8,3 +8,9 @@
 6. Review invalidation, immutable outputs, workpaper tie-out, and recovery.
 7. Performance, accessibility, security, recovery, and preparer acceptance gates.
 8. Mock vendor adapter contracts only.
+
+## Post-Phase-1 release tracks
+
+- Broader source/calculation coverage is added only as complete vertical slices. The 2025 catalog explicitly blocks non-Phase-1 information returns rather than silently ignoring them.
+- Official paper-fileable output requires approved IRS template mappings and independent line/print inspection; see `filing-readiness.md`.
+- IRS Modernized e-File requires provider enrollment, year-specific schemas/business rules, ATS approval and submission/acknowledgment operations. It is not enabled by the Phase 1 codebase.

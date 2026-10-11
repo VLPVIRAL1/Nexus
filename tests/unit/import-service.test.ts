@@ -84,7 +84,7 @@ describe("safe canonical import", () => {
   });
 
   it("rejects prohibited object keys before schema validation", () => {
-    const raw = JSON.stringify(template).replace('"metadata":{}', '"metadata":{"__proto__":{"polluted":true}}');
+    const raw = JSON.stringify(template).replace('"metadata":{', '"metadata":{"__proto__":{"polluted":true},');
     expect(() => previewImport(new TextEncoder().encode(raw), structuredClone(template), 1)).toThrowError(expect.objectContaining<Partial<ImportError>>({ code: "IMPORT_UNSAFE_KEY" }));
   });
 });

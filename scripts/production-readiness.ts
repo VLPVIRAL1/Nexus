@@ -4,6 +4,7 @@ interface Check { name: string; passed: boolean; detail: string }
 const checks: Check[] = [];
 const check = (name: string, passed: boolean, detail: string) => checks.push({ name, passed, detail });
 const value = (name: string) => process.env[name]?.trim() ?? "";
+const approvedSupabaseProjectRef = "tlhjzjtflljldvzgrnek";
 const strong = (name: string) => value(name).length >= 32;
 const base64Bytes = (name: string) => { try { return Buffer.from(value(name), "base64").byteLength; } catch { return 0; } };
 const httpsUrl = (name: string) => { try { return new URL(value(name)).protocol === "https:"; } catch { return false; } };
@@ -13,10 +14,18 @@ const productionDatabaseUrl = () => {
     return ["postgresql:", "postgres:"].includes(parsed.protocol) && !["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
   } catch { return false; }
 };
+const approvedDatabaseTarget = () => {
+  try {
+    const parsed = new URL(value("DATABASE_URL"));
+    return ["postgresql:", "postgres:"].includes(parsed.protocol) && (parsed.hostname.includes(approvedSupabaseProjectRef) || parsed.username.endsWith(`.${approvedSupabaseProjectRef}`));
+  } catch { return false; }
+};
 
 check("Production environment", value("APP_ENV") === "production", "APP_ENV must equal production.");
+check("Draft-only release mode", value("NEXUS_RELEASE_MODE") === "draft_pilot", "Phase 1 must run in draft_pilot mode; paper filing and e-file are not enabled.");
 check("Database configuration", productionDatabaseUrl(), "A non-loopback PostgreSQL production URL is required.");
-check("Supabase server endpoint", httpsUrl("SUPABASE_URL"), "SUPABASE_URL must use HTTPS.");
+check("Approved Supabase database", approvedDatabaseTarget(), `DATABASE_URL must target approved Supabase project ${approvedSupabaseProjectRef}.`);
+check("Supabase server endpoint", httpsUrl("SUPABASE_URL") && new URL(value("SUPABASE_URL")).hostname === `${approvedSupabaseProjectRef}.supabase.co`, `SUPABASE_URL must use HTTPS and target approved project ${approvedSupabaseProjectRef}.`);
 check("Supabase publishable key", value("SUPABASE_PUBLISHABLE_KEY").length >= 20, "A Supabase publishable key is required.");
 check("Browser Supabase endpoint", value("NEXT_PUBLIC_SUPABASE_URL") === value("SUPABASE_URL") && httpsUrl("NEXT_PUBLIC_SUPABASE_URL"), "Browser and server Supabase URLs must match.");
 check("Browser publishable key", value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY").length >= 20 && value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") === value("SUPABASE_PUBLISHABLE_KEY"), "A browser publishable key is required and must match the server key.");

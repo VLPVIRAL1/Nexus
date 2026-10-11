@@ -7,6 +7,7 @@ const accessibleRoutes = [
   { name: "dashboard", path: "/dashboard" },
   { name: "client list", path: "/clients" },
   { name: "return workspace", path: "/clients/sample/years/2025" },
+  { name: "persisted return hub", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025" },
   { name: "persisted intake", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/intake" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping split", path: "/clients/sample/years/2025/mapping" },
@@ -99,6 +100,17 @@ test("release closure exposes all five governed workspaces", async ({ page }) =>
 
   await page.getByRole("button", { name: "Release gates" }).click();
   await expect(page.getByRole("heading", { name: "Product scope" })).toBeVisible();
+});
+
+test("global import entry downloads the blank template and routes to the persisted return", async ({ page, request }) => {
+  await page.goto("/imports/new");
+  const templateLink = page.getByRole("link", { name: "Download 2025 JSON template" });
+  await expect(templateLink).toHaveAttribute("href", "/api/templates/2025/1040/canonical.json");
+  await expect(page.getByRole("link", { name: "Stage JSON" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/imports");
+  const response = await request.get("/api/templates/2025/1040/canonical.json");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.0.0.json");
+  expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [] });
 });
 
 for (const route of [

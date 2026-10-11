@@ -61,7 +61,7 @@ export async function listDashboardClients(context: AuthorizationContext, option
     LEFT JOIN users u ON u.id=ca.user_id
     LEFT JOIN review_points rp ON rp.tax_year_id=ty.id
     LEFT JOIN validation_issues vi ON vi.tax_year_id=ty.id
-    WHERE c.firm_id=$1 AND c.archived_at IS NULL
+    WHERE c.firm_id=$1 AND c.archived_at IS NULL AND ty.tax_year=2025
       AND ($2::boolean OR EXISTS (SELECT 1 FROM client_assignments scope_ca WHERE scope_ca.client_id=c.id AND scope_ca.user_id=$3))
       AND ($4::text IS NULL OR lower(c.client_code) LIKE lower($4)||'%' OR lower(c.display_name) LIKE lower($4)||'%')
     GROUP BY c.id,ty.id ORDER BY ty.updated_at DESC LIMIT $5`, [context.firmId, context.role === "admin", context.userId, query, limit]);

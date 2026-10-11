@@ -41,6 +41,7 @@ Use [`.env.hostinger.example`](.env.hostinger.example) as the copy-ready variabl
 | Name | Requirement |
 |---|---|
 | `APP_ENV` | Exactly `production` |
+| `NEXUS_RELEASE_MODE` | Exactly `draft_pilot`; Phase 1 cannot enable paper filing or e-file |
 | `DATABASE_URL` | Approved Supabase PostgreSQL connection string; use the Supabase session pooler when direct IPv6 connectivity is unavailable |
 | `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | Base64 encoding of exactly 32 random bytes, identical during build and runtime |
 | `AUTH_RATE_LIMIT_SECRET` | At least 32 random characters |
@@ -116,3 +117,5 @@ After every deployment:
 5. Run the authentication and production-data checks listed in `docs/operations-runbook.md` before real-user access.
 
 Hostinger Business Web Hosting is the selected managed application host, while Supabase remains the PostgreSQL and authentication provider. If the application outgrows the Business plan's process/resource limits or requires separately scaled workers, move the same build/start contract to Hostinger Cloud or a managed VPS; do not silently disable the artifact worker.
+
+This deployment contract publishes the professional draft-preparation pilot. It does not turn controlled internal previews into official paper returns and does not add IRS MeF transmission. See `docs/filing-readiness.md` for the separately gated filing tracks.

@@ -4,7 +4,7 @@
 
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
-**Last updated:** October 10, 2026
+**Last updated:** October 11, 2026
 **Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards, governed release-closure workspaces and an unapproved calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
 
 ### Completed and verified
@@ -60,6 +60,9 @@
 - [x] Add a firm- and tax-year-scoped source-to-output tie-out workspace with expected/actual named values, hashes, mismatch counts, optimistic revisions and independent mismatch-blocked approval.
 - [x] Define an explicit Hostinger Business Web Hosting managed-Node deployment contract: GitHub-connected Next.js builds, Node.js 24 pinning, migration and fail-closed production-readiness build command, supervised web/artifact-worker start command, CI runtime smoke coverage, environment inventory and domain/rollback/verification runbook. Hostinger account activation and the external production approvals below remain operator-owned gates.
 - [x] Migrate the complete Nexus PostgreSQL schema and synthetic application dataset to the approved Supabase project `tlhjzjtflljldvzgrnek`. On October 10, 2026, verify all 23 repository migrations, 41 public tables, repeatable seeding, zero invalid indexes, zero unvalidated constraints, all 23 live-database integration tests and application health/database connectivity. Production Supabase Auth subject provisioning and acceptance remain the external gate below.
+- [x] Make the global import entry a real persisted workflow selector instead of a synthetic wizard; expose an identifier-free, schema-valid 2025 blank template as a direct versioned download that does not require a client, database write, artifact worker or calculation run; link the same download from return imports and outputs; and publish a fail-closed 2025 source-form catalog that distinguishes the five typed Phase 1 families from document-only unsupported information returns.
+- [x] Replace the real persisted tax-year landing screen's synthetic W-2 workstation data and inert controls with an assigned-client workflow hub linking every implemented intake, source, import, mapping, review, calculation and output surface. Retain the synthetic workstation only as an explicitly synthetic UI fixture.
+- [x] Make the Hostinger production gate verify the approved Supabase project and explicit `draft_pilot` release mode; add a filing-readiness boundary for future official-paper and IRS MeF tracks and expose both as unavailable instead of providing a false filing action.
 
 ### In progress / not complete
 

@@ -60,5 +60,8 @@ jobs:
           grep 'Hostinger runtime started' /tmp/nexus-server.log
           grep 'Artifact worker' /tmp/nexus-server.log
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/dashboard
+          curl --fail --silent --output /tmp/nexus-template.json http://127.0.0.1:3000/api/templates/2025/1040/canonical.json
+          grep '"schema_version": "1.0.0"' /tmp/nexus-template.json
+          curl --fail --silent --output /dev/null http://127.0.0.1:3000/imports/new
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/administration/release-closure
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/clients/sample/years/2025

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { TaxWorkspace } from "@/components/workspace";
+import { AppShell } from "@/components/app-shell";
+import { PersistedTaxYearWorkspace } from "@/components/persisted-tax-year-workspace";
 import { getTaxYearWorkspace } from "@/server/client-repository";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
@@ -11,5 +12,5 @@ export default async function PersistedTaxYearWorkspacePage({ params }: { params
   if (!Number.isInteger(year)) notFound();
   const workspace = await getTaxYearWorkspace(await requestAuthorizationContext(), clientId, year);
   if (!workspace) notFound();
-  return <TaxWorkspace context={workspace} />;
+  return <AppShell><PersistedTaxYearWorkspace context={workspace} /></AppShell>;
 }
