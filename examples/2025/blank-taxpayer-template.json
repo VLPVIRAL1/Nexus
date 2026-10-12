@@ -22,16 +22,27 @@
       "Do not modify schema_version.",
       "Do not add unsupported form families to forms; list the document in source_documents, upload the original separately, and flag it for manual review.",
       "For Form 1099-K, create accepted Schedule C mappings for the entire gross payment amount before calculation.",
-      "For Form 1099-SA, enter qualifiedMedicalExpenses only from reviewed substantiation; do not infer it from the distribution form."
+      "For Form 1099-SA, enter qualifiedMedicalExpenses only from reviewed substantiation; do not infer it from the distribution form.",
+      "Select one of the five filing statuses only after eligibility is reviewed.",
+      "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
+      "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed."
     ]
   },
-  "client": {}, "taxpayer": {}, "spouse": null, "dependents": [],
+  "client": {}, "filing_profile": { "status": "single", "eligibility_confirmed": false }, "taxpayer": {}, "spouse": null, "dependents": [],
+  "schedule_a": {
+    "enabled": false, "married_filing_separately_spouse_itemizes": null,
+    "medical_and_dental_expenses": "0.00", "state_local_income_or_sales_taxes": "0.00", "real_estate_taxes": "0.00", "personal_property_taxes": "0.00", "other_taxes": "0.00",
+    "home_mortgage_interest_and_points": "0.00", "investment_interest": "0.00", "cash_charitable_contributions": "0.00", "noncash_charitable_contributions": "0.00",
+    "casualty_and_theft_losses": "0.00", "other_itemized_deductions": "0.00", "salt_eligibility_confirmed": false, "mortgage_limits_applied": false, "charity_limits_applied": false, "casualty_limits_applied": false
+  },
   "source_documents": [],
   "forms": { "w2": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [] },
   "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
   "mappings": [], "payments": {}, "review_points": [],
   "metadata": {
-    "template": "nexus-taxpayer-import-2025-v1.1.0-review",
-    "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"]
+    "template": "nexus-taxpayer-import-2025-v1.2.0-review",
+    "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"],
+    "supported_dependent_forms": ["Form 1040 dependents", "Schedule 8812"],
+    "supported_deduction_forms": ["Schedule A"]
   }
 }

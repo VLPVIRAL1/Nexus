@@ -38,11 +38,11 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
 
   validateEligibility(input, blocking);
   validateScheduleB(input, blocking);
-  if (input.filingStatus === "single" && (
+  if (input.filingStatus !== "married_filing_jointly" && (
     input.wages.some(({ owner }) => owner === "spouse")
     || input.scheduleCActivities.some(({ owner }) => owner === "spouse")
   )) {
-    blocking("SPOUSE_DATA_INVALID_FOR_SINGLE", "A Single return cannot include spouse-owned wage or Schedule C inputs.", null);
+    blocking("SPOUSE_DATA_INVALID_FOR_STATUS", "Only a Married Filing Jointly return can include spouse-owned wage or Schedule C inputs.", null);
   }
 
   const wages = input.wages.map((item, index) => ({
@@ -50,6 +50,8 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     wageAmount: read(item.wages, `wages.${index}.wages`),
     withholdingAmount: read(item.federalWithholding, `wages.${index}.federalWithholding`),
     socialSecurityWageAmount: read(item.socialSecurityWages, `wages.${index}.socialSecurityWages`),
+    socialSecurityTaxWithheldAmount: read(item.socialSecurityTaxWithheld ?? "0.00", `wages.${index}.socialSecurityTaxWithheld`),
+    medicareTaxWithheldAmount: read(item.medicareTaxWithheld ?? "0.00", `wages.${index}.medicareTaxWithheld`),
   }));
   const interest = input.interest.map((item, index) => ({
     ...item,
@@ -186,8 +188,32 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   if (adjustedGrossIncome.gt(constants2025.netInvestmentIncomeThreshold[input.filingStatus]) && taxableInterest.plus(ordinaryDividends).plus(Decimal.max(0, netCapitalGainOrLoss)).gt(0)) {
     blocking("NET_INVESTMENT_INCOME_TAX_REVIEW_REQUIRED", "Income and investment-income facts cross the NIIT screening threshold; Form 8960 is outside Phase 1.", "forms.schedule2");
   }
-  const standardDeduction = amount(constants2025.standardDeduction[input.filingStatus]);
-  const taxableBeforeQbi = nonnegative(whole(adjustedGrossIncome.minus(standardDeduction)));
+  const scheduleAInput = input.scheduleA;
+  const medicalAndDentalExpenses = read(scheduleAInput?.medicalAndDentalExpenses ?? "0.00", "scheduleA.medicalAndDentalExpenses");
+  const medicalFloor = whole(adjustedGrossIncome.mul(constants2025.scheduleAMedicalFloorRate));
+  const deductibleMedical = nonnegative(whole(medicalAndDentalExpenses.minus(medicalFloor)));
+  const stateLocalIncomeOrSalesTaxes = read(scheduleAInput?.stateLocalIncomeOrSalesTaxes ?? "0.00", "scheduleA.stateLocalIncomeOrSalesTaxes");
+  const realEstateTaxes = read(scheduleAInput?.realEstateTaxes ?? "0.00", "scheduleA.realEstateTaxes");
+  const personalPropertyTaxes = read(scheduleAInput?.personalPropertyTaxes ?? "0.00", "scheduleA.personalPropertyTaxes");
+  const stateAndLocalTaxesBeforeLimit = whole(stateLocalIncomeOrSalesTaxes.plus(realEstateTaxes).plus(personalPropertyTaxes));
+  const baseSaltLimit = amount(constants2025.saltLimit[input.filingStatus]);
+  const saltPhaseoutExcess = Decimal.max(0, adjustedGrossIncome.minus(constants2025.saltPhaseoutThreshold[input.filingStatus]));
+  const stateAndLocalTaxLimit = Decimal.max(constants2025.saltMinimumLimit[input.filingStatus], whole(baseSaltLimit.minus(saltPhaseoutExcess.mul(constants2025.saltPhaseoutRate[input.filingStatus]))));
+  const deductibleStateAndLocalTaxes = Decimal.min(stateAndLocalTaxesBeforeLimit, stateAndLocalTaxLimit);
+  const otherTaxes = read(scheduleAInput?.otherTaxes ?? "0.00", "scheduleA.otherTaxes");
+  const homeMortgageInterestAndPoints = read(scheduleAInput?.homeMortgageInterestAndPoints ?? "0.00", "scheduleA.homeMortgageInterestAndPoints");
+  const investmentInterest = read(scheduleAInput?.investmentInterest ?? "0.00", "scheduleA.investmentInterest");
+  const cashCharitableContributions = read(scheduleAInput?.cashCharitableContributions ?? "0.00", "scheduleA.cashCharitableContributions");
+  const noncashCharitableContributions = read(scheduleAInput?.noncashCharitableContributions ?? "0.00", "scheduleA.noncashCharitableContributions");
+  const charitableContributions = whole(cashCharitableContributions.plus(noncashCharitableContributions));
+  const casualtyAndTheftLosses = read(scheduleAInput?.casualtyAndTheftLosses ?? "0.00", "scheduleA.casualtyAndTheftLosses");
+  const otherItemizedDeductions = read(scheduleAInput?.otherItemizedDeductions ?? "0.00", "scheduleA.otherItemizedDeductions");
+  const totalItemizedDeductions = whole(sum([deductibleMedical, deductibleStateAndLocalTaxes, otherTaxes, homeMortgageInterestAndPoints, investmentInterest, charitableContributions, casualtyAndTheftLosses, otherItemizedDeductions]));
+  const mustItemize = input.filingStatus === "married_filing_separately" && scheduleAInput?.marriedFilingSeparatelySpouseItemizes === true;
+  const usesScheduleA = Boolean(scheduleAInput?.enabled || input.eligibility.usesItemizedDeductions || mustItemize);
+  const standardDeduction = mustItemize ? new Decimal(0) : amount(constants2025.standardDeduction[input.filingStatus]);
+  const deductionUsed = usesScheduleA ? totalItemizedDeductions : standardDeduction;
+  const taxableBeforeQbi = nonnegative(whole(adjustedGrossIncome.minus(deductionUsed)));
 
   if (taxableBeforeQbi.gt(constants2025.qbiSimplifiedThreshold[input.filingStatus]) && (businessIncome.gt(0) || section199ADividends.gt(0))) {
     blocking("FORM_8995_A_REQUIRED", "Taxable income exceeds the simplified Form 8995 threshold; Form 8995-A is outside Phase 1.", "forms.form8995");
@@ -214,7 +240,25 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     ? calculatedIncomeTax
     : whole(read(input.approvedOverrides.form1040IncomeTax, "approvedOverrides.form1040IncomeTax"));
   if (input.approvedOverrides?.form1040IncomeTax != null) diagnostics.push({ code: "MANUAL_OVERRIDE_APPLIED", severity: "warning", message: `Approved income-tax override replaced the calculated ${calculatedIncomeTax.toFixed(0)} result.`, path: "form-1040.income-tax" });
-  const totalTax = incomeTax.plus(selfEmploymentTax);
+  const dependents = input.dependents ?? [];
+  const qualifyingChildren = dependents.filter(({ qualifiesForChildTaxCredit }) => qualifiesForChildTaxCredit);
+  const otherDependents = dependents.filter(({ qualifiesForOtherDependentCredit, qualifiesForChildTaxCredit }) => qualifiesForOtherDependentCredit && !qualifiesForChildTaxCredit);
+  const potentialChildTaxCredit = amount(qualifyingChildren.length * constants2025.childTaxCreditPerChild);
+  const potentialOtherDependentCredit = amount(otherDependents.length * constants2025.otherDependentCreditPerDependent);
+  const potentialDependentCredits = potentialChildTaxCredit.plus(potentialOtherDependentCredit);
+  const phaseoutExcess = Decimal.max(0, adjustedGrossIncome.minus(constants2025.childTaxCreditPhaseoutThreshold[input.filingStatus]));
+  const phaseoutReduction = Decimal.min(potentialDependentCredits, phaseoutExcess.isZero() ? 0 : phaseoutExcess.div(1000).ceil().mul(50));
+  const dependentCreditsAfterPhaseout = Decimal.max(0, potentialDependentCredits.minus(phaseoutReduction));
+  const nonrefundableDependentCredit = Decimal.min(incomeTax, dependentCreditsAfterPhaseout);
+  const unusedDependentCredit = Decimal.max(0, dependentCreditsAfterPhaseout.minus(nonrefundableDependentCredit));
+  const earnedIncome = whole(wageTotal.plus(Decimal.max(0, businessIncome.minus(deductibleHalf))));
+  const earnedIncomeRefundLimit = whole(Decimal.max(0, earnedIncome.minus(constants2025.childTaxCreditEarnedIncomeFloor)).mul("0.15"));
+  const perChildRefundLimit = amount(qualifyingChildren.length * constants2025.refundableChildTaxCreditPerChild);
+  const withheldPayrollTaxes = whole(sum(wages.flatMap(({ socialSecurityTaxWithheldAmount, medicareTaxWithheldAmount }) => [socialSecurityTaxWithheldAmount, medicareTaxWithheldAmount])));
+  const threeChildAlternativeLimit = whole(withheldPayrollTaxes.plus(deductibleHalf).plus(selfEmploymentTax));
+  const refundableIncomeLimit = qualifyingChildren.length >= 3 ? Decimal.max(earnedIncomeRefundLimit, threeChildAlternativeLimit) : earnedIncomeRefundLimit;
+  const additionalChildTaxCredit = Decimal.min(unusedDependentCredit, refundableIncomeLimit, perChildRefundLimit);
+  const totalTax = Decimal.max(0, incomeTax.minus(nonrefundableDependentCredit)).plus(selfEmploymentTax);
   const federalWithholding = whole(sum([
     ...wages.map(({ withholdingAmount }) => withholdingAmount),
     ...interest.map(({ withholdingAmount }) => withholdingAmount),
@@ -225,8 +269,9 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     ...governmentPayments.map(({ withholdingAmount }) => withholdingAmount),
     ...paymentCardReceipts.map(({ withholdingAmount }) => withholdingAmount),
   ]));
-  const refund = Decimal.max(0, federalWithholding.minus(totalTax));
-  const amountOwed = Decimal.max(0, totalTax.minus(federalWithholding));
+  const totalPayments = federalWithholding.plus(additionalChildTaxCredit);
+  const refund = Decimal.max(0, totalPayments.minus(totalTax));
+  const amountOwed = Decimal.max(0, totalTax.minus(totalPayments));
   const scheduleBRequired = taxableInterest.gt(constants2025.scheduleBThreshold)
     || ordinaryDividends.gt(constants2025.scheduleBThreshold)
     || input.scheduleBScreening.foreignAccount === "yes"
@@ -240,9 +285,12 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   addTrace(trace, "schedule-se.tax", "Schedule SE, line 12", "SCH-SE-REGULAR", { netProfit: businessIncome.toFixed(0), wageBase: String(constants2025.socialSecurityWageBase) }, selfEmploymentTax);
   addTrace(trace, "schedule-1.se-deduction", "Schedule 1, line 15", "SCH-SE-DEDUCTIBLE-HALF", { selfEmploymentTax: selfEmploymentTax.toFixed(0) }, deductibleHalf);
   addTrace(trace, "form-8995.deduction", "Form 8995, line 15", "FORM-8995-SIMPLIFIED", { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0) }, qbiDeduction);
-  addTrace(trace, "form-1040.taxable-income", "Form 1040, line 15", "FORM-1040-TAXABLE-INCOME", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0) }, taxableIncome);
+  addTrace(trace, "schedule-a.total-itemized-deductions", "Schedule A, line 17", "SCHEDULE-A-2025", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), medicalFloor: medicalFloor.toFixed(0), saltLimit: stateAndLocalTaxLimit.toFixed(0) }, totalItemizedDeductions);
+  addTrace(trace, "form-1040.taxable-income", "Form 1040, line 15", "FORM-1040-TAXABLE-INCOME", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), deductionUsed: deductionUsed.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0) }, taxableIncome);
   addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", input.approvedOverrides?.form1040IncomeTax != null ? "APPROVED-MANUAL-OVERRIDE" : preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0), netCapitalGain: netCapitalGainForPreferentialTax.toFixed(0), calculatedIncomeTax: calculatedIncomeTax.toFixed(0) }, incomeTax);
-  addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
+  addTrace(trace, "schedule-8812.credit", "Schedule 8812 / Form 1040, line 19", "SCHEDULE-8812-CTC-ODC-2025", { qualifyingChildren: String(qualifyingChildren.length), otherDependents: String(otherDependents.length), phaseoutReduction: phaseoutReduction.toFixed(0) }, nonrefundableDependentCredit);
+  addTrace(trace, "schedule-8812.additional-child-tax-credit", "Schedule 8812 / Form 1040, line 28", "SCHEDULE-8812-ACTC-2025", { earnedIncome: earnedIncome.toFixed(0), unusedCredit: unusedDependentCredit.toFixed(0), perChildLimit: perChildRefundLimit.toFixed(0), threeChildAlternativeLimit: threeChildAlternativeLimit.toFixed(0) }, additionalChildTaxCredit);
+  addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), dependentCredit: nonrefundableDependentCredit.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
   addTrace(trace, "form-1040.payments", "Form 1040, line 25d", "ACTIVE-SOURCE-WITHHOLDING", { sourceCount: String(wages.length + interest.length + dividends.length + businessWithholding.length + brokerTransactions.length + retirementDistributions.length + governmentPayments.length + paymentCardReceipts.length) }, federalWithholding);
 
   diagnostics.push({
@@ -267,6 +315,14 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     status: "calculated_draft",
     diagnostics,
     forms: {
+      filingStatus: input.filingStatus,
+      dependents: dependents.map(({ id, legalName, relationship, qualifiesForChildTaxCredit, qualifiesForOtherDependentCredit }) => ({ id, legalName, relationship, childTaxCredit: qualifiesForChildTaxCredit, otherDependentCredit: qualifiesForOtherDependentCredit && !qualifiesForChildTaxCredit })),
+      scheduleA: {
+        required: usesScheduleA, medicalAndDentalExpenses: medicalAndDentalExpenses.toFixed(0), medicalFloor: medicalFloor.toFixed(0), deductibleMedical: deductibleMedical.toFixed(0),
+        stateAndLocalTaxesBeforeLimit: stateAndLocalTaxesBeforeLimit.toFixed(0), stateAndLocalTaxLimit: stateAndLocalTaxLimit.toFixed(0), deductibleStateAndLocalTaxes: deductibleStateAndLocalTaxes.toFixed(0), otherTaxes: otherTaxes.toFixed(0),
+        homeMortgageInterestAndPoints: homeMortgageInterestAndPoints.toFixed(0), investmentInterest: investmentInterest.toFixed(0), charitableContributions: charitableContributions.toFixed(0), casualtyAndTheftLosses: casualtyAndTheftLosses.toFixed(0), otherItemizedDeductions: otherItemizedDeductions.toFixed(0), totalItemizedDeductions: totalItemizedDeductions.toFixed(0),
+      },
+      schedule8812: { qualifyingChildren: qualifyingChildren.length, otherDependents: otherDependents.length, potentialChildTaxCredit: potentialChildTaxCredit.toFixed(0), potentialOtherDependentCredit: potentialOtherDependentCredit.toFixed(0), phaseoutReduction: phaseoutReduction.toFixed(0), nonrefundableCredit: nonrefundableDependentCredit.toFixed(0), additionalChildTaxCredit: additionalChildTaxCredit.toFixed(0) },
       scheduleB: { required: scheduleBRequired, taxableInterest: taxableInterest.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0) },
       scheduleC: scheduleC.map(({ activity, grossReceipts, expenses, netProfit }) => ({ activityId: activity.id, grossReceipts: grossReceipts.toFixed(0), expenses: expenses.toFixed(0), netProfit: netProfit.toFixed(0) })),
       form8949: brokerTransactions.map(({ id, description, term, proceeds, costBasis, adjustment, gainOrLoss, basisReportedToIrs }) => ({ transactionId: id, description, term, proceeds: proceeds.toFixed(0), costBasis: costBasis.toFixed(0), adjustment: adjustment.toFixed(0), gainOrLoss: gainOrLoss.toFixed(0), basisReportedToIrs })),
@@ -280,9 +336,9 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
         wages: wageTotal.toFixed(0), taxExemptInterest: taxExemptInterest.toFixed(0), taxableInterest: taxableInterest.toFixed(0),
         qualifiedDividends: qualifiedDividends.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0), iraDistributions: iraGross.toFixed(0), taxableIraDistributions: iraTaxable.toFixed(0),
         pensionsAndAnnuities: pensionGross.toFixed(0), taxablePensionsAndAnnuities: pensionTaxable.toFixed(0), capitalGainOrLoss: capitalGainOrLoss.toFixed(0), schedule1AdditionalIncome: schedule1AdditionalIncome.toFixed(0), totalIncome: totalIncome.toFixed(0),
-        adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0),
-        taxableIncome: taxableIncome.toFixed(0), incomeTax: incomeTax.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0), totalTax: totalTax.toFixed(0),
-        federalWithholding: federalWithholding.toFixed(0), refund: refund.toFixed(0), amountOwed: amountOwed.toFixed(0),
+        adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), itemizedDeductions: usesScheduleA ? totalItemizedDeductions.toFixed(0) : "0", deductionUsed: deductionUsed.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0),
+        taxableIncome: taxableIncome.toFixed(0), incomeTax: incomeTax.toFixed(0), childTaxCreditAndOtherDependentCredit: nonrefundableDependentCredit.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0), totalTax: totalTax.toFixed(0),
+        federalWithholding: federalWithholding.toFixed(0), additionalChildTaxCredit: additionalChildTaxCredit.toFixed(0), refund: refund.toFixed(0), amountOwed: amountOwed.toFixed(0),
       },
     },
     trace,
@@ -300,16 +356,38 @@ const dependencies: Record<string, string[]> = {
   "schedule-1": ["schedule-c", "schedule-se", "government-payments", "form-8889"],
   "schedule-2": ["schedule-se", "form-8889"],
   "form-8995": ["schedule-c", "schedule-se", "qualified-dividends"],
+  "schedule-a": ["filing-status", "adjusted-gross-income", "itemized-deduction-facts"],
+  "schedule-8812": ["filing-status", "dependents", "adjusted-gross-income", "earned-income", "income-tax"],
   "qualified-dividend-worksheet": ["form-8995", "qualified-dividends", "schedule-d"],
-  "form-1040": ["schedule-1", "schedule-2", "schedule-b", "schedule-d", "retirement-distributions", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
+  "form-1040": ["schedule-1", "schedule-2", "schedule-a", "schedule-8812", "schedule-b", "schedule-d", "retirement-distributions", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
 };
 
 function validateEligibility(input: CalculationInput2025, blocking: (code: string, message: string, path?: string | null) => void): void {
   const e = input.eligibility;
   if (!e.fullYearUsResident) blocking("RESIDENCY_UNSUPPORTED", "Phase 1 supports only full-year U.S. residents.", "eligibility.fullYearUsResident");
-  if (e.claimableAsDependent || e.hasDependents) blocking("DEPENDENT_PROFILE_UNSUPPORTED", "Phase 1 supports taxpayers who are not claimable and have no dependents.", "eligibility");
+  if (e.claimableAsDependent) blocking("CLAIMABLE_TAXPAYER_UNSUPPORTED", "A taxpayer who can be claimed as another person's dependent requires the dependent standard-deduction worksheet, which is outside this module.", "eligibility.claimableAsDependent");
   if (e.taxpayerAge65OrOlder || e.taxpayerBlind || (input.filingStatus === "married_filing_jointly" && (e.spouseAge65OrOlder || e.spouseBlind))) blocking("ADDITIONAL_STANDARD_DEDUCTION_UNSUPPORTED", "Age- and blindness-based standard-deduction additions are outside Phase 1.", "eligibility");
-  if (e.usesItemizedDeductions) blocking("ITEMIZED_DEDUCTIONS_UNSUPPORTED", "Phase 1 supports the standard deduction only.", "eligibility.usesItemizedDeductions");
+  if (input.filingStatusEligibilityConfirmed === false) blocking("FILING_STATUS_ELIGIBILITY_UNCONFIRMED", "The selected filing status must be supported by reviewed eligibility facts.", "filingStatusEligibilityConfirmed");
+  if ((input.filingStatus === "married_filing_jointly" || input.filingStatus === "married_filing_separately") && input.hasSpouse === false) blocking("SPOUSE_PROFILE_REQUIRED", "A spouse profile is required for a married filing status.", "hasSpouse");
+  const dependents = input.dependents ?? [];
+  if (e.hasDependents && dependents.length === 0) blocking("DEPENDENT_DETAILS_REQUIRED", "Dependent details are required when intake indicates dependents.", "dependents");
+  dependents.forEach((dependent, index) => {
+    const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(dependent.dateOfBirth) ? new Date(`${dependent.dateOfBirth}T00:00:00Z`) : null;
+    if (!dependent.legalName.trim() || !birthDate || Number.isNaN(birthDate.valueOf()) || !dependent.relationship.trim()) blocking("DEPENDENT_IDENTITY_INCOMPLETE", "Each dependent requires a legal name, valid date of birth, and relationship.", `dependents.${index}`);
+    if (!dependent.eligibilityReviewed || !dependent.qualifiesAsDependent) blocking("DEPENDENT_ELIGIBILITY_UNCONFIRMED", "Each claimed dependent requires a reviewed qualifying-child or qualifying-relative determination.", `dependents.${index}`);
+    if (dependent.qualifiesForChildTaxCredit && !dependent.hasValidSsnForChildTaxCredit) blocking("CHILD_TAX_CREDIT_SSN_REQUIRED", "A qualifying child needs a valid Social Security number for the child tax credit.", `dependents.${index}.hasValidSsnForChildTaxCredit`);
+    if (dependent.qualifiesForChildTaxCredit && birthDate && new Date("2025-12-31T00:00:00Z").getUTCFullYear() - birthDate.getUTCFullYear() >= 17) blocking("CHILD_TAX_CREDIT_AGE_INVALID", "A child must be under age 17 at the end of 2025 for the child tax credit.", `dependents.${index}.dateOfBirth`);
+    if (dependent.qualifiesForChildTaxCredit && dependent.qualifiesForOtherDependentCredit) blocking("DEPENDENT_CREDIT_CLASSIFICATION_CONFLICT", "A dependent cannot be counted for both the child tax credit and the credit for other dependents.", `dependents.${index}`);
+  });
+  if ((input.filingStatus === "head_of_household" || input.filingStatus === "qualifying_surviving_spouse") && dependents.length === 0) blocking("QUALIFYING_PERSON_REQUIRED", "This filing status requires a reviewed qualifying person.", "dependents");
+  if (e.usesItemizedDeductions && !input.scheduleA?.enabled) blocking("SCHEDULE_A_DETAILS_REQUIRED", "Schedule A details are required when itemized deductions apply.", "scheduleA");
+  if (input.scheduleA?.enabled) {
+    if (!input.scheduleA.saltEligibilityConfirmed && [input.scheduleA.stateLocalIncomeOrSalesTaxes, input.scheduleA.realEstateTaxes, input.scheduleA.personalPropertyTaxes, input.scheduleA.otherTaxes].some((value) => Number(value) !== 0)) blocking("SCHEDULE_A_SALT_REVIEW_REQUIRED", "Confirm that imported state and local taxes are deductible personal taxes and do not include disallowed amounts.", "scheduleA.saltEligibilityConfirmed");
+    if (!input.scheduleA.mortgageLimitsApplied && Number(input.scheduleA.homeMortgageInterestAndPoints) !== 0) blocking("SCHEDULE_A_MORTGAGE_LIMIT_REVIEW_REQUIRED", "Mortgage-interest debt and use limitations must be reviewed before using the amount.", "scheduleA.mortgageLimitsApplied");
+    if (!input.scheduleA.charityLimitsApplied && (Number(input.scheduleA.cashCharitableContributions) !== 0 || Number(input.scheduleA.noncashCharitableContributions) !== 0)) blocking("SCHEDULE_A_CHARITY_LIMIT_REVIEW_REQUIRED", "Contribution eligibility and AGI limitations must be reviewed before using charitable amounts.", "scheduleA.charityLimitsApplied");
+    if (!input.scheduleA.casualtyLimitsApplied && Number(input.scheduleA.casualtyAndTheftLosses) !== 0) blocking("SCHEDULE_A_CASUALTY_LIMIT_REVIEW_REQUIRED", "Only an already-computed eligible disaster loss may be entered for the supported Schedule A profile.", "scheduleA.casualtyLimitsApplied");
+  }
+  if (input.filingStatus === "married_filing_separately" && input.scheduleA?.marriedFilingSeparatelySpouseItemizes == null) blocking("MFS_SPOUSE_ITEMIZATION_REQUIRED", "Married Filing Separately requires confirmation whether the spouse itemizes deductions.", "scheduleA.marriedFilingSeparatelySpouseItemizes");
   if (!e.allRequiredIntakeAnswered) blocking("INTAKE_INCOMPLETE", "All required intake questions must be answered before calculation.", "eligibility.allRequiredIntakeAnswered");
   if (!e.documentsCompleteAttested) blocking("DOCUMENTS_NOT_ATTESTED", "A preparer completeness attestation is required before calculation.", "eligibility.documentsCompleteAttested");
   for (const topic of e.unsupportedApplicableTopics) blocking("UNSUPPORTED_TOPIC_APPLIES", `Unsupported intake topic applies: ${topic}.`, "eligibility.unsupportedApplicableTopics");

@@ -1,0 +1,12 @@
+IRS 2025 Schedule 8812 (Form 1040) — authority excerpt
+Official URL: https://www.irs.gov/pub/irs-prior/f1040s8--2025.pdf
+Retrieved: 2026-10-11
+Archived official PDF SHA-256: 6936462d67e2309d14a795aa0b88ef613cc6d79617431cfda3a2edf44aea52db
+
+Part I: multiply qualifying children under age 17 with the required SSN by $2,200; multiply other dependents by $500; use a phaseout threshold of $400,000 for married filing jointly and $200,000 for all other statuses; round excess modified AGI up to the next $1,000 and multiply by 5%.
+
+Part II-A: the per-child refundable limit is $1,700. Earned income above $2,500 is multiplied by 15%.
+
+Part II-B for three or more qualifying children: add withheld Social Security, Medicare and Additional Medicare taxes to the specified Schedule 1 and Schedule 2 taxes, subtract Form 1040 line 27a and Schedule 3 line 11, and compare that result with the 15% earned-income amount.
+
+This excerpt records the exact provisions consumed by the research implementation. The official PDF hash above is the immutable source identity; the full form and instructions govern and require independent tax review before activation.

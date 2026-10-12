@@ -18,6 +18,7 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
   const forms = output.forms;
   const pages: TaxFormData[] = [
     page("Form 1040", "U.S. Individual Income Tax Return — calculated line preview", [
+      text("Status", "Filing status", forms.filingStatus.replaceAll("_", " "), "filing-status"),
       money("1a", "Wages, salaries, tips", forms.form1040.wages, "form-1040.wages"),
       money("2a", "Tax-exempt interest", forms.form1040.taxExemptInterest, "form-1040.tax-exempt-interest"),
       money("2b", "Taxable interest", forms.form1040.taxableInterest, "form-1040.taxable-interest"),
@@ -31,17 +32,50 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
       money("8", "Additional income from Schedule 1", forms.form1040.schedule1AdditionalIncome, "schedule-1.additional-income"),
       money("9", "Total income", forms.form1040.totalIncome, "form-1040.total-income"),
       money("11", "Adjusted gross income", forms.form1040.adjustedGrossIncome, "form-1040.adjusted-gross-income"),
-      money("12", "Standard deduction", forms.form1040.standardDeduction, "form-1040.standard-deduction"),
+      money("12", forms.scheduleA.required ? "Itemized deductions from Schedule A" : "Standard deduction", forms.form1040.deductionUsed, forms.scheduleA.required ? "schedule-a.total-itemized-deductions" : "form-1040.standard-deduction"),
       money("13", "Qualified business income deduction", forms.form1040.qbiDeduction, "form-8995.deduction"),
       money("15", "Taxable income", forms.form1040.taxableIncome, "form-1040.taxable-income"),
       money("16", "Income tax", forms.form1040.incomeTax, "form-1040.income-tax"),
+      money("19", "Child tax credit / credit for other dependents", forms.form1040.childTaxCreditAndOtherDependentCredit, "schedule-8812.credit"),
       money("23", "Other taxes — self-employment tax", forms.form1040.selfEmploymentTax, "schedule-se.tax"),
       money("24", "Total tax", forms.form1040.totalTax, "form-1040.total-tax"),
       money("25d", "Federal income tax withheld", forms.form1040.federalWithholding, "form-1040.payments"),
+      money("28", "Additional child tax credit", forms.form1040.additionalChildTaxCredit, "schedule-8812.additional-child-tax-credit"),
       money("35a", "Refund", forms.form1040.refund, "form-1040.refund"),
       money("37", "Amount owed", forms.form1040.amountOwed, "form-1040.amount-owed"),
     ]),
   ];
+
+  if (forms.dependents.length) pages.push(page("Form 1040 Dependents", "Dependents and credit classification — reviewed profile", forms.dependents.flatMap((dependent, index) => [
+    text(`${index + 1}`, "Dependent", dependent.legalName, "dependents"),
+    text(`${index + 1} rel.`, "Relationship", dependent.relationship, "dependents"),
+    text(`${index + 1} credit`, "Credit classification", dependent.childTaxCredit ? "Child tax credit" : dependent.otherDependentCredit ? "Other dependent credit" : "Dependent only", "schedule-8812.credit"),
+  ])));
+
+  if (forms.scheduleA.required) pages.push(page("Schedule A", "Itemized Deductions — supported reviewed amounts", [
+    money("1", "Medical and dental expenses", forms.scheduleA.medicalAndDentalExpenses, "schedule-a.total-itemized-deductions"),
+    money("3", "7.5% of adjusted gross income", forms.scheduleA.medicalFloor, "schedule-a.total-itemized-deductions"),
+    money("4", "Deductible medical and dental expenses", forms.scheduleA.deductibleMedical, "schedule-a.total-itemized-deductions"),
+    money("5d", "State and local taxes before limitation", forms.scheduleA.stateAndLocalTaxesBeforeLimit, "schedule-a.total-itemized-deductions"),
+    money("5e", "Deductible state and local taxes", forms.scheduleA.deductibleStateAndLocalTaxes, "schedule-a.total-itemized-deductions"),
+    money("6", "Other taxes", forms.scheduleA.otherTaxes, "schedule-a.total-itemized-deductions"),
+    money("8", "Home mortgage interest and points", forms.scheduleA.homeMortgageInterestAndPoints, "schedule-a.total-itemized-deductions"),
+    money("9", "Investment interest", forms.scheduleA.investmentInterest, "schedule-a.total-itemized-deductions"),
+    money("14", "Charitable contributions", forms.scheduleA.charitableContributions, "schedule-a.total-itemized-deductions"),
+    money("15", "Casualty and theft losses", forms.scheduleA.casualtyAndTheftLosses, "schedule-a.total-itemized-deductions"),
+    money("16", "Other itemized deductions", forms.scheduleA.otherItemizedDeductions, "schedule-a.total-itemized-deductions"),
+    money("17", "Total itemized deductions", forms.scheduleA.totalItemizedDeductions, "schedule-a.total-itemized-deductions"),
+  ]));
+
+  if (forms.schedule8812.qualifyingChildren || forms.schedule8812.otherDependents) pages.push(page("Schedule 8812", "Credits for Qualifying Children and Other Dependents", [
+    text("4", "Qualifying children", String(forms.schedule8812.qualifyingChildren), "schedule-8812.credit"),
+    money("5", "Potential child tax credit", forms.schedule8812.potentialChildTaxCredit, "schedule-8812.credit"),
+    text("6", "Other dependents", String(forms.schedule8812.otherDependents), "schedule-8812.credit"),
+    money("7", "Potential credit for other dependents", forms.schedule8812.potentialOtherDependentCredit, "schedule-8812.credit"),
+    money("11", "Modified AGI phaseout reduction", forms.schedule8812.phaseoutReduction, "schedule-8812.credit"),
+    money("14", "Nonrefundable credit", forms.schedule8812.nonrefundableCredit, "schedule-8812.credit"),
+    money("27", "Additional child tax credit", forms.schedule8812.additionalChildTaxCredit, "schedule-8812.additional-child-tax-credit"),
+  ]));
 
   if (forms.scheduleB.required) pages.push(page("Schedule B", "Interest and Ordinary Dividends — supported totals", [
     money("Part I", "Taxable interest total", forms.scheduleB.taxableInterest, "schedule-b.interest"),
@@ -121,6 +155,9 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   const forms = output.forms;
   const required = ["Form 1040"];
   if (!forms) return required;
+  if (forms.dependents.length) required.push("Form 1040 Dependents");
+  if (forms.scheduleA.required) required.push("Schedule A");
+  if (forms.schedule8812.qualifyingChildren || forms.schedule8812.otherDependents) required.push("Schedule 8812");
   if (forms.scheduleB.required) required.push("Schedule B");
   if (forms.scheduleC.length) required.push("Schedule C");
   if (forms.form8949.length) required.push("Form 8949");
@@ -141,6 +178,10 @@ function page(formName: string, title: string, lines: TaxFormLine[], instanceLab
 function money(line: string, label: string, value: string, traceNodeId: string): TaxFormLine {
   const amount = Number(value);
   return { line, label, value: Number.isFinite(amount) ? amount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }) : value, traceNodeId };
+}
+
+function text(line: string, label: string, value: string, traceNodeId: string): TaxFormLine {
+  return { line, label, value, traceNodeId };
 }
 
 function unique(values: string[]): string[] {

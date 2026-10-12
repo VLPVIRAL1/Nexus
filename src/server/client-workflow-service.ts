@@ -56,6 +56,7 @@ export async function createTaxYear(context: AuthorizationContext, clientId: str
     });
     const created = inserted.rows[0];
     if (!created) throw new Error("Tax-year insert did not return a row.");
+    await client.query("INSERT INTO return_profiles(tax_year_id) VALUES($1) ON CONFLICT DO NOTHING", [created.id]);
     await appendAuditEvent(client, { ...context, firmId }, created.id, "tax_year.created", "tax_year", created.id, { year: created.tax_year, revision: created.revision });
     return created;
   });

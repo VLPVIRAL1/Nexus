@@ -4,7 +4,8 @@ import type pg from "pg";
 import { addMoney, asDecimalString, money } from "@/domain/money";
 import { phase1IntakeQuestions } from "@/domain/intake";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
-import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type PersonRole2025, type SupportedExpenseCategory, supportedExpenseCategories } from "@/tax-engine/2025";
+import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type FilingStatus2025, type PersonRole2025, type ScheduleAInput2025, type SupportedExpenseCategory, supportedExpenseCategories } from "@/tax-engine/2025";
+import { emptyScheduleA2025 } from "./return-profile-service";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 
@@ -52,11 +53,12 @@ export async function getCalculationState(context: AuthorizationContext, clientI
 }
 
 async function assembleInput(client: pg.PoolClient, taxYearId: string, revision: number, calculationId: string): Promise<CalculationInput2025> {
-  const [people, answersResult, attestation, dependents, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
+  const [people, answersResult, attestation, dependents, profileResult, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
     client.query<{ role: string }>("SELECT role FROM people WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ question_id: string; answer: "yes" | "no" | "unknown" }>("SELECT DISTINCT ON (question_id) question_id,answer FROM intake_answers WHERE tax_year_id=$1 ORDER BY question_id,answer_revision DESC", [taxYearId]),
     client.query("SELECT 1 FROM completeness_attestations WHERE tax_year_id=$1 AND tax_year_revision=$2", [taxYearId, revision]),
-    client.query("SELECT 1 FROM dependents WHERE tax_year_id=$1 LIMIT 1", [taxYearId]),
+    client.query<{ id: string; legal_name: string; facts: Record<string, unknown> }>("SELECT id,legal_name,facts FROM dependents WHERE tax_year_id=$1 ORDER BY legal_name,id", [taxYearId]),
+    client.query<{ filing_status: FilingStatus2025; filing_status_eligibility_confirmed: boolean; schedule_a: ScheduleAInput2025 }>("SELECT filing_status,filing_status_eligibility_confirmed,schedule_a FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,owner_role,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
     client.query<{ id: string; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type='schedule_c' AND implementation_status='supported' ORDER BY name,id", [taxYearId]),
     client.query<{ source_record_id: string; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type='schedule_c' AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
@@ -71,13 +73,16 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   }).map(({ affirmativeTreatment }) => affirmativeTreatment);
   unsupportedApplicableTopics.push(...externalBlockers.rows.map(({ code, message }) => `${code}: ${message}`));
   const roles = new Set(people.rows.map(({ role }) => role));
+  const profile = profileResult.rows[0];
+  const filingStatus = profile?.filing_status ?? (roles.has("spouse") ? "married_filing_jointly" : "single");
+  const scheduleA = { ...emptyScheduleA2025, ...(profile?.schedule_a ?? {}) };
   const owner = (role: string): PersonRole2025 => role === "spouse" ? "spouse" : "taxpayer";
   const amountAt = (data: Record<string, unknown>, paths: string[]) => {
     for (const path of paths) { const value = objectAtPath(data, path); if (typeof value === "string" || typeof value === "number") { try { return asDecimalString(money(value)); } catch { /* continue */ } } }
     return "0.00" as const;
   };
   const sourcesByType = Map.groupBy(sources.rows, ({ form_type }) => form_type);
-  const wages = (sourcesByType.get("W2") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), wages: amountAt(source.normalized_data, ["federal.box1", "box_1_wages_tips_other_compensation", "box1"]), federalWithholding: amountAt(source.normalized_data, ["federal.box2", "box_2_federal_income_tax_withheld", "box2"]), socialSecurityWages: amountAt(source.normalized_data, ["federal.box3", "box_3_social_security_wages", "box3"]) }));
+  const wages = (sourcesByType.get("W2") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), wages: amountAt(source.normalized_data, ["federal.box1", "box_1_wages_tips_other_compensation", "box1"]), federalWithholding: amountAt(source.normalized_data, ["federal.box2", "box_2_federal_income_tax_withheld", "box2"]), socialSecurityWages: amountAt(source.normalized_data, ["federal.box3", "box_3_social_security_wages", "box3"]), socialSecurityTaxWithheld: amountAt(source.normalized_data, ["federal.box4", "box_4_social_security_tax_withheld", "box4"]), medicareTaxWithheld: amountAt(source.normalized_data, ["federal.box6", "box_6_medicare_tax_withheld", "box6"]) }));
   const interest = (sourcesByType.get("1099-INT") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryInterest: amountAt(source.normalized_data, ["boxes.interestIncome", "box_1_interest_income"]), treasuryInterest: amountAt(source.normalized_data, ["boxes.usSavingsBondInterest", "box_3_interest_on_us_savings_bonds_and_treasury_obligations"]), taxExemptInterest: amountAt(source.normalized_data, ["boxes.taxExemptInterest", "box_8_tax_exempt_interest"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
   const dividends = (sourcesByType.get("1099-DIV") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryDividends: amountAt(source.normalized_data, ["boxes.ordinaryDividends", "box_1a_total_ordinary_dividends"]), qualifiedDividends: amountAt(source.normalized_data, ["boxes.qualifiedDividends", "box_1b_qualified_dividends"]), capitalGainDistributions: amountAt(source.normalized_data, ["boxes.capitalGainDistributions", "box_2a_total_capital_gain_distributions"]), exemptInterestDividends: amountAt(source.normalized_data, ["boxes.exemptInterestDividends", "box_12_exempt_interest_dividends"]), section199ADividends: amountAt(source.normalized_data, ["boxes.section199ADividends", "box_5_section_199a_dividends"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
   const brokerTransactions = (sourcesByType.get("1099-B") ?? []).map((source) => ({
@@ -112,9 +117,11 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   addUnsupportedSourceFacts(unsupportedApplicableTopics, sources.rows);
   const override = overrides.rows.find(({ override_point }) => override_point === "form-1040.income-tax");
   return {
-    calculationId, inputRevision: revision, filingStatus: roles.has("spouse") ? "married_filing_jointly" : "single",
+    calculationId, inputRevision: revision, filingStatus, filingStatusEligibilityConfirmed: profile?.filing_status_eligibility_confirmed ?? true, hasSpouse: roles.has("spouse"),
+    dependents: dependents.rows.map((row) => ({ id: row.id, legalName: row.legal_name, dateOfBirth: String(row.facts.dateOfBirth ?? ""), relationship: String(row.facts.relationship ?? ""), monthsLivedWithTaxpayer: Number(row.facts.monthsLivedWithTaxpayer ?? 0), qualifiesAsDependent: row.facts.qualifiesAsDependent === true, qualifiesForChildTaxCredit: row.facts.qualifiesForChildTaxCredit === true, hasValidSsnForChildTaxCredit: row.facts.hasValidSsnForChildTaxCredit === true, qualifiesForOtherDependentCredit: row.facts.qualifiesForOtherDependentCredit === true, eligibilityReviewed: row.facts.eligibilityReviewed === true })),
+    scheduleA,
     eligibility: {
-      fullYearUsResident: answer("identity.full_year_resident") === "yes", claimableAsDependent: answer("identity.claimable_dependent") !== "no", hasDependents: Boolean(dependents.rowCount), taxpayerAge65OrOlder: answer("identity.age_or_blindness") !== "no", taxpayerBlind: answer("identity.age_or_blindness") !== "no", spouseAge65OrOlder: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", spouseBlind: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", usesItemizedDeductions: answer("deductions.itemize") !== "no", allRequiredIntakeAnswered: phase1IntakeQuestions.every(({ id }) => answers.has(id) && answer(id) !== "unknown"), documentsCompleteAttested: Boolean(attestation.rowCount), unsupportedApplicableTopics,
+      fullYearUsResident: answer("identity.full_year_resident") === "yes", claimableAsDependent: answer("identity.claimable_dependent") !== "no", hasDependents: Boolean(dependents.rowCount), taxpayerAge65OrOlder: answer("identity.age_or_blindness") !== "no", taxpayerBlind: answer("identity.age_or_blindness") !== "no", spouseAge65OrOlder: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", spouseBlind: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", usesItemizedDeductions: scheduleA.enabled || answer("deductions.itemize") === "yes", allRequiredIntakeAnswered: phase1IntakeQuestions.every(({ id }) => answers.has(id) && answer(id) !== "unknown"), documentsCompleteAttested: Boolean(attestation.rowCount), unsupportedApplicableTopics,
       treatmentScreens: { earnedIncomeCredit: screen(answer("deductions.credits")), otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
     },
     scheduleBScreening: { foreignAccount: answer("schedule_b.foreign_account"), foreignTrust: answer("schedule_b.foreign_trust"), otherScheduleBTrigger: answer("schedule_b.other_trigger") },

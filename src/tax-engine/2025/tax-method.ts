@@ -7,7 +7,13 @@ import type { FilingStatus2025 } from "./types";
 type TaxTableRow = [number, number, number, number, number, number];
 
 const taxTable = taxTableData as TaxTableRow[];
-const columnByStatus: Record<FilingStatus2025, 2 | 3> = { single: 2, married_filing_jointly: 3 };
+const columnByStatus: Record<FilingStatus2025, 2 | 3 | 4 | 5> = {
+  single: 2,
+  married_filing_jointly: 3,
+  married_filing_separately: 4,
+  head_of_household: 5,
+  qualifying_surviving_spouse: 3,
+};
 
 const computationRows: Record<FilingStatus2025, Array<{ over: number; through: number | null; rate: string; subtract: string }>> = {
   single: [
@@ -18,6 +24,27 @@ const computationRows: Record<FilingStatus2025, Array<{ over: number; through: n
     { over: 626350, through: null, rate: "0.37", subtract: "42979.75" },
   ],
   married_filing_jointly: [
+    { over: 100000, through: 206700, rate: "0.22", subtract: "10172.00" },
+    { over: 206700, through: 394600, rate: "0.24", subtract: "14306.00" },
+    { over: 394600, through: 501050, rate: "0.32", subtract: "45874.00" },
+    { over: 501050, through: 751600, rate: "0.35", subtract: "60905.50" },
+    { over: 751600, through: null, rate: "0.37", subtract: "75937.50" },
+  ],
+  married_filing_separately: [
+    { over: 100000, through: 103350, rate: "0.22", subtract: "5086.00" },
+    { over: 103350, through: 197300, rate: "0.24", subtract: "7153.00" },
+    { over: 197300, through: 250525, rate: "0.32", subtract: "22937.00" },
+    { over: 250525, through: 375800, rate: "0.35", subtract: "30452.75" },
+    { over: 375800, through: null, rate: "0.37", subtract: "37968.75" },
+  ],
+  head_of_household: [
+    { over: 100000, through: 103350, rate: "0.22", subtract: "6825.00" },
+    { over: 103350, through: 197300, rate: "0.24", subtract: "8892.00" },
+    { over: 197300, through: 250500, rate: "0.32", subtract: "24676.00" },
+    { over: 250500, through: 626350, rate: "0.35", subtract: "32191.00" },
+    { over: 626350, through: null, rate: "0.37", subtract: "44718.00" },
+  ],
+  qualifying_surviving_spouse: [
     { over: 100000, through: 206700, rate: "0.22", subtract: "10172.00" },
     { over: 206700, through: 394600, rate: "0.24", subtract: "14306.00" },
     { over: 394600, through: 501050, rate: "0.32", subtract: "45874.00" },

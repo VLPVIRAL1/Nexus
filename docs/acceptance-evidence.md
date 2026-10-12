@@ -4,8 +4,8 @@ This register tracks Section 124 without converting implementation evidence into
 
 | Scenario | Owner | Implementation and evidence | Status | Remaining release evidence |
 |---|---|---|---|---|
-| AC-01 Supported Single wage/interest return | Tax rule owner | `tax-engine-2025.test.ts`; persisted intake/calculation/output integration fixtures; controlled form pages | Blocked | Independently computed fixture, approved rule package, current completeness attestation and reviewer-signed Reviewed Draft run |
-| AC-02 MFJ ownership | Tax rule owner | Owner-specific wage/withholding and Schedule SE/QBI unit fixture | Blocked | Independently checked MFJ source-to-line fixture and reviewer sign-off |
+| AC-01 Supported Single wage/interest return | Tax rule owner | `tax-engine-2025.test.ts`; persisted intake/calculation/output integration fixtures; five-status/standard-deduction, Schedule A and Schedule 8812 regression fixtures; controlled form pages | Blocked | Independently computed fixture, approved rule package, current completeness attestation and reviewer-signed Reviewed Draft run |
+| AC-02 MFJ ownership | Tax rule owner | Owner-specific wage/withholding and Schedule SE/QBI unit fixture; five-status computation-column fixture including MFJ/QSS | Blocked | Independently checked MFJ source-to-line fixture and reviewer sign-off |
 | AC-03 Ten-form comprehensive import | Product owner | Exact ten-family registry-key test plus persisted AC-03 import → lineage → calculation-bound source-only export round trip covering every scalar, checkbox, repeated row, raw field and unmapped field; direct blank/example routes and real persisted global import selector | Technical pass | None beyond release-suite rerun |
 | AC-04 Unsupported source fact | Product owner | Unsupported intake, mapping and tax-engine blocker fixtures; partial-output manifests | Technical pass | Representative preparer confirms blocker language and affected-result disclosure |
 | AC-05 Replay and changed re-import | Engineering owner | Unit exact replay/stale preview tests; live preview/commit/replay/attempt/rollback fixture | Technical pass | None beyond release-suite rerun |

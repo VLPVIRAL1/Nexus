@@ -22,7 +22,9 @@ describe("output integrity foundations", () => {
 
   it("exports complete and blank JSON with verifiable hashes and no blank-template identity data", () => {
     const complete = exportCanonicalJson(canonicalReturnFixture, "complete");
-    expect(JSON.parse(new TextDecoder().decode(complete.bytes))).toEqual(canonicalReturnFixture);
+    const completePayload = JSON.parse(new TextDecoder().decode(complete.bytes));
+    expect(() => canonicalTaxReturnSchema.parse(completePayload)).not.toThrow();
+    expect(completePayload).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040" });
     expect(createHash("sha256").update(complete.bytes).digest("hex")).toBe(complete.sha256);
 
     const blank = exportCanonicalJson(canonicalReturnFixture, "blank_template");
@@ -41,6 +43,19 @@ describe("output integrity foundations", () => {
     expect(() => canonicalTaxReturnSchema.parse(example)).not.toThrow();
     expect(example.metadata.synthetic_review_example).toBe(true);
     expect(example.forms).toMatchObject({ w2: [expect.any(Object)], form_1099_b: [expect.any(Object)], form_1099_g: [expect.any(Object)], form_1099_r: [expect.any(Object)], form_1099_sa: [expect.any(Object)], form_1099_k: [] });
+  });
+
+  it("exports filing profile, dependent and Schedule A data in the importable canonical shape", () => {
+    const complete = exportCanonicalJson({
+      ...canonicalReturnFixture,
+      filingProfile: { status: "head_of_household", eligibilityConfirmed: true },
+      dependents: [{ id: "10000000-0000-4000-8000-000000000099", legal_name: "Synthetic Child", facts: { dateOfBirth: "2015-06-15", relationship: "Child", monthsLivedWithTaxpayer: 12, qualifiesAsDependent: true, qualifiesForChildTaxCredit: true, hasValidSsnForChildTaxCredit: true, qualifiesForOtherDependentCredit: false, eligibilityReviewed: true } }],
+      scheduleA: { enabled: true, marriedFilingSeparatelySpouseItemizes: null, medicalAndDentalExpenses: "1000.00", stateLocalIncomeOrSalesTaxes: "12000.00", realEstateTaxes: "5000.00", personalPropertyTaxes: "0.00", otherTaxes: "0.00", homeMortgageInterestAndPoints: "0.00", investmentInterest: "0.00", cashCharitableContributions: "500.00", noncashCharitableContributions: "0.00", casualtyAndTheftLosses: "0.00", otherItemizedDeductions: "0.00", saltEligibilityConfirmed: true, mortgageLimitsApplied: false, charityLimitsApplied: true, casualtyLimitsApplied: false },
+      sourceForms: [{ id: "10000000-0000-4000-8000-000000000101", externalSourceId: "round-trip-w2", sourceDocumentId: "20000000-0000-4000-8000-000000000101", formType: "W2", formYear: 2025, owner: "taxpayer", ownerPersonId: null, accountNumber: null, corrected: false, void: false, secondTinNotice: null, fatcaIndicator: null, version: 1, rawFields: [], unmappedSourceFields: [], employer: {}, employee: {}, federal: { box1: "50000.00", box2: "5000.00", box3: "50000.00" }, box12: [], box13: {}, box14: [], stateRows: [], localRows: [] }] as any,
+    }, "complete");
+    const payload = canonicalTaxReturnSchema.parse(JSON.parse(new TextDecoder().decode(complete.bytes)));
+    expect(payload).toMatchObject({ filing_profile: { status: "head_of_household", eligibility_confirmed: true }, dependents: [{ legal_name: "Synthetic Child", qualifies_for_child_tax_credit: true }], schedule_a: { enabled: true, state_local_income_or_sales_taxes: "12000.00", real_estate_taxes: "5000.00" } });
+    expect(payload.forms.w2).toEqual([expect.objectContaining({ id: "10000000-0000-4000-8000-000000000101", external_source_id: "round-trip-w2", source_document_id: "20000000-0000-4000-8000-000000000101", recipient_role: "taxpayer", federal: { box1: "50000.00", box2: "5000.00", box3: "50000.00" } })]);
   });
 
   it("generates a workbook with required foundation sheets and run identity", async () => {
@@ -86,10 +101,26 @@ describe("output integrity foundations", () => {
     expect(plan.missingForms).toEqual([]);
     expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4a" }), expect.objectContaining({ line: "7" }), expect.objectContaining({ line: "8" })]));
   });
+
+  it("renders filing status, dependents, Schedule A and Schedule 8812 from the reviewed profile", () => {
+    const calculation = supportedCalculation({
+      filingStatus: "head_of_household",
+      filingStatusEligibilityConfirmed: true,
+      dependents: [{ id: "dep-output", legalName: "Synthetic Child", dateOfBirth: "2015-06-15", relationship: "Child", monthsLivedWithTaxpayer: 12, qualifiesAsDependent: true, qualifiesForChildTaxCredit: true, hasValidSsnForChildTaxCredit: true, qualifiesForOtherDependentCredit: false, eligibilityReviewed: true }],
+      scheduleA: { enabled: true, marriedFilingSeparatelySpouseItemizes: null, medicalAndDentalExpenses: "5000.00", stateLocalIncomeOrSalesTaxes: "12000.00", realEstateTaxes: "5000.00", personalPropertyTaxes: "0.00", otherTaxes: "0.00", homeMortgageInterestAndPoints: "10000.00", investmentInterest: "0.00", cashCharitableContributions: "1000.00", noncashCharitableContributions: "0.00", casualtyAndTheftLosses: "0.00", otherItemizedDeductions: "0.00", saltEligibilityConfirmed: true, mortgageLimitsApplied: true, charityLimitsApplied: true, casualtyLimitsApplied: false },
+      eligibility: { ...supportedCalculationInput().eligibility, hasDependents: true, usesItemizedDeductions: true },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 1040", "Form 1040 Dependents", "Schedule A", "Schedule 8812"]));
+    expect(plan.missingForms).toEqual([]);
+    expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "Status", value: "head of household" }), expect.objectContaining({ line: "19" }), expect.objectContaining({ line: "28" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Schedule A")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "5e", value: "$17,000" }), expect.objectContaining({ line: "17" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Schedule 8812")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4", value: "1" }), expect.objectContaining({ line: "27" })]));
+  });
 });
 
-function supportedCalculation(overrides: Partial<CalculationInput2025> = {}) {
-  const input: CalculationInput2025 = {
+function supportedCalculationInput(): CalculationInput2025 {
+  return {
     calculationId: "CALC-SYNTHETIC", inputRevision: 28, filingStatus: "single",
     eligibility: {
       fullYearUsResident: true, claimableAsDependent: false, hasDependents: false,
@@ -104,7 +135,10 @@ function supportedCalculation(overrides: Partial<CalculationInput2025> = {}) {
     dividends: [{ id: "div", payerName: "Synthetic Fund", ordinaryDividends: "2000.00", qualifiedDividends: "1000.00", exemptInterestDividends: "0.00", section199ADividends: "500.00", federalWithholding: "100.00" }],
     scheduleCActivities: [{ id: "business", name: "Synthetic Consulting", owner: "taxpayer", grossReceipts: "5000.00", expenses: { supplies: "500.00" }, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
     businessWithholding: [],
-    ...overrides,
   };
+}
+
+function supportedCalculation(overrides: Partial<CalculationInput2025> = {}) {
+  const input = { ...supportedCalculationInput(), ...overrides };
   return calculateFederalReturn2025(input);
 }

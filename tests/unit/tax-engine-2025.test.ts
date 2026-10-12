@@ -9,7 +9,47 @@ import {
   resolveDependencyGraph,
   rulePackage2025,
   type CalculationInput2025,
+  type FilingStatus2025,
+  type ScheduleAInput2025,
 } from "../../src/tax-engine/2025";
+
+function scheduleA(overrides: Partial<ScheduleAInput2025> = {}): ScheduleAInput2025 {
+  return {
+    enabled: false,
+    marriedFilingSeparatelySpouseItemizes: null,
+    medicalAndDentalExpenses: "0.00",
+    stateLocalIncomeOrSalesTaxes: "0.00",
+    realEstateTaxes: "0.00",
+    personalPropertyTaxes: "0.00",
+    otherTaxes: "0.00",
+    homeMortgageInterestAndPoints: "0.00",
+    investmentInterest: "0.00",
+    cashCharitableContributions: "0.00",
+    noncashCharitableContributions: "0.00",
+    casualtyAndTheftLosses: "0.00",
+    otherItemizedDeductions: "0.00",
+    saltEligibilityConfirmed: false,
+    mortgageLimitsApplied: false,
+    charityLimitsApplied: false,
+    casualtyLimitsApplied: false,
+    ...overrides,
+  };
+}
+
+function qualifyingChild(id = "dep-1") {
+  return {
+    id,
+    legalName: "Synthetic Child",
+    dateOfBirth: "2015-06-15",
+    relationship: "Child",
+    monthsLivedWithTaxpayer: 12,
+    qualifiesAsDependent: true,
+    qualifiesForChildTaxCredit: true,
+    hasValidSsnForChildTaxCredit: true,
+    qualifiesForOtherDependentCredit: false,
+    eligibilityReviewed: true,
+  };
+}
 
 function supportedInput(overrides: Partial<CalculationInput2025> = {}): CalculationInput2025 {
   return {
@@ -63,6 +103,19 @@ describe("2025 tax method registry", () => {
     expect(ordinaryIncomeTax2025(103351, "single").toFixed(0)).toBe("17651");
   });
 
+  it("uses the correct 2025 tax computation column for every filing status", () => {
+    const expected: Record<FilingStatus2025, string> = {
+      single: "16914",
+      married_filing_jointly: "11828",
+      married_filing_separately: "16914",
+      head_of_household: "15175",
+      qualifying_surviving_spouse: "11828",
+    };
+    for (const [status, tax] of Object.entries(expected) as Array<[FilingStatus2025, string]>) {
+      expect(ordinaryIncomeTax2025(100000, status).toFixed(0), status).toBe(tax);
+    }
+  });
+
   it("applies the published qualified-dividend worksheet ceilings", () => {
     const result = qualifiedDividendTax2025(100000, 20000, "single");
     expect(result.ordinaryIncomePortion.toFixed(0)).toBe("80000");
@@ -82,6 +135,131 @@ describe("2025 tax method registry", () => {
 });
 
 describe("2025 supported return graph", () => {
+  it("applies all five filing statuses and their 2025 standard deductions", () => {
+    const expected: Record<FilingStatus2025, string> = {
+      single: "15750",
+      married_filing_jointly: "31500",
+      married_filing_separately: "15750",
+      head_of_household: "23625",
+      qualifying_surviving_spouse: "31500",
+    };
+    for (const [filingStatus, standardDeduction] of Object.entries(expected) as Array<[FilingStatus2025, string]>) {
+      const needsQualifyingPerson = filingStatus === "head_of_household" || filingStatus === "qualifying_surviving_spouse";
+      const result = calculateFederalReturn2025(supportedInput({
+        filingStatus,
+        filingStatusEligibilityConfirmed: true,
+        hasSpouse: filingStatus === "married_filing_jointly" || filingStatus === "married_filing_separately",
+        dependents: needsQualifyingPerson ? [qualifyingChild()] : [],
+        scheduleA: filingStatus === "married_filing_separately" ? scheduleA({ marriedFilingSeparatelySpouseItemizes: false }) : undefined,
+        eligibility: { ...supportedInput().eligibility, hasDependents: needsQualifyingPerson },
+        wages: [{ id: "w2-status", owner: "taxpayer", wages: "50000.00", federalWithholding: "0.00", socialSecurityWages: "50000.00" }],
+      }));
+      expect(result.status, filingStatus).toBe("calculated_draft");
+      expect(result.forms?.filingStatus).toBe(filingStatus);
+      expect(result.forms?.form1040.standardDeduction).toBe(standardDeduction);
+    }
+  });
+
+  it("calculates Schedule A medical, SALT, interest, charity, casualty and other deductions", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatusEligibilityConfirmed: true,
+      scheduleA: scheduleA({
+        enabled: true,
+        medicalAndDentalExpenses: "10000.00",
+        stateLocalIncomeOrSalesTaxes: "30000.00",
+        realEstateTaxes: "20000.00",
+        otherTaxes: "250.00",
+        homeMortgageInterestAndPoints: "20000.00",
+        investmentInterest: "500.00",
+        cashCharitableContributions: "4000.00",
+        noncashCharitableContributions: "1000.00",
+        casualtyAndTheftLosses: "750.00",
+        otherItemizedDeductions: "500.00",
+        saltEligibilityConfirmed: true,
+        mortgageLimitsApplied: true,
+        charityLimitsApplied: true,
+        casualtyLimitsApplied: true,
+      }),
+      eligibility: { ...supportedInput().eligibility, usesItemizedDeductions: true },
+      wages: [{ id: "w2-itemized", owner: "taxpayer", wages: "100000.00", federalWithholding: "0.00", socialSecurityWages: "100000.00" }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleA).toMatchObject({
+      required: true,
+      medicalFloor: "7500",
+      deductibleMedical: "2500",
+      stateAndLocalTaxesBeforeLimit: "50000",
+      stateAndLocalTaxLimit: "40000",
+      deductibleStateAndLocalTaxes: "40000",
+      charitableContributions: "5000",
+      totalItemizedDeductions: "69500",
+    });
+    expect(result.forms?.form1040).toMatchObject({ standardDeduction: "15750", itemizedDeductions: "69500", deductionUsed: "69500", taxableIncome: "30500" });
+  });
+
+  it("applies the 2025 Schedule A SALT phaseout and MFS spouse-itemization rule", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "married_filing_separately",
+      filingStatusEligibilityConfirmed: true,
+      hasSpouse: true,
+      scheduleA: scheduleA({ enabled: true, marriedFilingSeparatelySpouseItemizes: true, stateLocalIncomeOrSalesTaxes: "50000.00", saltEligibilityConfirmed: true }),
+      eligibility: { ...supportedInput().eligibility, usesItemizedDeductions: true },
+      retirementDistributions: [{ id: "r-salt", owner: "taxpayer", grossDistribution: "300000.00", taxableAmount: "300000.00", federalWithholding: "0.00", distributionCode: "7", iraSepSimple: false, taxableAmountNotDetermined: false }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleA).toMatchObject({ stateAndLocalTaxLimit: "12500", deductibleStateAndLocalTaxes: "12500", totalItemizedDeductions: "12500" });
+    expect(result.forms?.form1040).toMatchObject({ standardDeduction: "0", itemizedDeductions: "12500", deductionUsed: "12500" });
+  });
+
+  it("calculates Schedule 8812 child, other-dependent and refundable credits", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "head_of_household",
+      filingStatusEligibilityConfirmed: true,
+      dependents: [qualifyingChild(), { ...qualifyingChild("dep-2"), legalName: "Synthetic Parent", dateOfBirth: "1955-03-10", relationship: "Parent", qualifiesForChildTaxCredit: false, hasValidSsnForChildTaxCredit: false, qualifiesForOtherDependentCredit: true }],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+      wages: [{ id: "w2-credit", owner: "taxpayer", wages: "20000.00", federalWithholding: "0.00", socialSecurityWages: "20000.00" }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.schedule8812).toMatchObject({ qualifyingChildren: 1, otherDependents: 1, potentialChildTaxCredit: "2200", potentialOtherDependentCredit: "500", phaseoutReduction: "0", nonrefundableCredit: "0", additionalChildTaxCredit: "1700" });
+    expect(result.forms?.form1040).toMatchObject({ childTaxCreditAndOtherDependentCredit: "0", additionalChildTaxCredit: "1700", refund: "1700" });
+  });
+
+  it("phases out dependent credits in $50 increments above the filing-status threshold", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatusEligibilityConfirmed: true,
+      dependents: [qualifyingChild()],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+      retirementDistributions: [{ id: "r-phaseout", owner: "taxpayer", grossDistribution: "202001.00", taxableAmount: "202001.00", federalWithholding: "0.00", distributionCode: "7", iraSepSimple: false, taxableAmountNotDetermined: false }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.schedule8812).toMatchObject({ potentialChildTaxCredit: "2200", phaseoutReduction: "150", nonrefundableCredit: "2050", additionalChildTaxCredit: "0" });
+  });
+
+  it("uses the Schedule 8812 three-child payroll-tax alternative for self-employment income", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "head_of_household",
+      filingStatusEligibilityConfirmed: true,
+      dependents: [qualifyingChild("dep-1"), qualifyingChild("dep-2"), qualifyingChild("dep-3")],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+      scheduleCActivities: [{ id: "c-credit", name: "Synthetic services", owner: "taxpayer", grossReceipts: "10000.00", expenses: {}, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleSE[0]).toMatchObject({ selfEmploymentTax: "1413", deductibleHalf: "707" });
+    expect(result.forms?.schedule8812).toMatchObject({ qualifyingChildren: 3, additionalChildTaxCredit: "2120" });
+    expect(result.trace.find(({ nodeId }) => nodeId === "schedule-8812.additional-child-tax-credit")?.operands.threeChildAlternativeLimit).toBe("2120");
+  });
+
+  it("blocks unreviewed, conflicting, over-age and SSN-ineligible dependent credit facts", () => {
+    const invalid = { ...qualifyingChild(), dateOfBirth: "2008-01-01", hasValidSsnForChildTaxCredit: false, qualifiesForOtherDependentCredit: true, eligibilityReviewed: false };
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatusEligibilityConfirmed: true,
+      dependents: [invalid],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["DEPENDENT_ELIGIBILITY_UNCONFIRMED", "CHILD_TAX_CREDIT_SSN_REQUIRED", "CHILD_TAX_CREDIT_AGE_INVALID", "DEPENDENT_CREDIT_CLASSIFICATION_CONFLICT"]));
+  });
+
   it("calculates a supported single wage return and reconciles withholding", () => {
     const result = calculateFederalReturn2025(supportedInput({
       wages: [{ id: "w2-1", owner: "taxpayer", wages: "100000.00", federalWithholding: "15000.00", socialSecurityWages: "100000.00" }],
@@ -142,7 +320,7 @@ describe("2025 supported return graph", () => {
       wages: "190000", taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000",
       iraDistributions: "0", taxableIraDistributions: "0", pensionsAndAnnuities: "0", taxablePensionsAndAnnuities: "0", capitalGainOrLoss: "0", schedule1AdditionalIncome: "18000",
       totalIncome: "214600", adjustedGrossIncome: "213523", standardDeduction: "31500", qbiDeduction: "3385", taxableIncome: "178638",
-      incomeTax: "28848", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", refund: "0", amountOwed: "3402",
+      itemizedDeductions: "0", deductionUsed: "31500", incomeTax: "28848", childTaxCreditAndOtherDependentCredit: "0", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", additionalChildTaxCredit: "0", refund: "0", amountOwed: "3402",
     });
     expect(result.dependencyManifest.every(({ status }) => status === "evaluated")).toBe(true);
   });
@@ -210,7 +388,7 @@ describe("2025 supported return graph", () => {
       wages: [{ id: "w2-spouse", owner: "spouse", wages: "1000.00", federalWithholding: "0.00", socialSecurityWages: "1000.00" }],
     }));
     expect(result.status).toBe("blocked");
-    expect(result.diagnostics.some(({ code }) => code === "SPOUSE_DATA_INVALID_FOR_SINGLE")).toBe(true);
+    expect(result.diagnostics.some(({ code }) => code === "SPOUSE_DATA_INVALID_FOR_STATUS")).toBe(true);
   });
 
   it("blocks Form 8995-A cases instead of applying a blanket 20 percent deduction", () => {

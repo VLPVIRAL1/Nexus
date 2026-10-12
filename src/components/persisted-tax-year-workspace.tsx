@@ -1,9 +1,10 @@
-import { AlertTriangle, Calculator, ClipboardCheck, Download, FileJson, FileOutput, FileUp, GitMerge, ListChecks, ShieldCheck, TableProperties } from "lucide-react";
+import { AlertTriangle, Calculator, ClipboardCheck, Download, FileJson, FileOutput, FileUp, GitMerge, ListChecks, ShieldCheck, TableProperties, Users } from "lucide-react";
 import Link from "next/link";
 import type { TaxYearWorkspaceRecord } from "@/server/client-repository";
 import { StatusPill } from "./status";
 
 const workflow = [
+  { href: "return-profile", title: "Filing status, dependents & Schedule A", description: "Select one of five statuses, classify dependents and enter reviewed itemized deductions.", icon: Users },
   { href: "intake", title: "Intake & completeness", description: "Answer required eligibility questions and attest expected-document evidence.", icon: ClipboardCheck },
   { href: "sources", title: "Source documents", description: "Upload, scan, encrypt and inspect PDF/JPEG/PNG source evidence.", icon: FileUp },
   { href: "source-entry", title: "Typed source entry", description: "Enter all registered W-2, 1099-NEC, MISC, INT and DIV fields.", icon: TableProperties },

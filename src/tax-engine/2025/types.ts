@@ -1,4 +1,9 @@
-export type FilingStatus2025 = "single" | "married_filing_jointly";
+export type FilingStatus2025 =
+  | "single"
+  | "married_filing_jointly"
+  | "married_filing_separately"
+  | "head_of_household"
+  | "qualifying_surviving_spouse";
 export type PersonRole2025 = "taxpayer" | "spouse";
 export type DollarInput = string;
 
@@ -21,6 +26,41 @@ export interface WageInput2025 {
   wages: DollarInput;
   federalWithholding: DollarInput;
   socialSecurityWages: DollarInput;
+  socialSecurityTaxWithheld?: DollarInput;
+  medicareTaxWithheld?: DollarInput;
+}
+
+export interface DependentInput2025 {
+  id: string;
+  legalName: string;
+  dateOfBirth: string;
+  relationship: string;
+  monthsLivedWithTaxpayer: number;
+  qualifiesAsDependent: boolean;
+  qualifiesForChildTaxCredit: boolean;
+  hasValidSsnForChildTaxCredit: boolean;
+  qualifiesForOtherDependentCredit: boolean;
+  eligibilityReviewed: boolean;
+}
+
+export interface ScheduleAInput2025 {
+  enabled: boolean;
+  marriedFilingSeparatelySpouseItemizes: boolean | null;
+  medicalAndDentalExpenses: DollarInput;
+  stateLocalIncomeOrSalesTaxes: DollarInput;
+  realEstateTaxes: DollarInput;
+  personalPropertyTaxes: DollarInput;
+  otherTaxes: DollarInput;
+  homeMortgageInterestAndPoints: DollarInput;
+  investmentInterest: DollarInput;
+  cashCharitableContributions: DollarInput;
+  noncashCharitableContributions: DollarInput;
+  casualtyAndTheftLosses: DollarInput;
+  otherItemizedDeductions: DollarInput;
+  saltEligibilityConfirmed: boolean;
+  mortgageLimitsApplied: boolean;
+  charityLimitsApplied: boolean;
+  casualtyLimitsApplied: boolean;
 }
 
 export interface InterestInput2025 {
@@ -140,6 +180,10 @@ export interface CalculationInput2025 {
   calculationId: string;
   inputRevision: number;
   filingStatus: FilingStatus2025;
+  filingStatusEligibilityConfirmed?: boolean;
+  hasSpouse?: boolean;
+  dependents?: DependentInput2025[];
+  scheduleA?: ScheduleAInput2025;
   eligibility: EligibilityInput2025;
   scheduleBScreening: ScheduleBScreening2025;
   wages: WageInput2025[];
@@ -192,6 +236,33 @@ export interface CalculationOutput2025 {
   status: "blocked" | "calculated_draft";
   diagnostics: CalculationDiagnostic2025[];
   forms: {
+    filingStatus: FilingStatus2025;
+    dependents: Array<{ id: string; legalName: string; relationship: string; childTaxCredit: boolean; otherDependentCredit: boolean }>;
+    scheduleA: {
+      required: boolean;
+      medicalAndDentalExpenses: string;
+      medicalFloor: string;
+      deductibleMedical: string;
+      stateAndLocalTaxesBeforeLimit: string;
+      stateAndLocalTaxLimit: string;
+      deductibleStateAndLocalTaxes: string;
+      otherTaxes: string;
+      homeMortgageInterestAndPoints: string;
+      investmentInterest: string;
+      charitableContributions: string;
+      casualtyAndTheftLosses: string;
+      otherItemizedDeductions: string;
+      totalItemizedDeductions: string;
+    };
+    schedule8812: {
+      qualifyingChildren: number;
+      otherDependents: number;
+      potentialChildTaxCredit: string;
+      potentialOtherDependentCredit: string;
+      phaseoutReduction: string;
+      nonrefundableCredit: string;
+      additionalChildTaxCredit: string;
+    };
     scheduleB: { required: boolean; taxableInterest: string; ordinaryDividends: string };
     scheduleC: Array<{ activityId: string; grossReceipts: string; expenses: string; netProfit: string }>;
     form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustment: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
@@ -216,12 +287,16 @@ export interface CalculationOutput2025 {
       totalIncome: string;
       adjustedGrossIncome: string;
       standardDeduction: string;
+      itemizedDeductions: string;
+      deductionUsed: string;
       qbiDeduction: string;
       taxableIncome: string;
       incomeTax: string;
+      childTaxCreditAndOtherDependentCredit: string;
       selfEmploymentTax: string;
       totalTax: string;
       federalWithholding: string;
+      additionalChildTaxCredit: string;
       refund: string;
       amountOwed: string;
     };

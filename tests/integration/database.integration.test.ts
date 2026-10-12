@@ -26,6 +26,7 @@ import { AuthenticationAttemptLimitError, enforceAuthenticationAttemptLimit } fr
 import { issueProvisionedExternalIdentitySession } from "../../src/server/supabase-auth-service";
 import { decideManualAcceptanceSession, decideOutputTieOut, decideReleaseGate, decideTaxReviewFixture, getReleaseClosureState, ingestProductionReadiness, saveInfrastructureControl, saveManualAcceptanceSession, saveOutputTieOut, saveReleaseGate, saveTaxReviewFixture } from "../../src/server/release-closure-service";
 import { createSupportedReviewExample2025 } from "../../src/services/outputs/json-export-service";
+import { getReturnProfileState, saveReturnProfile } from "../../src/server/return-profile-service";
 
 const importCollections = {
   W2: "w2",
@@ -112,6 +113,7 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0021_expected_document_registry.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0022_external_identities.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0023_release_closure.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0024_return_profiles.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -421,6 +423,10 @@ suite("PostgreSQL foundation", () => {
     };
     const payload = structuredClone(template) as Record<string, any>;
     payload.metadata = { integration_fixture: randomUUID() };
+    const dependentId = randomUUID();
+    payload.filing_profile = { status: "head_of_household", eligibility_confirmed: true };
+    payload.dependents = [{ id: dependentId, legal_name: "Synthetic Import Child", date_of_birth: "2015-06-15", relationship: "Child", months_lived_with_taxpayer: 12, qualifies_as_dependent: true, qualifies_for_child_tax_credit: true, has_valid_ssn_for_child_tax_credit: true, qualifies_for_other_dependent_credit: false, eligibility_reviewed: true }];
+    payload.schedule_a = { ...payload.schedule_a, enabled: true, state_local_income_or_sales_taxes: "12000.00", real_estate_taxes: "5000.00", salt_eligibility_confirmed: true };
     const externalSourceId = `integration-${randomUUID()}`;
     payload.forms.w2 = [{
       id: randomUUID(), external_source_id: externalSourceId, source_document_id: randomUUID(), form_year: 2025,
@@ -432,9 +438,12 @@ suite("PostgreSQL foundation", () => {
     await statusSetup.connect();
     await statusSetup.query("UPDATE tax_years SET preparation_status='reviewed_draft' WHERE id='40000000-0000-4000-8000-000000000001'");
     await statusSetup.end();
+    const profileBefore = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
     const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "integration.json", raw);
     const committed = await commitPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId, preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })));
     expect(committed.replayed).toBe(false);
+    const importedProfile = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(importedProfile).toMatchObject({ filingStatus: "head_of_household", filingStatusEligibilityConfirmed: true, dependents: [{ id: dependentId, legalName: "Synthetic Import Child", qualifiesForChildTaxCredit: true }], scheduleA: { enabled: true, stateLocalIncomeOrSalesTaxes: "12000.00", realEstateTaxes: "5000.00", saltEligibilityConfirmed: true } });
     const statusVerification = new pg.Client({ connectionString });
     await statusVerification.connect();
     expect((await statusVerification.query<{ preparation_status: string }>("SELECT preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'")).rows[0]?.preparation_status).toBe("changes_requested");
@@ -444,6 +453,8 @@ suite("PostgreSQL foundation", () => {
     expect(replay).toMatchObject({ batchId: preview.batchId, replayed: true, status: "committed" });
     const rollback = await rollbackPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId);
     expect(rollback.rolledBackRevision).toBe(committed.committedRevision + 1);
+    const restoredProfile = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(restoredProfile).toMatchObject({ filingStatus: profileBefore.filingStatus, filingStatusEligibilityConfirmed: profileBefore.filingStatusEligibilityConfirmed, dependents: profileBefore.dependents, scheduleA: profileBefore.scheduleA });
     const importState=await getImportState(context,"30000000-0000-4000-8000-000000000001",2025);
     expect(importState.batches.find(({id})=>id===preview.batchId)).toMatchObject({status:"committed",resultRevision:committed.committedRevision,attemptCount:4,canRollback:false,rolledBackAt:expect.any(String)});
 
@@ -457,6 +468,26 @@ suite("PostgreSQL foundation", () => {
       const sourceRecord = await client.query("SELECT effective,version,import_batch_id FROM source_form_records WHERE tax_year_id='40000000-0000-4000-8000-000000000001' AND external_source_id=$1", [externalSourceId]);
       expect(sourceRecord.rows).toEqual([{ effective: false, version: 1, import_batch_id: preview.batchId }]);
     } finally { await client.end(); }
+  });
+
+  it("persists a reviewed filing profile, dependents and Schedule A with optimistic concurrency", async () => {
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const createdClient = await createClient(admin, { clientCode: `RP-${randomUUID().slice(0, 12)}`, displayName: "Return profile fixture" });
+    await createTaxYear(admin, createdClient.id, { year: 2025 });
+      await upsertPerson(admin, createdClient.id, 2025, { role: "taxpayer", legalName: "Synthetic Taxpayer", dateOfBirth: "1980-01-01", address: {}, facts: {}, expectedVersion: null });
+      await upsertPerson(admin, createdClient.id, 2025, { role: "spouse", legalName: "Synthetic Spouse", dateOfBirth: "1981-01-01", address: {}, facts: {}, expectedVersion: null });
+      const initial = await getReturnProfileState(admin, createdClient.id, 2025);
+      const saved = await saveReturnProfile(admin, createdClient.id, 2025, {
+        expectedRevision: initial.revision,
+        expectedVersion: initial.version,
+        filingStatus: "married_filing_separately",
+        filingStatusEligibilityConfirmed: true,
+        dependents: [{ id: randomUUID(), legalName: "Synthetic Child", dateOfBirth: "2014-02-10", relationship: "Child", monthsLivedWithTaxpayer: 12, qualifiesAsDependent: true, qualifiesForChildTaxCredit: true, hasValidSsnForChildTaxCredit: true, qualifiesForOtherDependentCredit: false, eligibilityReviewed: true }],
+        scheduleA: { enabled: true, marriedFilingSeparatelySpouseItemizes: true, medicalAndDentalExpenses: "1000.00", stateLocalIncomeOrSalesTaxes: "9000.00", realEstateTaxes: "2000.00", personalPropertyTaxes: "0.00", otherTaxes: "0.00", homeMortgageInterestAndPoints: "0.00", investmentInterest: "0.00", cashCharitableContributions: "500.00", noncashCharitableContributions: "0.00", casualtyAndTheftLosses: "0.00", otherItemizedDeductions: "0.00", saltEligibilityConfirmed: true, mortgageLimitsApplied: false, charityLimitsApplied: true, casualtyLimitsApplied: false },
+      });
+      const state = await getReturnProfileState(admin, createdClient.id, 2025);
+      expect(state).toMatchObject({ revision: saved.revision, version: saved.version, filingStatus: "married_filing_separately", filingStatusEligibilityConfirmed: true, dependents: [{ legalName: "Synthetic Child", qualifiesForChildTaxCredit: true }], scheduleA: { enabled: true, marriedFilingSeparatelySpouseItemizes: true, stateLocalIncomeOrSalesTaxes: "9000.00" } });
+      await expect(saveReturnProfile(admin, createdClient.id, 2025, { ...state, expectedRevision: initial.revision, expectedVersion: initial.version })).rejects.toMatchObject({ code: "conflict" });
   });
 
   it("round-trips every registered field and repeated row across all ten supported source families", async () => {
@@ -759,7 +790,7 @@ suite("PostgreSQL foundation", () => {
     await expect(generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "complete_json")).rejects.toMatchObject({ code: "forbidden" });
     await expect(downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id)).rejects.toMatchObject({ code: "forbidden" });
     const downloadedComplete = await downloadPersistedArtifact(admin, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id);
-    expect(JSON.parse(downloadedComplete.bytes.toString())).toMatchObject({ clientId: "30000000-0000-4000-8000-000000000001", taxYear: 2025, revision: calculation.revision });
+    expect(JSON.parse(downloadedComplete.bytes.toString())).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040", metadata: { export_revision: calculation.revision, canonical_round_trip: true } });
     const downloadedBlank = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, blankJson.id);
     expect(JSON.parse(downloadedBlank.bytes.toString())).toMatchObject({ client: {}, taxpayer: {}, source_documents: [], mappings: [] });
     const downloaded = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, pdf.id);

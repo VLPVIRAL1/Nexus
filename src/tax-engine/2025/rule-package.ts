@@ -3,7 +3,7 @@ export interface RuleSource2025 {
   title: string;
   url: string;
   archivedFile: string;
-  retrievedOn: "2026-10-06";
+  retrievedOn: "2026-10-06" | "2026-10-11";
   sha256: string;
 }
 
@@ -21,27 +21,45 @@ export const ruleSources2025: RuleSource2025[] = [
   { id: "irs-form-8995-instructions-2025", title: "2025 Instructions for Form 8995", url: "https://www.irs.gov/pub/irs-prior/i8995--2025.pdf", archivedFile: "sources/i8995--2025.pdf", retrievedOn: "2026-10-06", sha256: "875843baead68f6fa9aa7c3f6f27d6c1f37cb971ac334bcf414acdb4c1487684" },
   { id: "irs-form-8995-line-11-correction", title: "Form 8995 line 11 correction (Feb. 13, 2026)", url: "https://www.irs.gov/forms-pubs/corrections-to-the-instructions-on-how-to-calculate-the-taxable-income-before-qbi-deduction-for-form-8995", archivedFile: "sources/qbi-line-11-correction-2026-02-13.html", retrievedOn: "2026-10-06", sha256: "0fd0fd725762c038fc4092ff5a5decf884f0a0fd9475c6d0b12312375cf18e0e" },
   { id: "irs-1099-misc-nec-instructions-2025", title: "2025 Instructions for Forms 1099-MISC and 1099-NEC", url: "https://www.irs.gov/pub/irs-prior/i1099mec--2025.pdf", archivedFile: "sources/i1099mec--2025.pdf", retrievedOn: "2026-10-06", sha256: "372a0f683aa10650889d4ddcbe96b33bc0998ab31fdbf6e36d2262e3f1542dce" },
+  { id: "irs-schedule-a-instructions-2025-excerpt", title: "2025 Schedule A instructions authority excerpt and official PDF identity", url: "https://www.irs.gov/pub/irs-prior/i1040sca--2025.pdf", archivedFile: "sources/i1040sca--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "baaa3de8f6adcc8a3a81dea9809073cd0ab2522e2a36752c5c63e3f894643a40" },
+  { id: "irs-schedule-8812-2025-excerpt", title: "2025 Schedule 8812 authority excerpt and official PDF identity", url: "https://www.irs.gov/pub/irs-prior/f1040s8--2025.pdf", archivedFile: "sources/f1040s8--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "e1ffcfbf13c4cddd226404c2d808367424952cac3c44f347bb1372dc2f9ee1eb" },
 ];
 
 export const rulePackage2025 = {
-  id: "us-federal-1040-2025-supported-v2-review",
+  id: "us-federal-1040-2025-supported-v3-review",
   taxYear: 2025,
-  version: "0.2.0-research.1",
-  effectiveRevision: "2026-10-11-expanded-review-profile",
+  version: "0.3.0-research.1",
+  effectiveRevision: "2026-10-11-filing-status-dependent-schedule-a",
   status: "research_unapproved" as const,
   reviewer: null,
   taxTableSha256: "349208c4f25adbdb81cc418c75843364ae15dd36fbe762bc2adf2829a238d10a",
-  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
+  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
   sources: ruleSources2025,
 };
 
 export const constants2025 = {
-  standardDeduction: { single: 15750, married_filing_jointly: 31500 },
+  standardDeduction: {
+    single: 15750,
+    married_filing_jointly: 31500,
+    married_filing_separately: 15750,
+    head_of_household: 23625,
+    qualifying_surviving_spouse: 31500,
+  },
   scheduleBThreshold: 1500,
   socialSecurityWageBase: 176100,
-  qbiSimplifiedThreshold: { single: 197300, married_filing_jointly: 394600 },
-  qualifiedDividendZeroRateCeiling: { single: 48350, married_filing_jointly: 96700 },
-  qualifiedDividendFifteenRateCeiling: { single: 533400, married_filing_jointly: 600050 },
-  additionalMedicareThreshold: { single: 200000, married_filing_jointly: 250000 },
-  netInvestmentIncomeThreshold: { single: 200000, married_filing_jointly: 250000 },
+  qbiSimplifiedThreshold: { single: 197300, married_filing_jointly: 394600, married_filing_separately: 197300, head_of_household: 197300, qualifying_surviving_spouse: 197300 },
+  qualifiedDividendZeroRateCeiling: { single: 48350, married_filing_jointly: 96700, married_filing_separately: 48350, head_of_household: 64750, qualifying_surviving_spouse: 96700 },
+  qualifiedDividendFifteenRateCeiling: { single: 533400, married_filing_jointly: 600050, married_filing_separately: 300000, head_of_household: 566700, qualifying_surviving_spouse: 600050 },
+  additionalMedicareThreshold: { single: 200000, married_filing_jointly: 250000, married_filing_separately: 125000, head_of_household: 200000, qualifying_surviving_spouse: 200000 },
+  netInvestmentIncomeThreshold: { single: 200000, married_filing_jointly: 250000, married_filing_separately: 125000, head_of_household: 200000, qualifying_surviving_spouse: 250000 },
+  scheduleAMedicalFloorRate: "0.075",
+  saltLimit: { single: 40000, married_filing_jointly: 40000, married_filing_separately: 20000, head_of_household: 40000, qualifying_surviving_spouse: 40000 },
+  saltPhaseoutThreshold: { single: 500000, married_filing_jointly: 500000, married_filing_separately: 250000, head_of_household: 500000, qualifying_surviving_spouse: 500000 },
+  saltMinimumLimit: { single: 10000, married_filing_jointly: 10000, married_filing_separately: 5000, head_of_household: 10000, qualifying_surviving_spouse: 10000 },
+  saltPhaseoutRate: { single: "0.30", married_filing_jointly: "0.30", married_filing_separately: "0.15", head_of_household: "0.30", qualifying_surviving_spouse: "0.30" },
+  childTaxCreditPerChild: 2200,
+  otherDependentCreditPerDependent: 500,
+  refundableChildTaxCreditPerChild: 1700,
+  childTaxCreditEarnedIncomeFloor: 2500,
+  childTaxCreditPhaseoutThreshold: { single: 200000, married_filing_jointly: 400000, married_filing_separately: 200000, head_of_household: 200000, qualifying_surviving_spouse: 200000 },
 } as const;

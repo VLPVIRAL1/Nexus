@@ -4,16 +4,41 @@
   "title": "Nexus Tax 2025 Canonical Import",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "tax_year", "return_type", "client", "taxpayer", "source_documents", "forms", "activities", "mappings", "payments", "review_points", "metadata"],
+  "required": ["schema_version", "tax_year", "return_type", "client", "filing_profile", "taxpayer", "dependents", "schedule_a", "source_documents", "forms", "activities", "mappings", "payments", "review_points", "metadata"],
   "properties": {
     "schema_version": { "const": "1.0.0" },
     "tax_year": { "const": 2025 },
     "return_type": { "const": "1040" },
     "_instructions": { "type": "object" },
     "client": { "type": "object" },
+    "filing_profile": {
+      "type": "object", "additionalProperties": false, "required": ["status", "eligibility_confirmed"],
+      "properties": { "status": { "enum": ["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"] }, "eligibility_confirmed": { "type": "boolean" } }
+    },
     "taxpayer": { "type": "object" },
     "spouse": { "type": ["object", "null"] },
-    "dependents": { "type": "array" },
+    "dependents": { "type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "legal_name", "date_of_birth", "relationship", "months_lived_with_taxpayer", "qualifies_as_dependent", "qualifies_for_child_tax_credit", "has_valid_ssn_for_child_tax_credit", "qualifies_for_other_dependent_credit", "eligibility_reviewed"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" }, "legal_name": { "type": "string", "minLength": 1 }, "date_of_birth": { "type": "string", "format": "date" }, "relationship": { "type": "string", "minLength": 1 },
+        "months_lived_with_taxpayer": { "type": "integer", "minimum": 0, "maximum": 12 }, "qualifies_as_dependent": { "type": "boolean" }, "qualifies_for_child_tax_credit": { "type": "boolean" },
+        "has_valid_ssn_for_child_tax_credit": { "type": "boolean" }, "qualifies_for_other_dependent_credit": { "type": "boolean" }, "eligibility_reviewed": { "type": "boolean" }
+      }
+    } },
+    "schedule_a": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "married_filing_separately_spouse_itemizes", "medical_and_dental_expenses", "state_local_income_or_sales_taxes", "real_estate_taxes", "personal_property_taxes", "other_taxes", "home_mortgage_interest_and_points", "investment_interest", "cash_charitable_contributions", "noncash_charitable_contributions", "casualty_and_theft_losses", "other_itemized_deductions", "salt_eligibility_confirmed", "mortgage_limits_applied", "charity_limits_applied", "casualty_limits_applied"],
+      "properties": {
+        "enabled": { "type": "boolean" }, "married_filing_separately_spouse_itemizes": { "type": ["boolean", "null"] },
+        "medical_and_dental_expenses": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "state_local_income_or_sales_taxes": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "real_estate_taxes": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "personal_property_taxes": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "other_taxes": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "home_mortgage_interest_and_points": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "investment_interest": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "cash_charitable_contributions": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "noncash_charitable_contributions": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "casualty_and_theft_losses": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "other_itemized_deductions": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "salt_eligibility_confirmed": { "type": "boolean" }, "mortgage_limits_applied": { "type": "boolean" }, "charity_limits_applied": { "type": "boolean" }, "casualty_limits_applied": { "type": "boolean" }
+      }
+    },
     "source_documents": { "type": "array" },
     "forms": {
       "type": "object",

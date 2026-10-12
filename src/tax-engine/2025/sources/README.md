@@ -15,6 +15,11 @@ The February 13, 2026 Form 8995 correction is archived because it changes the
 line 11 instructions for taxable income before the QBI deduction. The archived
 2025 PDF retrieved on October 6, 2026 already contains the corrected language.
 
+The Schedule A and Schedule 8812 authority-excerpt files record the exact lines
+consumed by the expanded profile and the SHA-256 identity of each complete
+official PDF retrieved on October 11, 2026. They do not replace the full IRS
+instructions or independent professional review.
+
 To reproduce `../data/tax-table.json`, run:
 
 ```bash

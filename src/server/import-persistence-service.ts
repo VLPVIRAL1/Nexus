@@ -116,6 +116,7 @@ export async function commitPersistedImport(
       [scope.taxYearId, JSON.stringify(committed.result), nextRevision],
     );
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
+    const profileMaterialized = await synchronizeReturnProfile(client, scope.taxYearId, committed.result);
     const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query(
       `UPDATE import_batches SET import_status='committed',result_revision=$2,previous_snapshot=$3::jsonb,committed_snapshot=$4::jsonb,committed_by=$5,committed_at=now()
@@ -123,7 +124,7 @@ export async function commitPersistedImport(
       [batchId, nextRevision, JSON.stringify(scope.snapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, mappingBlockers });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, profileMaterialized, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -152,6 +153,7 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
        WHERE id=$1`,
       [scope.taxYearId, JSON.stringify(row.previous_snapshot), nextRevision],
     );
+    await synchronizeReturnProfile(client, scope.taxYearId, row.previous_snapshot, true);
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query("UPDATE import_batches SET rolled_back_at=now(),rolled_back_by=$2 WHERE id=$1", [row.id, context.userId]);
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "rolled_back");
@@ -308,3 +310,43 @@ function canonicalJson(value: unknown): string {
   if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`;
   return JSON.stringify(value);
 }
+
+async function synchronizeReturnProfile(client: pg.PoolClient, taxYearId: string, snapshot: Record<string, unknown>, resetMissing = false): Promise<boolean> {
+  const filing = record(snapshot.filing_profile);
+  const status = typeof filing.status === "string" ? filing.status : null;
+  const schedule = record(snapshot.schedule_a);
+  if (!status && !Array.isArray(snapshot.dependents) && !Object.keys(schedule).length && !resetMissing) return false;
+  const allowedStatuses = new Set(["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"]);
+  if (status && allowedStatuses.has(status)) {
+    const mappedSchedule = {
+      enabled: schedule.enabled === true,
+      marriedFilingSeparatelySpouseItemizes: typeof schedule.married_filing_separately_spouse_itemizes === "boolean" ? schedule.married_filing_separately_spouse_itemizes : null,
+      medicalAndDentalExpenses: moneyString(schedule.medical_and_dental_expenses), stateLocalIncomeOrSalesTaxes: moneyString(schedule.state_local_income_or_sales_taxes),
+      realEstateTaxes: moneyString(schedule.real_estate_taxes), personalPropertyTaxes: moneyString(schedule.personal_property_taxes), otherTaxes: moneyString(schedule.other_taxes),
+      homeMortgageInterestAndPoints: moneyString(schedule.home_mortgage_interest_and_points), investmentInterest: moneyString(schedule.investment_interest),
+      cashCharitableContributions: moneyString(schedule.cash_charitable_contributions), noncashCharitableContributions: moneyString(schedule.noncash_charitable_contributions),
+      casualtyAndTheftLosses: moneyString(schedule.casualty_and_theft_losses), otherItemizedDeductions: moneyString(schedule.other_itemized_deductions),
+      saltEligibilityConfirmed: schedule.salt_eligibility_confirmed === true, mortgageLimitsApplied: schedule.mortgage_limits_applied === true,
+      charityLimitsApplied: schedule.charity_limits_applied === true, casualtyLimitsApplied: schedule.casualty_limits_applied === true,
+    };
+    await client.query(`INSERT INTO return_profiles(tax_year_id,filing_status,filing_status_eligibility_confirmed,schedule_a) VALUES($1,$2,$3,$4::jsonb)
+      ON CONFLICT(tax_year_id) DO UPDATE SET filing_status=EXCLUDED.filing_status,filing_status_eligibility_confirmed=EXCLUDED.filing_status_eligibility_confirmed,schedule_a=EXCLUDED.schedule_a,version=return_profiles.version+1`, [taxYearId, status, filing.eligibility_confirmed === true, JSON.stringify(mappedSchedule)]);
+  } else if (resetMissing) {
+    await client.query(`INSERT INTO return_profiles(tax_year_id) VALUES($1) ON CONFLICT(tax_year_id) DO UPDATE SET filing_status='single',filing_status_eligibility_confirmed=false,schedule_a='{"enabled":false,"marriedFilingSeparatelySpouseItemizes":null,"medicalAndDentalExpenses":"0.00","stateLocalIncomeOrSalesTaxes":"0.00","realEstateTaxes":"0.00","personalPropertyTaxes":"0.00","otherTaxes":"0.00","homeMortgageInterestAndPoints":"0.00","investmentInterest":"0.00","cashCharitableContributions":"0.00","noncashCharitableContributions":"0.00","casualtyAndTheftLosses":"0.00","otherItemizedDeductions":"0.00","saltEligibilityConfirmed":false,"mortgageLimitsApplied":false,"charityLimitsApplied":false,"casualtyLimitsApplied":false}'::jsonb,version=return_profiles.version+1`, [taxYearId]);
+  }
+  if (Array.isArray(snapshot.dependents)) {
+    await client.query("DELETE FROM dependents WHERE tax_year_id=$1", [taxYearId]);
+    for (const value of snapshot.dependents) {
+      const dependent = record(value);
+      if (typeof dependent.id !== "string" || typeof dependent.legal_name !== "string") continue;
+      const facts = { dateOfBirth: dependent.date_of_birth, relationship: dependent.relationship, monthsLivedWithTaxpayer: dependent.months_lived_with_taxpayer, qualifiesAsDependent: dependent.qualifies_as_dependent === true, qualifiesForChildTaxCredit: dependent.qualifies_for_child_tax_credit === true, hasValidSsnForChildTaxCredit: dependent.has_valid_ssn_for_child_tax_credit === true, qualifiesForOtherDependentCredit: dependent.qualifies_for_other_dependent_credit === true, eligibilityReviewed: dependent.eligibility_reviewed === true };
+      await client.query("INSERT INTO dependents(id,tax_year_id,legal_name,facts) VALUES($1,$2,$3,$4::jsonb)", [dependent.id, taxYearId, dependent.legal_name, JSON.stringify(facts)]);
+    }
+  } else if (resetMissing) {
+    await client.query("DELETE FROM dependents WHERE tax_year_id=$1", [taxYearId]);
+  }
+  return true;
+}
+
+function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function moneyString(value: unknown): string { return typeof value === "string" && /^\d+\.\d{2}$/.test(value) ? value : "0.00"; }

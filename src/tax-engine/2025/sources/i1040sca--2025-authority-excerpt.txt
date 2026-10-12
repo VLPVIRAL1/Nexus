@@ -1,0 +1,12 @@
+IRS 2025 Instructions for Schedule A (Form 1040) — authority excerpt
+Official URL: https://www.irs.gov/pub/irs-prior/i1040sca--2025.pdf
+Retrieved: 2026-10-11
+Archived official PDF SHA-256: b0999b12d9dc4b13868501a9c1879011c00d2fc035f13a1391251d355a6242c8
+
+Medical and Dental Expenses, line 3: multiply Form 1040 or 1040-SR line 11b by 7.5% (0.075).
+
+State and Local Tax Deduction, line 5e: if Form 1040 or 1040-SR line 11b is $500,000 or less ($250,000 if married filing separately), enter the smaller of line 5d or $40,000 ($20,000 if married filing separately). Above that threshold, use the State and Local Tax Deduction Worksheet.
+
+State and Local Tax Deduction Worksheet: start with $40,000; subtract $500,000 ($250,000 if married filing separately) from modified income; multiply the excess by 30%; subtract that amount from $40,000; use not less than $10,000; then enter the smaller of that result (half of that result if married filing separately) or Schedule A line 5d. If line 5d is $10,000 ($5,000 if married filing separately) or less, enter line 5d without completing the worksheet.
+
+This excerpt records the exact provisions consumed by the research implementation. The official PDF hash above is the immutable source identity; the full instructions govern and require independent tax review before activation.

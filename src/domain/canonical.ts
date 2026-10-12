@@ -235,6 +235,8 @@ export interface CanonicalTaxReturnData {
   clientId: UUID;
   taxYearId: UUID;
   revision: number;
+  filingProfile?: { status: "single" | "married_filing_jointly" | "married_filing_separately" | "head_of_household" | "qualifying_surviving_spouse"; eligibilityConfirmed: boolean };
+  scheduleA?: Record<string, unknown>;
   taxpayer: Record<string, unknown>;
   spouse: Record<string, unknown> | null;
   dependents: Array<Record<string, unknown>>;
