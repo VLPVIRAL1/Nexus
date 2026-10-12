@@ -2,15 +2,16 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 import { addMoney, asDecimalString, money } from "@/domain/money";
+import { parseActivityForm2025, type ScheduleCFormData2025, type ScheduleEFormData2025, type ScheduleFFormData2025 } from "@/domain/activity-forms-2025";
 import { phase1IntakeQuestions } from "@/domain/intake";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
-import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type FilingStatus2025, type PersonRole2025, type ScheduleAInput2025, type SupportedExpenseCategory, supportedExpenseCategories } from "@/tax-engine/2025";
+import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type FilingStatus2025, type PersonRole2025, type ScheduleAInput2025 } from "@/tax-engine/2025";
 import { emptyScheduleA2025 } from "./return-profile-service";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 
-const engineVersion = "nexus-federal-2025-v2-review";
-const formRegistryVersion = "2025-supported-forms-v2-review";
+const engineVersion = "nexus-federal-2025-v3-schedule-cef-review";
+const formRegistryVersion = "2025-supported-forms-v3-schedule-cef-review";
 
 export async function runPersistedCalculation(context: AuthorizationContext, clientId: string, year: number, expectedRevision: number) {
   if (year !== 2025) throw new WorkflowError("invalid", "Only the 2025 federal calculation package is available.");
@@ -60,8 +61,8 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     client.query<{ id: string; legal_name: string; facts: Record<string, unknown> }>("SELECT id,legal_name,facts FROM dependents WHERE tax_year_id=$1 ORDER BY legal_name,id", [taxYearId]),
     client.query<{ filing_status: FilingStatus2025; filing_status_eligibility_confirmed: boolean; schedule_a: ScheduleAInput2025 }>("SELECT filing_status,filing_status_eligibility_confirmed,schedule_a FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,owner_role,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
-    client.query<{ id: string; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type='schedule_c' AND implementation_status='supported' ORDER BY name,id", [taxYearId]),
-    client.query<{ source_record_id: string; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type='schedule_c' AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
+    client.query<{ id: string; activity_type: "schedule_c"|"schedule_e"|"schedule_f"; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,activity_type,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type IN ('schedule_c','schedule_e','schedule_f') AND implementation_status='supported' ORDER BY activity_type,name,id", [taxYearId]),
+    client.query<{ source_record_id: string; source_field: string; target_type: "schedule_c"|"schedule_e"|"schedule_f"; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.source_field,sm.target_type,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type IN ('schedule_c','schedule_e','schedule_f') AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
     client.query<{ code: string; message: string }>("SELECT code,message FROM validation_issues WHERE tax_year_id=$1 AND resolved_at IS NULL AND severity IN ('blocking','error') AND category <> 'calculation_engine' AND code <> 'OVERRIDE_RECALCULATION_REQUIRED' ORDER BY code", [taxYearId]),
     client.query<{ override_point: string; override_value: string }>("SELECT override_point,override_value::text FROM manual_overrides WHERE tax_year_id=$1 AND active AND override_status='approved'", [taxYearId]),
   ]);
@@ -99,17 +100,27 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     taxableAmountNotDetermined: booleanAt(source.normalized_data, "boxes.taxableAmountNotDetermined"),
   }));
   const governmentPayments = (sourcesByType.get("1099-G") ?? []).map((source) => ({ id: source.id, unemploymentCompensation: amountAt(source.normalized_data, ["boxes.unemploymentCompensation"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]) }));
-  const mappedByActivity = new Map<string, string[]>();
+  const mappedByActivity = new Map<string, Array<{amount:string;sourceField:string;targetType:string}>>();
   const mappedBySource = new Map<string, string[]>();
   for (const mapping of mappings.rows) {
-    mappedByActivity.set(mapping.target_activity_id, [...(mappedByActivity.get(mapping.target_activity_id) ?? []), mapping.allocated_amount]);
-    mappedBySource.set(mapping.source_record_id, [...(mappedBySource.get(mapping.source_record_id) ?? []), mapping.allocated_amount]);
+    mappedByActivity.set(mapping.target_activity_id, [...(mappedByActivity.get(mapping.target_activity_id) ?? []), {amount:mapping.allocated_amount,sourceField:mapping.source_field,targetType:mapping.target_type}]);
+    if(mapping.target_type==="schedule_c")mappedBySource.set(mapping.source_record_id, [...(mappedBySource.get(mapping.source_record_id) ?? []), mapping.allocated_amount]);
+    const normalizedField=mapping.source_field.replace(/[^a-z]/gi,"").toLowerCase();
+    if(mapping.target_type==="schedule_e"&&!normalizedField.includes("rent")&&!normalizedField.includes("royalt"))unsupportedApplicableTopics.push(`Schedule E mapping ${mapping.source_record_id}.${mapping.source_field} is outside the supported rental/royalty source profile.`);
+    if(mapping.target_type==="schedule_f"&&!normalizedField.includes("cropinsurance"))unsupportedApplicableTopics.push(`Schedule F mapping ${mapping.source_record_id}.${mapping.source_field} is outside the supported crop-insurance source profile.`);
   }
-  const scheduleCActivities = activities.rows.map((activity) => {
-    const details = activity.details ?? {};
-    const rawExpenses = details.expenses && typeof details.expenses === "object" && !Array.isArray(details.expenses) ? details.expenses as Record<string, unknown> : {};
-    const expenses = Object.fromEntries(supportedExpenseCategories.flatMap((category) => typeof rawExpenses[category] === "string" || typeof rawExpenses[category] === "number" ? [[category, asDecimalString(money(rawExpenses[category] as string | number))]] : [])) as Partial<Record<SupportedExpenseCategory, string>>;
-    return { id: activity.id, name: activity.name, owner: owner(activity.owner_role), grossReceipts: addMoney([...(mappedByActivity.get(activity.id) ?? []), activity.additional_receipts]), expenses, qbiEligible: details.qbiEligible === true, receiptBasis: "source_plus_additional_receipts" as const };
+  const scheduleCActivities = activities.rows.filter((activity)=>activity.activity_type==="schedule_c").map((activity) => {
+    const details=parseActivityForm2025("schedule_c",activity.details) as ScheduleCFormData2025;
+    return { id: activity.id, name: activity.name, owner: owner(activity.owner_role), grossReceipts: addMoney([...(mappedByActivity.get(activity.id)??[]).map(({amount})=>amount),activity.additional_receipts]), returnsAndAllowances:details.income.returnsAndAllowances,costOfGoodsSold:addMoney([details.costOfGoodsSold.beginningInventory,details.costOfGoodsSold.purchases,details.costOfGoodsSold.costOfLabor,details.costOfGoodsSold.materialsAndSupplies,details.costOfGoodsSold.otherCosts,`-${details.costOfGoodsSold.endingInventory}`]),otherIncome:details.income.otherIncome,expenses:details.expenses,otherExpenses:addMoney(details.otherExpenses.map(({amount})=>amount)),homeOfficeDeduction:details.homeOffice.reviewedDeduction,accountingMethod:details.accountingMethod,vehicleUsed:details.vehicle.used,homeOfficeClaimed:details.homeOffice.claimed,qbiEligible:details.qbiEligible===true,selfEmploymentTreatmentConfirmed:details.selfEmploymentTreatmentConfirmed===true,receiptBasis:"source_plus_additional_receipts" as const };
+  });
+  const scheduleEActivities=activities.rows.filter((activity)=>activity.activity_type==="schedule_e").map((activity)=>{
+    const details=parseActivityForm2025("schedule_e",activity.details) as ScheduleEFormData2025;const mapped=mappedByActivity.get(activity.id)??[];
+    const normalized=(value:string)=>value.replace(/[^a-z]/gi,"").toLowerCase();const mappedRoyalties=mapped.filter(({sourceField})=>normalized(sourceField).includes("royalt")).map(({amount})=>amount);const mappedRents=mapped.filter(({sourceField})=>normalized(sourceField).includes("rent")).map(({amount})=>amount);
+    return{id:activity.id,name:activity.name,owner:owner(activity.owner_role),rentsReceived:addMoney([...mappedRents,details.income.rentsReceived]),royaltiesReceived:addMoney([...mappedRoyalties,details.income.royaltiesReceived]),expenses:details.expenses,otherExpenses:addMoney(details.otherExpenses.map(({amount})=>amount)),propertyType:details.property.propertyType,personalUseDays:details.property.personalUseDays,qualifiedJointVenture:details.property.qualifiedJointVenture,allInvestmentAtRisk:details.allInvestmentAtRisk,passiveLossRulesReviewed:details.passiveLossRulesReviewed,depreciationReviewed:details.depreciationReviewed,rentalQbiEligible:details.rentalQbiEligible,supplementalActivityCount:details.partnershipsAndSCorporations.length+details.estatesAndTrusts.length,remicInterestCount:details.remicInterests.length};
+  });
+  const scheduleFActivities=activities.rows.filter((activity)=>activity.activity_type==="schedule_f").map((activity)=>{
+    const details=parseActivityForm2025("schedule_f",activity.details) as ScheduleFFormData2025;const mapped=addMoney((mappedByActivity.get(activity.id)??[]).filter(({sourceField})=>sourceField.replace(/[^a-z]/gi,"").toLowerCase().includes("cropinsurance")).map(({amount})=>amount));
+    return{id:activity.id,name:activity.name,owner:owner(activity.owner_role),income:{...details.income,cropInsuranceTaxable:addMoney([details.income.cropInsuranceTaxable,mapped])},expenses:details.expenses,otherExpenses:addMoney(details.otherExpenses.map(({amount})=>amount)),accountingMethod:details.accountingMethod,accrualAmounts:details.accrual,materiallyParticipated:details.materiallyParticipated,qbiEligible:details.qbiEligible,selfEmploymentTreatmentConfirmed:details.selfEmploymentTreatmentConfirmed,cropInsuranceElectionReviewed:details.cropInsuranceElectionReviewed};
   });
   const paymentCardReceipts = (sourcesByType.get("1099-K") ?? []).map((source) => ({ id: source.id, grossPaymentAmount: amountAt(source.normalized_data, ["boxes.grossPaymentAmount"]), mappedScheduleCAmount: addMoney(mappedBySource.get(source.id) ?? []), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]) }));
   const hsaDistributions = (sourcesByType.get("1099-SA") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), grossDistribution: amountAt(source.normalized_data, ["boxes.grossDistribution"]), qualifiedMedicalExpenses: amountAt(source.normalized_data, ["boxes.qualifiedMedicalExpenses"]), earningsOnExcessContributions: amountAt(source.normalized_data, ["boxes.earningsOnExcessContributions"]), distributionCode: stringAt(source.normalized_data, ["boxes.distributionCode"]) ?? "", accountType: (stringAt(source.normalized_data, ["boxes.accountType"]) ?? "") as "HSA" | "Archer MSA" | "Medicare Advantage MSA" }));
@@ -125,7 +136,7 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
       treatmentScreens: { earnedIncomeCredit: screen(answer("deductions.credits")), otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
     },
     scheduleBScreening: { foreignAccount: answer("schedule_b.foreign_account"), foreignTrust: answer("schedule_b.foreign_trust"), otherScheduleBTrigger: answer("schedule_b.other_trigger") },
-    wages, interest, dividends, scheduleCActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, paymentCardReceipts, hsaDistributions,
+    wages, interest, dividends, scheduleCActivities, scheduleEActivities, scheduleFActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, paymentCardReceipts, hsaDistributions,
     ...(override ? { approvedOverrides: { form1040IncomeTax: override.override_value } } : {}),
   };
 }

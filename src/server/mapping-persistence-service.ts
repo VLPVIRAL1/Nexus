@@ -4,6 +4,7 @@ import Decimal from "decimal.js";
 import type pg from "pg";
 import { asDecimalString, money } from "@/domain/money";
 import type { DecimalString, SourceMapping } from "@/domain/canonical";
+import { createDefaultActivityForm2025 } from "@/domain/activity-forms-2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { reconcileMappings, type MappingStatus } from "@/services/mapping-service";
 import { WorkflowError } from "./client-workflow-service";
@@ -69,21 +70,23 @@ export async function createActivity(context: AuthorizationContext, clientId: st
     assertRevision(scope.revision, expectedRevision);
     const name = input.name.trim();
     if (!name) throw new WorkflowError("invalid", "Activity name is required.");
-    if (input.implementationStatus === "supported" && (input.type !== "schedule_c" || input.receiptBasis !== "source_plus_additional_receipts")) {
-      throw new WorkflowError("invalid", "Phase 1 supports only Schedule C with the source forms plus separately stated additional receipts basis.");
+    if (input.implementationStatus === "supported" && (input.type === "schedule_1_other" || input.receiptBasis !== "source_plus_additional_receipts")) {
+      throw new WorkflowError("invalid", "Supported Schedule C, E, and F activities require the source forms plus separately stated additional receipts basis.");
     }
-    if (input.type !== "schedule_c" && input.implementationStatus !== "mapping_only") throw new WorkflowError("invalid", "This destination must remain mapping-only.");
+    if (input.type === "schedule_1_other" && input.implementationStatus !== "mapping_only") throw new WorkflowError("invalid", "Schedule 1 other-income activities remain mapping-only.");
     const additional = money(input.additionalReceipts);
     if (!additional.isFinite() || additional.lt(0)) throw new WorkflowError("invalid", "Additional receipts must be a nonnegative amount.");
+    if (input.type !== "schedule_c" && !additional.isZero()) throw new WorkflowError("invalid", "Schedule E and F manual income belongs on the schedule income lines; additional receipts are reserved for Schedule C reconciliation.");
     if (additional.gt(0) && !input.receiptNote?.trim()) throw new WorkflowError("invalid", "Additional receipts require evidence that they exclude the mapped source forms.");
     if (input.receiptBasis === "total_books_receipts") throw new WorkflowError("invalid", "Total books receipts are preserved for a future path but are not implemented in Phase 1.");
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO activities(tax_year_id,activity_type,name,owner_role,implementation_status,receipt_basis,additional_receipts,receipt_note,details)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'{}'::jsonb) RETURNING id`,
-      [scope.taxYearId, input.type, name, input.ownerRole, input.implementationStatus, input.receiptBasis, asDecimalString(additional), input.receiptNote?.trim() || null],
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING id`,
+      [scope.taxYearId, input.type, name, input.ownerRole, input.implementationStatus, input.receiptBasis, asDecimalString(additional), input.receiptNote?.trim() || null, JSON.stringify(input.type === "schedule_1_other" ? {} : createDefaultActivityForm2025(input.type))],
     );
     const id = inserted.rows[0]?.id;
     if (!id) throw new Error("Activity insert failed.");
+    await client.query("INSERT INTO activity_form_revisions(activity_id,tax_year_id,activity_version,form_data,change_reason,changed_by) SELECT id,tax_year_id,version,details,'Activity created.', $2 FROM activities WHERE id=$1", [id, context.userId]);
     const revision = scope.revision + 1;
     await invalidateTaxYear(client, scope.taxYearId, revision);
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, revision);

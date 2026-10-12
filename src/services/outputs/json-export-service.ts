@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CanonicalTaxReturnData } from "@/domain/canonical";
+import { parseActivityForm2025 } from "@/domain/activity-forms-2025";
 
 export type JsonExportMode = "complete" | "source_only" | "blank_template";
 
@@ -39,6 +40,7 @@ export function createBlankCanonicalTemplate2025() {
         "Select one of the five filing statuses only after eligibility is reviewed.",
         "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
         "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
+        "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts.",
       ],
     },
     client: {}, filing_profile: { status: "single", eligibility_confirmed: false }, taxpayer: {}, spouse: null, dependents: [],
@@ -52,7 +54,7 @@ export function createBlankCanonicalTemplate2025() {
     forms: { w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] },
     activities: { schedule_c: [], schedule_e: [], schedule_f: [], other_income: [] },
     mappings: [], payments: {}, review_points: [],
-    metadata: { template: "nexus-taxpayer-import-2025-v1.2.0-review", supported_source_forms: ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812"], supported_deduction_forms: ["Schedule A"] },
+    metadata: { template: "nexus-taxpayer-import-2025-v1.3.0-review", supported_source_forms: ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812"], supported_deduction_forms: ["Schedule A"], supported_activity_forms: ["Schedule C", "Schedule E", "Schedule F"] },
   } as const;
 }
 
@@ -112,7 +114,17 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
       medical_and_dental_expenses: scheduleValue("medicalAndDentalExpenses", "0.00"), state_local_income_or_sales_taxes: scheduleValue("stateLocalIncomeOrSalesTaxes", "0.00"), real_estate_taxes: scheduleValue("realEstateTaxes", "0.00"), personal_property_taxes: scheduleValue("personalPropertyTaxes", "0.00"), other_taxes: scheduleValue("otherTaxes", "0.00"), home_mortgage_interest_and_points: scheduleValue("homeMortgageInterestAndPoints", "0.00"), investment_interest: scheduleValue("investmentInterest", "0.00"), cash_charitable_contributions: scheduleValue("cashCharitableContributions", "0.00"), noncash_charitable_contributions: scheduleValue("noncashCharitableContributions", "0.00"), casualty_and_theft_losses: scheduleValue("casualtyAndTheftLosses", "0.00"), other_itemized_deductions: scheduleValue("otherItemizedDeductions", "0.00"), salt_eligibility_confirmed: scheduleValue("saltEligibilityConfirmed", false), mortgage_limits_applied: scheduleValue("mortgageLimitsApplied", false), charity_limits_applied: scheduleValue("charityLimitsApplied", false), casualty_limits_applied: scheduleValue("casualtyLimitsApplied", false),
     },
     source_documents: data.sourceDocuments, forms: formCollections,
-    activities: { schedule_c: data.activities.filter(({ type }) => type === "schedule_c"), schedule_e: data.activities.filter(({ type }) => type === "schedule_e"), schedule_f: data.activities.filter(({ type }) => type === "schedule_f"), other_income: data.activities.filter(({ type }) => type === "schedule_1_other") },
+    activities: {
+      schedule_c: data.activities.filter(({ type }) => type === "schedule_c").map(toCanonicalActivity),
+      schedule_e: data.activities.filter(({ type }) => type === "schedule_e").map(toCanonicalActivity),
+      schedule_f: data.activities.filter(({ type }) => type === "schedule_f").map(toCanonicalActivity),
+      other_income: data.activities.filter(({ type }) => type === "schedule_1_other").map((activity) => ({ id: activity.id, name: activity.name, owner_role: activity.owner, implementation_status: "mapping_only", active: activity.active, version: activity.version ?? 1 })),
+    },
     mappings: data.mappings, payments: {}, review_points: [], metadata: { ...data.metadata, export_revision: data.revision, canonical_round_trip: true },
   };
+}
+
+function toCanonicalActivity(activity: CanonicalTaxReturnData["activities"][number]) {
+  const type = activity.type as "schedule_c" | "schedule_e" | "schedule_f";
+  return { id: activity.id, name: activity.name, owner_role: activity.owner, implementation_status: activity.implementationStatus, additional_receipts: activity.additionalReceipts ?? "0.00", receipt_note: activity.receiptNote ?? null, active: activity.active, version: activity.version ?? 1, form_data: parseActivityForm2025(type, activity.formData) };
 }

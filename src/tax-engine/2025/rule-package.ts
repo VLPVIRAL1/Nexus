@@ -13,6 +13,11 @@ export const ruleSources2025: RuleSource2025[] = [
   { id: "irs-schedule-2-2025", title: "2025 Schedule 2", url: "https://www.irs.gov/pub/irs-prior/f1040s2--2025.pdf", archivedFile: "sources/f1040s2--2025.pdf", retrievedOn: "2026-10-06", sha256: "64d867b683334cfc533993e37ccb0d143449ec29428a78206be2e4de333941e8" },
   { id: "irs-schedule-b-2025", title: "2025 Schedule B", url: "https://www.irs.gov/pub/irs-prior/f1040sb--2025.pdf", archivedFile: "sources/f1040sb--2025.pdf", retrievedOn: "2026-10-06", sha256: "dd1ec3719954532bd219343d81385a2ada3c8e9573fc755a3893f1fbbecc63e2" },
   { id: "irs-schedule-c-2025", title: "2025 Schedule C", url: "https://www.irs.gov/pub/irs-prior/f1040sc--2025.pdf", archivedFile: "sources/f1040sc--2025.pdf", retrievedOn: "2026-10-06", sha256: "ddf401dbe060467d39f90ad2abf645df1de31512821a150dc68a3882bbf19716" },
+  { id: "irs-schedule-c-instructions-2025", title: "2025 Instructions for Schedule C", url: "https://www.irs.gov/pub/irs-prior/i1040sc--2025.pdf", archivedFile: "sources/i1040sc--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "6133572869ed49d7bf4379dd02ab463154a70820480fa017f8726c515ee24e08" },
+  { id: "irs-schedule-e-2025", title: "2025 Schedule E", url: "https://www.irs.gov/pub/irs-prior/f1040se--2025.pdf", archivedFile: "sources/f1040se--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "d3ff341ef7ab7a2bda9ea371d8378c851e7d424ccd871109a632a331efa50703" },
+  { id: "irs-schedule-e-instructions-2025", title: "2025 Instructions for Schedule E", url: "https://www.irs.gov/pub/irs-prior/i1040se--2025.pdf", archivedFile: "sources/i1040se--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "0f2c67599f0c97c15153f5cbfb8f61e8c068ded7882e54eaa1bbaff1170ce97c" },
+  { id: "irs-schedule-f-2025", title: "2025 Schedule F", url: "https://www.irs.gov/pub/irs-prior/f1040sf--2025.pdf", archivedFile: "sources/f1040sf--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "f6b157ed74d4afbf2f6f2451fb6d7014d9a9b85989a4b05c882cfd97b13bdf6a" },
+  { id: "irs-schedule-f-instructions-2025", title: "2025 Instructions for Schedule F", url: "https://www.irs.gov/pub/irs-prior/i1040sf--2025.pdf", archivedFile: "sources/i1040sf--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "bba465a4d5fc374e10f2aec5c5f4bbbb43b10ae5c1ee1ef5da7eed76b2c08c5f" },
   { id: "irs-1040-instructions-2025", title: "2025 Instructions for Form 1040", url: "https://www.irs.gov/pub/irs-prior/i1040gi--2025.pdf", archivedFile: "sources/i1040gi--2025.pdf", retrievedOn: "2026-10-06", sha256: "482e9c487c608f1bbeaceef35bc3c0933e8b35443cfff447e4279d590468364a" },
   { id: "irs-schedule-b-instructions-2025", title: "2025 Instructions for Schedule B", url: "https://www.irs.gov/pub/irs-prior/i1040sb--2025.pdf", archivedFile: "sources/i1040sb--2025.pdf", retrievedOn: "2026-10-06", sha256: "b92f31ece57a82ea576ac96507fe5df637dbda7489a80eb28aaab88e7c87b287" },
   { id: "irs-schedule-se-2025", title: "2025 Schedule SE", url: "https://www.irs.gov/pub/irs-prior/f1040sse--2025.pdf", archivedFile: "sources/f1040sse--2025.pdf", retrievedOn: "2026-10-06", sha256: "05bc2b3e1dfca65d8c6fc6d652af4fa3736e953c6575d6e9f82590484677d347" },
@@ -26,14 +31,14 @@ export const ruleSources2025: RuleSource2025[] = [
 ];
 
 export const rulePackage2025 = {
-  id: "us-federal-1040-2025-supported-v3-review",
+  id: "us-federal-1040-2025-supported-v4-review",
   taxYear: 2025,
-  version: "0.3.0-research.1",
-  effectiveRevision: "2026-10-11-filing-status-dependent-schedule-a",
+  version: "0.4.0-research.1",
+  effectiveRevision: "2026-10-11-schedule-c-e-f-activities",
   status: "research_unapproved" as const,
   reviewer: null,
   taxTableSha256: "349208c4f25adbdb81cc418c75843364ae15dd36fbe762bc2adf2829a238d10a",
-  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
+  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SCHEDULE-C-E-F-2025", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
   sources: ruleSources2025,
 };
 

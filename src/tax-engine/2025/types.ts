@@ -88,9 +88,31 @@ export interface ScheduleCActivityInput2025 {
   name: string;
   owner: PersonRole2025;
   grossReceipts: DollarInput;
-  expenses: Partial<Record<SupportedExpenseCategory, DollarInput>>;
+  returnsAndAllowances?: DollarInput;
+  costOfGoodsSold?: DollarInput;
+  otherIncome?: DollarInput;
+  expenses: Partial<Record<string, DollarInput>>;
+  otherExpenses?: DollarInput;
+  homeOfficeDeduction?: DollarInput;
+  accountingMethod?: "cash" | "accrual" | "other";
+  vehicleUsed?: boolean;
+  homeOfficeClaimed?: boolean;
   qbiEligible: boolean;
+  selfEmploymentTreatmentConfirmed?: boolean;
   receiptBasis: "source_plus_additional_receipts";
+}
+
+export interface ScheduleEActivityInput2025 {
+  id: string; name: string; owner: PersonRole2025; rentsReceived: DollarInput; royaltiesReceived: DollarInput;
+  expenses: Partial<Record<string, DollarInput>>; otherExpenses: DollarInput; propertyType: string; personalUseDays: number;
+  qualifiedJointVenture: boolean | null; allInvestmentAtRisk: boolean | null; passiveLossRulesReviewed: boolean | null;
+  depreciationReviewed: boolean | null; rentalQbiEligible: boolean | null; supplementalActivityCount: number; remicInterestCount: number;
+}
+
+export interface ScheduleFActivityInput2025 {
+  id: string; name: string; owner: PersonRole2025; income: Partial<Record<string, DollarInput>>; expenses: Partial<Record<string, DollarInput>>;
+  otherExpenses: DollarInput; accountingMethod: "cash" | "accrual"; accrualAmounts: Partial<Record<string, DollarInput>>;
+  materiallyParticipated: boolean | null; qbiEligible: boolean | null; selfEmploymentTreatmentConfirmed: boolean | null; cropInsuranceElectionReviewed: boolean | null;
 }
 
 export interface BusinessWithholdingInput2025 {
@@ -190,6 +212,8 @@ export interface CalculationInput2025 {
   interest: InterestInput2025[];
   dividends: DividendInput2025[];
   scheduleCActivities: ScheduleCActivityInput2025[];
+  scheduleEActivities?: ScheduleEActivityInput2025[];
+  scheduleFActivities?: ScheduleFActivityInput2025[];
   businessWithholding: BusinessWithholdingInput2025[];
   brokerTransactions?: BrokerTransactionInput2025[];
   retirementDistributions?: RetirementDistributionInput2025[];
@@ -264,13 +288,15 @@ export interface CalculationOutput2025 {
       additionalChildTaxCredit: string;
     };
     scheduleB: { required: boolean; taxableInterest: string; ordinaryDividends: string };
-    scheduleC: Array<{ activityId: string; grossReceipts: string; expenses: string; netProfit: string }>;
+    scheduleC: Array<{ activityId: string; grossReceipts: string; returnsAndAllowances: string; costOfGoodsSold: string; grossIncome: string; expenses: string; netProfit: string }>;
+    scheduleE: Array<{ activityId: string; rents: string; royalties: string; expenses: string; netIncomeOrLoss: string }>;
+    scheduleF: Array<{ activityId: string; grossIncome: string; expenses: string; netProfit: string }>;
     form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustment: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
     scheduleD: { shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string };
     form8889: Array<{ owner: PersonRole2025; grossDistribution: string; qualifiedMedicalExpenses: string; taxableDistribution: string }>;
     scheduleSE: ScheduleSEOutput2025[];
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
-    schedule1: { businessIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string };
+    schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string };
     schedule2: { selfEmploymentTax: string; additionalHsaTax: string };
     form1040: {
       wages: string;

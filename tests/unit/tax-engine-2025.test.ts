@@ -311,7 +311,7 @@ describe("2025 supported return graph", () => {
       { owner: "taxpayer", netProfit: "10000", netEarnings: "9235", socialSecurityWages: "170000", socialSecurityTax: "756", medicareTax: "268", selfEmploymentTax: "1024", deductibleHalf: "512" },
       { owner: "spouse", netProfit: "8000", netEarnings: "7388", socialSecurityWages: "20000", socialSecurityTax: "916", medicareTax: "214", selfEmploymentTax: "1130", deductibleHalf: "565" },
     ]);
-    expect(result.forms?.schedule1).toEqual({ businessIncome: "18000", unemploymentCompensation: "0", deductiblePartOfSelfEmploymentTax: "1077" });
+    expect(result.forms?.schedule1).toEqual({ businessIncome: "18000", rentalRealEstateRoyalties: "0", farmIncome: "0", unemploymentCompensation: "0", deductiblePartOfSelfEmploymentTax: "1077" });
     expect(result.forms?.schedule2).toEqual({ selfEmploymentTax: "2154", additionalHsaTax: "0" });
     expect(result.forms?.form8995).toEqual({ qbi: "16923", section199ADividends: "0", incomeLimitationBase: "178023", deduction: "3385" });
     expect(result.forms?.scheduleB.required).toBe(true);
@@ -323,6 +323,31 @@ describe("2025 supported return graph", () => {
       itemizedDeductions: "0", deductionUsed: "31500", incomeTax: "28848", childTaxCreditAndOtherDependentCredit: "0", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", additionalChildTaxCredit: "0", refund: "0", amountOwed: "3402",
     });
     expect(result.dependencyManifest.every(({ status }) => status === "evaluated")).toBe(true);
+  });
+
+  it("calculates reviewed Schedule C, E, and F activities through Schedule 1, SE, QBI, and Form 1040", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      scheduleCActivities: [{ id: "c-all", name: "Services", owner: "taxpayer", grossReceipts: "10000.00", returnsAndAllowances: "500.00", costOfGoodsSold: "1000.00", otherIncome: "200.00", expenses: { advertising: "300.00" }, otherExpenses: "100.00", qbiEligible: true, selfEmploymentTreatmentConfirmed: true, receiptBasis: "source_plus_additional_receipts" }],
+      scheduleEActivities: [{ id: "e-all", name: "Rental", owner: "taxpayer", rentsReceived: "12000.00", royaltiesReceived: "0.00", expenses: { repairs: "1500.00", insurance: "500.00" }, otherExpenses: "0.00", propertyType: "single_family", personalUseDays: 0, qualifiedJointVenture: false, allInvestmentAtRisk: true, passiveLossRulesReviewed: true, depreciationReviewed: true, rentalQbiEligible: false, supplementalActivityCount: 0, remicInterestCount: 0 }],
+      scheduleFActivities: [{ id: "f-all", name: "Farm", owner: "taxpayer", income: { livestockSalesPurchased: "3000.00", livestockCostOrBasis: "500.00", livestockProduceSales: "7000.00", cooperativeTaxable: "1000.00" }, expenses: { feed: "1000.00" }, otherExpenses: "500.00", accountingMethod: "cash", accrualAmounts: {}, materiallyParticipated: true, qbiEligible: true, selfEmploymentTreatmentConfirmed: true, cropInsuranceElectionReviewed: true }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleC[0]).toMatchObject({ grossReceipts: "10000", returnsAndAllowances: "500", costOfGoodsSold: "1000", grossIncome: "8700", expenses: "400", netProfit: "8300" });
+    expect(result.forms?.scheduleE[0]).toMatchObject({ rents: "12000", expenses: "2000", netIncomeOrLoss: "10000" });
+    expect(result.forms?.scheduleF[0]).toMatchObject({ grossIncome: "10500", expenses: "1500", netProfit: "9000" });
+    expect(result.forms?.schedule1).toMatchObject({ businessIncome: "8300", rentalRealEstateRoyalties: "10000", farmIncome: "9000" });
+    expect(result.forms?.scheduleSE[0]?.netProfit).toBe("17300");
+    expect(result.trace.map(({ nodeId }) => nodeId)).toEqual(expect.arrayContaining(["schedule-c.net-profit", "schedule-e.net-income-loss", "schedule-f.net-profit"]));
+  });
+
+  it("preserves complex Schedule E and F facts but blocks unsupported linked calculations", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      scheduleEActivities: [{ id: "e-block", name: "Pass-through", owner: "taxpayer", rentsReceived: "0.00", royaltiesReceived: "0.00", expenses: {}, otherExpenses: "0.00", propertyType: "single_family", personalUseDays: 1, qualifiedJointVenture: false, allInvestmentAtRisk: false, passiveLossRulesReviewed: false, depreciationReviewed: false, rentalQbiEligible: null, supplementalActivityCount: 1, remicInterestCount: 0 }],
+      scheduleFActivities: [{ id: "f-block", name: "Accrual farm", owner: "taxpayer", income: {}, expenses: {}, otherExpenses: "0.00", accountingMethod: "accrual", accrualAmounts: { endingInventory: "1000.00" }, materiallyParticipated: null, qbiEligible: null, selfEmploymentTreatmentConfirmed: null, cropInsuranceElectionReviewed: null }],
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.forms).toBeNull();
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["SCHEDULE_E_PERSONAL_USE_ALLOCATION_REQUIRED", "SCHEDULE_E_PARTS_II_IV_UNSUPPORTED", "SCHEDULE_E_LIMITATION_REVIEW_REQUIRED", "SCHEDULE_F_ACCRUAL_METHOD_UNSUPPORTED", "SCHEDULE_F_QBI_TREATMENT_REQUIRED"]));
   });
 
   it("includes eligible Section 199A dividends in the simplified Form 8995 limitation", () => {

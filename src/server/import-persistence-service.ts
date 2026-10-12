@@ -117,6 +117,8 @@ export async function commitPersistedImport(
     );
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
     const profileMaterialized = await synchronizeReturnProfile(client, scope.taxYearId, committed.result);
+    const materializedActivities = await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, committed.result);
+    const materializedMappings = await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, committed.result);
     const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query(
       `UPDATE import_batches SET import_status='committed',result_revision=$2,previous_snapshot=$3::jsonb,committed_snapshot=$4::jsonb,committed_by=$5,committed_at=now()
@@ -124,7 +126,7 @@ export async function commitPersistedImport(
       [batchId, nextRevision, JSON.stringify(scope.snapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, profileMaterialized, mappingBlockers });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -154,6 +156,8 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
       [scope.taxYearId, JSON.stringify(row.previous_snapshot), nextRevision],
     );
     await synchronizeReturnProfile(client, scope.taxYearId, row.previous_snapshot, true);
+    await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
+    await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
     await client.query("UPDATE import_batches SET rolled_back_at=now(),rolled_back_by=$2 WHERE id=$1", [row.id, context.userId]);
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "rolled_back");
@@ -309,6 +313,139 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`;
   return JSON.stringify(value);
+}
+
+async function synchronizeActivities(client: pg.PoolClient, taxYearId: string, importBatchId: string, changedById: string, snapshot: Record<string, unknown>, resetImported = false): Promise<number> {
+  const groups = record(snapshot.activities);
+  const definitions = [["schedule_c", "schedule_c"], ["schedule_e", "schedule_e"], ["schedule_f", "schedule_f"], ["other_income", "schedule_1_other"]] as const;
+  if (resetImported) await client.query("UPDATE activities SET active=false,last_import_batch_id=NULL,version=version+1 WHERE tax_year_id=$1 AND last_import_batch_id=$2", [taxYearId, importBatchId]);
+  let materialized = 0;
+  for (const [collection, activityType] of definitions) {
+    const values = groups[collection];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      const activity = record(value);
+      if (typeof activity.id !== "string" || typeof activity.name !== "string" || typeof activity.owner_role !== "string") continue;
+      const existing = await client.query<{ tax_year_id: string; version: number; details: unknown; name: string; owner_role: string; active: boolean; additional_receipts: string; receipt_note: string | null }>("SELECT tax_year_id,version,details,name,owner_role,active,additional_receipts::text,receipt_note FROM activities WHERE id=$1 FOR UPDATE", [activity.id]);
+      const current = existing.rows[0];
+      if (current && current.tax_year_id !== taxYearId) throw new WorkflowError("invalid", `Activity ${activity.id} already belongs to another tax year.`);
+      const formData = activityType === "schedule_1_other" ? {} : record(activity.form_data);
+      const additionalReceipts = activityType === "schedule_1_other" ? "0.00" : moneyString(activity.additional_receipts);
+      const receiptNote = typeof activity.receipt_note === "string" ? activity.receipt_note : null;
+      const active = activity.active !== false;
+      const implementation = activityType === "schedule_1_other" ? "mapping_only" : activity.implementation_status === "mapping_only" ? "mapping_only" : "supported";
+      const receiptBasis = activityType === "schedule_1_other" ? null : "source_plus_additional_receipts";
+      const same = current && current.name === activity.name && current.owner_role === activity.owner_role && current.active === active && current.additional_receipts === additionalReceipts && current.receipt_note === receiptNote && canonicalJson(current.details) === canonicalJson(formData);
+      if (same) continue;
+      let version: number;
+      if (current) {
+        version = current.version + 1;
+        await client.query("UPDATE activities SET activity_type=$3,name=$4,owner_role=$5,implementation_status=$6,receipt_basis=$7,additional_receipts=$8,receipt_note=$9,details=$10::jsonb,active=$11,version=$12,last_import_batch_id=$13 WHERE id=$1 AND tax_year_id=$2", [activity.id, taxYearId, activityType, activity.name.trim(), activity.owner_role, implementation, receiptBasis, additionalReceipts, receiptNote, JSON.stringify(formData), active, version, resetImported ? null : importBatchId]);
+      } else {
+        version = 1;
+        await client.query("INSERT INTO activities(id,tax_year_id,activity_type,name,owner_role,implementation_status,details,active,version,receipt_basis,additional_receipts,receipt_note,last_import_batch_id) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13)", [activity.id, taxYearId, activityType, activity.name.trim(), activity.owner_role, implementation, JSON.stringify(formData), active, version, receiptBasis, additionalReceipts, receiptNote, resetImported ? null : importBatchId]);
+      }
+      await client.query("INSERT INTO activity_form_revisions(activity_id,tax_year_id,activity_version,form_data,change_reason,changed_by) VALUES($1,$2,$3,$4::jsonb,$5,$6) ON CONFLICT(activity_id,activity_version) DO NOTHING", [activity.id, taxYearId, version, JSON.stringify(formData), resetImported ? "Activity restored by import rollback." : "Activity materialized from canonical JSON import.", changedById]);
+      materialized += 1;
+    }
+  }
+  return materialized;
+}
+
+async function synchronizeActivityMappings(client: pg.PoolClient, taxYearId: string, importBatchId: string, createdById: string, snapshot: Record<string, unknown>, resetImported = false): Promise<number> {
+  if (resetImported) {
+    const imported = await client.query<{ source_record_id: string; source_field: string; version: number }>(
+      "SELECT DISTINCT source_record_id,source_field,version FROM source_mappings WHERE tax_year_id=$1 AND import_batch_id=$2",
+      [taxYearId, importBatchId],
+    );
+    await client.query("UPDATE source_mappings SET effective=false WHERE tax_year_id=$1 AND import_batch_id=$2", [taxYearId, importBatchId]);
+    for (const group of imported.rows) {
+      await client.query(
+        `UPDATE source_mappings SET effective=true
+         WHERE tax_year_id=$1 AND source_record_id=$2 AND source_field=$3 AND version=(
+           SELECT MAX(version) FROM source_mappings
+           WHERE tax_year_id=$1 AND source_record_id=$2 AND source_field=$3 AND version<$4 AND import_batch_id IS DISTINCT FROM $5
+         )`,
+        [taxYearId, group.source_record_id, group.source_field, group.version, importBatchId],
+      );
+    }
+  }
+  if (!Array.isArray(snapshot.mappings)) return 0;
+  type ImportedMapping = {
+    sourceId: string; sourceField: string; targetType: string; targetActivityId: string | null;
+    allocationMethod: string; allocatedAmount: string; sourceAmount: string; status: string;
+    percentage: string | null; reason: string | null;
+  };
+  const grouped = new Map<string, ImportedMapping[]>();
+  for (const value of snapshot.mappings) {
+    const mapping = record(value);
+    const candidate: ImportedMapping = {
+      sourceId: textValue(mapping, "sourceRecordId", "source_record_id"),
+      sourceField: textValue(mapping, "sourceField", "source_field"),
+      targetType: textValue(mapping, "targetType", "target_type"),
+      targetActivityId: nullableTextValue(mapping, "targetActivityId", "target_activity_id"),
+      allocationMethod: textValue(mapping, "allocationMethod", "allocation_method"),
+      allocatedAmount: textValue(mapping, "allocatedAmount", "allocated_amount"),
+      sourceAmount: textValue(mapping, "sourceAmount", "source_amount"),
+      status: textValue(mapping, "status", "mapping_status"),
+      percentage: nullableTextValue(mapping, "percentage"),
+      reason: nullableTextValue(mapping, "reason"),
+    };
+    if (!candidate.sourceId || !candidate.sourceField || !candidate.targetType || !candidate.allocationMethod || !candidate.allocatedAmount || !candidate.sourceAmount || !["accepted", "reviewed"].includes(candidate.status)) continue;
+    const key = `${candidate.sourceId}\u0000${candidate.sourceField}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), candidate]);
+  }
+  let materialized = 0;
+  for (const allocations of grouped.values()) {
+    const first = allocations[0];
+    if (!first) continue;
+    if (allocations.some((allocation) => allocation.sourceAmount !== first.sourceAmount || allocation.allocationMethod !== first.allocationMethod)) {
+      throw new WorkflowError("invalid", `Mappings for ${first.sourceField} must use one source amount and allocation method.`);
+    }
+    const source = await client.query<{ id: string }>("SELECT id FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND (id::text=$2 OR normalized_data->>'id'=$2) ORDER BY (id::text=$2) DESC,version DESC LIMIT 1", [taxYearId, first.sourceId]);
+    const sourceRecordId = source.rows[0]?.id;
+    if (!sourceRecordId) throw new WorkflowError("invalid", `Mapping source ${first.sourceId} was not materialized.`);
+    for (const allocation of allocations) {
+      if (allocation.targetType === "excluded") {
+        if (allocation.targetActivityId || !allocation.reason) throw new WorkflowError("invalid", "An imported exclusion requires a documented reason and cannot target an activity.");
+      } else {
+        if (!allocation.targetActivityId) throw new WorkflowError("invalid", "An imported schedule mapping requires a target activity.");
+        const activity = await client.query("SELECT 1 FROM activities WHERE id=$1 AND tax_year_id=$2 AND active AND activity_type=$3", [allocation.targetActivityId, taxYearId, allocation.targetType]);
+        if (!activity.rowCount) throw new WorkflowError("invalid", `Mapping target ${allocation.targetActivityId} is missing or has a different schedule type.`);
+      }
+    }
+    const current = await client.query<{ id: string; source_amount: string; target_type: string; target_activity_id: string | null; allocation_method: string; allocated_amount: string; percentage: string | null; reason: string | null; mapping_status: string; version: number }>("SELECT id,source_amount::text,target_type,target_activity_id,allocation_method,allocated_amount::text,percentage::text,reason,mapping_status,version FROM source_mappings WHERE tax_year_id=$1 AND source_record_id=$2 AND source_field=$3 AND effective ORDER BY created_at,id FOR UPDATE", [taxYearId, sourceRecordId, first.sourceField]);
+    const signature = (value: { source_amount?: string; sourceAmount?: string; target_type?: string; targetType?: string; target_activity_id?: string | null; targetActivityId?: string | null; allocation_method?: string; allocationMethod?: string; allocated_amount?: string; allocatedAmount?: string; percentage: string | null; reason: string | null; mapping_status?: string; status?: string }) => canonicalJson({
+      sourceAmount: normalizeNumeric(value.source_amount ?? value.sourceAmount ?? ""), targetType: value.target_type ?? value.targetType,
+      targetActivityId: value.target_activity_id ?? value.targetActivityId ?? null, allocationMethod: value.allocation_method ?? value.allocationMethod,
+      allocatedAmount: normalizeNumeric(value.allocated_amount ?? value.allocatedAmount ?? ""), percentage: value.percentage == null ? null : normalizeNumeric(value.percentage),
+      reason: value.reason, status: value.mapping_status ?? value.status,
+    });
+    const desiredSignatures = allocations.map((allocation) => signature(allocation)).sort();
+    const currentSignatures = current.rows.map((allocation) => signature(allocation)).sort();
+    if (canonicalJson(desiredSignatures) === canonicalJson(currentSignatures)) continue;
+    const versionResult = await client.query<{ version: number }>("SELECT COALESCE(MAX(version),0)+1 AS version FROM source_mappings WHERE tax_year_id=$1 AND source_record_id=$2 AND source_field=$3", [taxYearId, sourceRecordId, first.sourceField]);
+    const version = Number(versionResult.rows[0]?.version ?? 1);
+    await client.query("UPDATE source_mappings SET effective=false WHERE tax_year_id=$1 AND source_record_id=$2 AND source_field=$3 AND effective", [taxYearId, sourceRecordId, first.sourceField]);
+    for (let index = 0; index < allocations.length; index += 1) {
+      const allocation = allocations[index];
+      if (!allocation) continue;
+      await client.query(`INSERT INTO source_mappings(tax_year_id,source_record_id,source_field,source_amount,target_type,target_activity_id,allocation_method,allocated_amount,percentage,reason,mapping_status,version,effective,supersedes_mapping_id,note,created_by,import_batch_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14,$15,$16)`, [taxYearId, sourceRecordId, first.sourceField, allocation.sourceAmount, allocation.targetType, allocation.targetActivityId, allocation.allocationMethod, allocation.allocatedAmount, allocation.percentage, allocation.reason, allocation.status, version, current.rows[index]?.id ?? null, "Canonical JSON import", createdById, resetImported ? null : importBatchId]);
+      materialized += 1;
+    }
+  }
+  return materialized;
+}
+
+function textValue(value: Record<string, unknown>, ...keys: string[]): string { for (const key of keys) if (typeof value[key] === "string") return value[key] as string; return ""; }
+function nullableTextValue(value: Record<string, unknown>, ...keys: string[]): string | null { const found = textValue(value, ...keys); return found || null; }
+function normalizeNumeric(value: string): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) return value;
+  const whole = (match[2] ?? "0").replace(/^0+(?=\d)/, "");
+  const fraction = (match[3] ?? "").replace(/0+$/, "");
+  return `${match[1] ?? ""}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
 async function synchronizeReturnProfile(client: pg.PoolClient, taxYearId: string, snapshot: Record<string, unknown>, resetMissing = false): Promise<boolean> {

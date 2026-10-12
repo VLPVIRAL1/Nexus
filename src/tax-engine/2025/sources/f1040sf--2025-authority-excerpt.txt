@@ -1,0 +1,8 @@
+Official source: https://www.irs.gov/pub/irs-prior/f1040sf--2025.pdf
+Document: 2025 Schedule F (Form 1040), Profit or Loss From Farming
+Retrieved: 2026-10-11 America/Chicago
+Official PDF SHA-256: c6f7f19e1a4f5729515b2ac4604a06e0c2215043fdf94ad0f914f76396d7ec09
+
+Implementation scope note:
+The activity contract preserves Parts I through III, all income and expense lines, inventory method, and
+review questions. The supported calculation profile is cash method; accrual and special elections block.

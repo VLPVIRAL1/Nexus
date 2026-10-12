@@ -76,6 +76,12 @@ export async function generateWorkpaper(input: WorkpaperInput): Promise<Uint8Arr
   reconciliation.getColumn("allocated_amount").numFmt = "$#,##0.00;[Red]($#,##0.00)";
   addTable(reconciliation, "MappingReconciliationTable");
 
+  const activities = workbook.addWorksheet("Schedule Activities", { views: [{ state: "frozen", ySplit: 1 }] });
+  activities.columns = ["Activity", "Schedule", "Owner", "Coverage", "Additional receipts", "Active", "Version", "Form data JSON"].map((header) => ({ header, key: key(header), width: header === "Form data JSON" ? 70 : 22 }));
+  for (const activity of input.data.activities) activities.addRow({ activity: safe(activity.name), schedule: activity.type.replace("schedule_", "Schedule ").toUpperCase(), owner: activity.owner, coverage: activity.implementationStatus, additional_receipts: Number(activity.additionalReceipts ?? 0), active: activity.active ? "Yes" : "No", version: activity.version ?? 1, form_data_json: safe(JSON.stringify(activity.formData ?? {})) });
+  activities.getColumn("additional_receipts").numFmt = "$#,##0.00;[Red]($#,##0.00)";
+  addTable(activities, "ScheduleActivitiesTable");
+
   const formStatus = workbook.addWorksheet("Required Forms", { views: [{ state: "frozen", ySplit: 1 }] });
   formStatus.columns = ["Form", "Required", "Rendered", "Status", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Calculation run" ? 38 : 22 }));
   const requiredForms = input.requiredForms ?? [];

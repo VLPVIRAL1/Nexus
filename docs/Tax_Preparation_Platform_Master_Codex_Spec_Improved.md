@@ -4,12 +4,12 @@
 
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
-**Last updated:** October 11, 2026
+**Last updated:** October 12, 2026
 **Overall Phase 1 status:** In progress — foundation, domain controls, persistence, secure-intake guards, governed release-closure workspaces and an expanded, unapproved 2025 calculation research package are implemented; not production-ready, filing-ready, or tax-engine certified.
 
 ### October 11, 2026 review-release implementation slice
 
-The following seven reviewable source-code capabilities are implemented and technically verified. “Complete” here means functional within the explicit supported 2025 review profile; it does not mean IRS filing certification or universal U.S. tax coverage.
+The following reviewable source-code capabilities are implemented and technically verified. “Complete” here means functional within the explicit supported 2025 review profile; it does not mean IRS filing certification or universal U.S. tax coverage.
 
 - [x] Create and persist a firm-scoped client, 2025 tax year and taxpayer/spouse profile.
 - [x] Create and persist a draft federal return workspace with guarded intake, source, calculation, review and output states.
@@ -19,6 +19,7 @@ The following seven reviewable source-code capabilities are implemented and tech
 - [x] Calculate the supported profile through traceable draft Form 1040 lines plus conditional Schedule 1, Schedule 2, Schedule B, Schedule C, Schedule D, Schedule SE, Form 8949, Form 8889, Form 8995 and the qualified-dividend/capital-gain worksheet; generate controlled PDF and XLSX review artifacts.
 - [x] Prove the import-to-1040 workflow with a live PostgreSQL acceptance fixture covering W-2, simple basis-known 1099-B sales, normal code-7 1099-R income, 1099-G unemployment and fully qualified 1099-SA distributions; separately prove fully reconciled 1099-K-to-Schedule-C treatment. The committed rule package remains `research_unapproved` pending qualified independent tax review.
 - [x] Add a persisted, importable and exportable 2025 return profile for all five Form 1040 filing statuses, reviewed dependent classifications, Schedule A itemized deductions, Form 1040 dependent rows and Schedule 8812 CTC/ODC/ACTC. Apply status-specific tax methods and standard deductions, the 7.5% medical floor, 2025 SALT cap/phaseout, MFS spouse-itemization rule, credit phaseout and three-child refundable-credit alternative. Render the supported pages in controlled PDF output and retain explicit blockers for claimable-taxpayer, age/blindness additions, EITC, dependent-care and other unimplemented treatments. The package remains `research_unapproved` pending qualified independent tax review.
+- [x] Add end-to-end Schedule C, E and F activity modules: 2025.1 strict form contracts and line registries, manual entry and immutable revision history, supported source mappings, strict canonical JSON import/export and rollback, persisted calculation assembly, Schedule 1/SE/QBI integration within the explicit supported profiles, controlled draft form pages, workpaper detail, authority hashes and clean-database unit/live-PostgreSQL evidence. Complex or unreviewed treatments block rather than silently calculate, and the package remains `research_unapproved`.
 
 ### Completed and verified
 
@@ -64,7 +65,7 @@ The following seven reviewable source-code capabilities are implemented and tech
 - [x] Expand automated WCAG 2 A/AA and Linux Chromium visual-regression coverage to representative intake-blocker, split-mapping, review-blocker, stale-calculation, import-staging and stale-output states. Manual assistive-technology review and representative-preparer acceptance remain open.
 - [x] Add administrator-only, optimistic-versioned retention governance without assuming a universal period: configurable policies for source originals, imports, calculation snapshots, generated artifacts, audit history and backups; documented policy basis and end-of-period action; scoped legal holds and reasoned releases; same-origin/rate-limited APIs; tax-value-free chained audit events; a database-backed administration screen; and recovery verification. Firm policy approval and production backup expiry remain production dependencies.
 - [x] Add an administrator-only, legal-hold-aware disposal executor for source-original bytes, import payloads, unreferenced calculation snapshots and generated-artifact bytes. Require a current delete policy, a non-expired exact-cutoff preview, unchanged policy version, authorization reference and typed confirmation; serialize hold placement/release with disposal; bound each run to 500 records; skip referenced calculations, current artifacts and active artifact jobs; retain metadata; and write immutable item outcomes, an evidence hash and a chained tax-value-free audit event. Audit-chain deletion remains forbidden and backup expiry remains provider-managed.
-- [x] Add a fail-safe local synthetic performance exercise that creates and removes an isolated migrated database, loads 10,000 clients, drives 25 concurrent database sessions, and measures bounded client-list/search, open-return, 100-source-record calculation and 1,000-record import-preview p95 latency. Add client list/search bounds and supporting indexes. The October 9 local loopback run passed all stated server-side targets; production browser/network and maximum-file evidence remain open.
+- [x] Add a fail-safe local synthetic performance exercise that creates and removes an isolated migrated database, loads 10,000 clients, drives 25 concurrent database sessions, and measures bounded client-list/search, open-return, 100-source-record calculation and 1,000-record import-preview p95 latency. Add client list/search bounds and supporting indexes. The October 12 local loopback run passed all stated server-side targets after the Schedule C/E/F expansion; production browser/network and maximum-file evidence remain open.
 - [x] Connect the global client search to an assigned-client-scoped, rate-limited, private/no-store endpoint with a bounded POST body so search terms never enter the URL; add debouncing, stale-request cancellation, Ctrl/Cmd+K focus, Escape dismissal, accessible combobox results and browser coverage. Correct same-origin validation to compare the browser origin with the public HTTP host when the development server is bound to `0.0.0.0`, with focused allow/deny tests.
 - [x] Add a persistent release-readiness dashboard for the seven Section 124 gates with accountable owners, due dates, evidence references, optimistic versions and independent approve/reject decisions. Gate tooling does not manufacture the owner approvals that remain open below.
 - [x] Add an independent tax-review fixture workspace with expected-versus-actual named values, deterministic mismatch counts, rule/source references, SHA-256 evidence identity, preparer/reviewer separation and mismatch-blocked approval.
@@ -72,16 +73,18 @@ The following seven reviewable source-code capabilities are implemented and tech
 - [x] Add a manual acceptance recorder for assistive-technology and representative-preparer sessions, scenario counts, findings and evidence references; require a different reviewer and a fully passing session before signature.
 - [x] Add a firm- and tax-year-scoped source-to-output tie-out workspace with expected/actual named values, hashes, mismatch counts, optimistic revisions and independent mismatch-blocked approval.
 - [x] Define an explicit Hostinger Business Web Hosting managed-Node deployment contract: GitHub-connected Next.js builds, Node.js 24 pinning, migration and fail-closed production-readiness build command, supervised web/artifact-worker start command, CI runtime smoke coverage, environment inventory and domain/rollback/verification runbook. Hostinger account activation and the external production approvals below remain operator-owned gates.
-- [x] Migrate the complete Nexus PostgreSQL schema and synthetic application dataset to the approved Supabase project `tlhjzjtflljldvzgrnek`. On October 10, 2026, verify all 23 repository migrations, 41 public tables, repeatable seeding, zero invalid indexes, zero unvalidated constraints, all 23 live-database integration tests and application health/database connectivity. Production Supabase Auth subject provisioning and acceptance remain the external gate below.
+- [x] Migrate the Nexus PostgreSQL schema through migration `0023` and the synthetic application dataset to the approved Supabase project `tlhjzjtflljldvzgrnek`. On October 10, 2026, verify those 23 migrations, 41 public tables, repeatable seeding, zero invalid indexes, zero unvalidated constraints, all then-current live-database integration tests and application health/database connectivity. Production Supabase Auth subject provisioning and acceptance remain an external gate.
 - [x] Make the global import entry a real persisted workflow selector instead of a synthetic wizard; expose an identifier-free, schema-valid 2025 blank template as a direct versioned download that does not require a client, database write, artifact worker or calculation run; link the same download from return imports and outputs; and publish a fail-closed 2025 source-form catalog that distinguishes the five typed Phase 1 families from document-only unsupported information returns.
 - [x] Replace the real persisted tax-year landing screen's synthetic W-2 workstation data and inert controls with an assigned-client workflow hub linking every implemented intake, source, import, mapping, review, calculation and output surface. Retain the synthetic workstation only as an explicitly synthetic UI fixture.
 - [x] Make the Hostinger production gate verify the approved Supabase project and explicit `draft_pilot` release mode; add a filing-readiness boundary for future official-paper and IRS MeF tracks and expose both as unavailable instead of providing a false filing action.
 - [x] Expand the 2025 review profile with complete typed vertical slices for 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA: canonical schema/template, persisted import/export/lineage, registry entry, source-document types, expected-document links, calculation blockers, deterministic supported treatments, Form 8949/Schedule D/Form 8889 and Form 1040/Schedule 1 lines, workpaper destinations, synthetic example download and unit/live-PostgreSQL evidence.
+- [x] Implement the Schedule C/E/F activity-form expansion through migration `0025`: all form-line capture contracts, guarded CRUD APIs and manual workspace, immutable activity versions, mapping reconciliation, atomic split-allocation JSON materialization, compensating rollback, calculation and output integration, and 27 clean-database integration plus 82 unit-test results for the implemented scope.
 
 ### In progress / not complete
 
+- [ ] Apply repository migrations `0024_return_profiles.sql` and `0025_activity_form_revisions.sql` to the approved Supabase project before deploying this revision. Both migrations and their clean-database forward/recovery evidence are complete locally; this cloud environment resolves the project's direct database hostname only to IPv6 and cannot reach PostgreSQL/Supavisor, so the remote migration state was not altered or falsely marked current.
 - [ ] Activate and independently validate production authentication: configure the approved Supabase project and trusted ingress, provision pilot subjects, verify production cookies/recovery/MFA/revocation, and obtain security-owner acceptance. Application login, TOTP enrollment/challenge, recovery, external-subject mapping, firm selection, session behavior, assignments and server-enforced persistence are implemented and tested.
-- [x] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows. Verified all 23 migrations, repeatable synthetic seeding, firm-scoped creation and reads, assignment enforcement, optimistic person updates, revision invalidation and audit history through the live PostgreSQL integration suite.
+- [x] Complete PostgreSQL migrations, seed data and persisted client/tax-year/person workflows. Verified all 25 repository migrations locally, repeatable synthetic seeding, firm-scoped creation and reads, assignment enforcement, optimistic person updates, revision invalidation and audit history through the live PostgreSQL integration suite.
 - [x] Complete secure source upload, scanning/quarantine, encrypted object storage and authorized source viewing. Unit and live PostgreSQL integration evidence covers file limits and signatures, fail-closed production scanner configuration, quarantine/promotion, AES-256-GCM authenticated encryption, checksum verification, duplicate warnings, firm/assignment authorization and the no-store sandboxed viewing proxy.
 - [x] Complete every registered field and screen for the original five source families plus the expanded 1099-B, 1099-G, 1099-K, 1099-R and 1099-SA review families. Exact year-pinned registry-key regression tests cover numbered boxes, repeatable state/local rows, typed checkbox/code/open-label editors, issuer/recipient metadata, unknown raw-field preservation and immutable evidence-backed correction screens.
 - [x] Complete safe import UI/API, corrections, void/superseded lineage, duplicate resolution, rollback and history. Evidence covers bounded unsafe-key/schema validation, stable-ID diffs, explicit use-imported/keep-existing/review-later semantics, exact replay, stale-preview rejection, protected manual values, immutable materialization and evidence-backed lineage, non-contributing void/duplicate states, guarded compensating rollback, complete attempt history and an AC-03 persisted ten-family all-field/repeated-row/raw/unmapped import-to-source-export round trip.
@@ -89,7 +92,7 @@ The following seven reviewable source-code capabilities are implemented and tech
 - [ ] Complete approved, independently verified 2025 rule package and supported calculation dependency graph.
 - [x] Complete Forms 1040, Schedules 1/2/B/C/SE, simplified Form 8995, qualified-dividend worksheet, traces and dependency manifests for the supported envelope. Engine and renderer tests verify required-form selection, all supported page families, owner-specific repeated schedules, named line/worksheet trace nodes, cycle-safe dependency order and explicit blocked manifests. Tax-rule activation remains separately gated by the independent approval item above.
 - [x] Complete draft PDF packages, XLSX workpapers and complete/source-only/blank canonical JSON export with output-integrity checks. Evidence covers required/rendered/missing-form manifests, draft watermarks, all controlled form pages, formula-backed source/withholding tie-outs with cached results, unsupported/override/trace/raw-field sheets, explicit JSON exclusion manifests, identifier-free schema-valid blank templates, sensitive complete-export authorization, content-addressed idempotency, download-time SHA-256 verification and revision-driven staleness.
-- [x] Complete application-level job execution, retry/idempotency, tax-value-free observability, performance, recovery and retention controls. Evidence covers durable leased claims and bounded retries, current-revision manual retry, idempotent artifacts, administrator queue metrics, redaction, isolated 10,000-client/25-session performance targets, coherent 23-migration database/object/output/audit restoration, configurable retention, legal holds and evidence-hashed bounded disposal. Production monitoring, backup-provider RPO/RTO and policy ownership remain deployment approvals under the production-data gate.
+- [x] Complete application-level job execution, retry/idempotency, tax-value-free observability, performance, recovery and retention controls. Evidence covers durable leased claims and bounded retries, current-revision manual retry, idempotent artifacts, administrator queue metrics, redaction, isolated 10,000-client/25-session performance targets, coherent 25-migration database/object/output/audit restoration, configurable retention, legal holds and evidence-hashed bounded disposal. Production monitoring, backup-provider RPO/RTO and policy ownership remain deployment approvals under the production-data gate.
 - [ ] Complete remaining manual WCAG/assistive-technology review and representative-preparer acceptance evidence.
 - [ ] Pass AC-01 through AC-20 and every Phase 1 release gate in Section 124.
 - [ ] Obtain required product scope approval, qualified tax-rule review, security ownership, infrastructure decisions and production-data authorization.
@@ -313,7 +316,7 @@ There are two explicitly labelled outcomes:
 - **Supported draft:** every applicable treatment for the selected case is implemented, tested and rendered, and required factual questions are answered.
 - **Partial draft:** data is retained and useful work can continue, but blockers and unknown totals are visible; review approval is disabled.
 
-Section 112 is the binding capability matrix. Section 114 makes limited Schedule 1, Schedule 2, Schedule B and simplified QBI dependencies part of the relevant Phase 1 vertical slices. Broad Schedule C, Schedule SE or 1099 support cannot be claimed merely because boxes can be entered.
+Section 112 is the binding capability matrix. Section 114 makes limited Schedule 1, Schedule 2, Schedule B and simplified QBI dependencies part of the relevant Phase 1 vertical slices. Broad Schedule C/E/F, Schedule SE or 1099 support cannot be claimed merely because boxes can be entered.
 
 All PDFs remain `DRAFT — NOT FOR FILING`, including reviewed drafts. Phase 1 has no transmission, signature collection, acceptance claim, payment initiation, filing-ready status, or production vendor synchronization.
 
@@ -2325,7 +2328,7 @@ Examples:
 Example:
 
 ```text
-$20,000 mapped to Schedule E, but Schedule E calculation is not implemented.
+$20,000 mapped to a Schedule E partnership activity, but Parts II–IV calculation is not implemented.
 ```
 
 This is blocking for draft review approval regardless of whether a partial calculation ran successfully.
@@ -3202,7 +3205,7 @@ Test:
 
 1. NEC fully mapped to one Schedule C;
 2. NEC split between two Schedule C activities;
-3. MISC rents mapped to Schedule E placeholder;
+3. MISC rents mapped to a supported Schedule E rental activity;
 4. MISC other income mapped to Schedule 1 placeholder;
 5. over-allocation;
 6. partial mapping;
@@ -3225,6 +3228,8 @@ Test:
 - qualified dividend handling;
 - Schedule C income;
 - Schedule C expenses;
+- Schedule E rental/royalty income, expenses and supported-profile limitations;
+- Schedule F cash-method income, expenses and supported-profile elections;
 - self-employment tax;
 - adjustment for deductible SE tax;
 - AGI;
@@ -3247,6 +3252,7 @@ Test:
 - required form dependency detection;
 - 1040 rendering;
 - Schedule C rendering;
+- Schedule E and Schedule F rendering;
 - Schedule SE rendering;
 - draft watermark;
 - missing required unsupported schedule;
@@ -3831,15 +3837,17 @@ This matrix states required implementation scope, not current implementation sta
 | W-2 | Ordinary Box 1 wages and Box 2 federal withholding; validated owner-specific wage facts needed for SE interactions | Special wage/tip treatment, allocated tips, statutory employee, dependent care, excess contributions or other triggered unsupported rules block |
 | 1099-INT | Ordinary taxable interest, Treasury interest, tax-exempt reporting, federal withholding; supported Schedule B dependency | Bond premium, market discount, foreign tax, nominee adjustments and other special treatment block unless individually implemented |
 | 1099-DIV | Ordinary dividends; qualified-dividend worksheet for verified eligible cases; exempt-interest reporting; withholding | Capital-gain distributions, basis distributions, foreign tax, special gains and other unsupported treatments block; ordinary and qualified amounts must not be double-counted |
-| 1099-NEC/MISC | All boxes captured; confirmed eligible business receipts mapped to supported Schedule C activities; federal withholding counted once | Rentals, royalties outside the supported business case, farm, nonbusiness income and special tax character remain mapped but partial |
-| Schedule C | Sole-owner cash-basis service activity, nonnegative profit, no inventory, assets, employees, home office, vehicle deduction, carryovers or special elections | Losses, joint ownership, QJV, statutory-employee business treatment, limitations or complex deductions block |
-| Business expenses | Explicitly substantiated ordinary advertising, office expenses, supplies, eligible business insurance, qualifying professional fees, business rent, repairs and utilities; category definitions and eligibility validation required | Meals, travel, taxes/licenses, interest, compensation, benefits, depreciation and special categories remain capture-only initially unless separately scoped/tested |
+| 1099-NEC/MISC | All boxes captured; confirmed eligible receipts mapped to supported Schedule C, simple Schedule E rental/royalty or cash-method Schedule F activities; federal withholding counted once | Nonbusiness income and special tax character remain mapped but partial; unsupported E/F activity profiles block |
+| Schedule C | Sole-owner cash-basis activity with mapped plus separately reconciled receipts, returns, COGS lines, other income, line-category expenses and nonnegative profit; reviewed SE and simplified-QBI treatment | Losses, noncash accounting, joint ownership, vehicle deduction, home-office computation, carryovers and unimplemented linked/special forms block |
+| Schedule E | Part I rental/royalty activity with reviewed income and line expenses, no personal-use allocation, nonnegative result, reviewed at-risk/passive facts and explicit QBI classification | Qualified joint ventures, losses requiring limitations, personal-use allocation, unreviewed depreciation, partnerships/S corporations, estates/trusts and REMIC Parts II–IV block |
+| Schedule F | Cash-method sole-owner farm with Part I income, Part II line expenses, nonnegative profit, reviewed crop-insurance election, SE and simplified-QBI treatment | Accrual Part III, losses and unreviewed or special elections/limitations block |
+| Business expenses | Schedule C/E/F line-category amounts entered as reviewed deductible amounts, including repeatable other-expense descriptions; calculations retain line-level trace and explicit linked-form blockers | Nexus does not derive depreciation, vehicle, home-office, passive-loss, basis/at-risk or other special-form limitations from raw facts unless explicitly stated above |
 | Schedule SE | Regular supported sole-proprietor case; aggregate by person across activities with that person's wage interaction; deductible portion | Optional methods, exemptions, special professions, foreign coverage and other special cases block |
-| QBI | Simplified Form 8995 cases meeting all year-specific eligibility conditions; supported Schedule C and Section 199A dividend inputs with complete facts | Form 8995-A, PTP, cooperatives, carryovers, losses and other unimplemented cases block |
+| QBI | Simplified Form 8995 cases meeting all year-specific eligibility conditions; supported Schedule C/F, explicitly eligible simple Schedule E and Section 199A dividend inputs with complete facts | Form 8995-A, PTP, cooperatives, carryovers, losses and other unimplemented cases block |
 | Deductions | Status-specific standard deduction; reviewed Schedule A medical, personal-tax/SALT, mortgage-interest, investment-interest, charitable, eligible disaster-loss and other-itemized amounts with implemented 2025 floors/caps; MFS spouse-itemization rule; deductible part of SE tax; simplified QBI | Claimable/age/blindness worksheets, unreviewed deduction limitations, other adjustments and potentially applicable Schedule 1-A deductions block |
 | Tax and credits | Ordinary tax for all five statuses using the required year-specific method; supported qualified-dividend computation; reviewed CTC, ODC and ACTC through Schedule 8812 including phaseout and three-child alternative | Potentially applicable EITC, dependent-care credit/Form 2441, other credits, AMT, NIIT, Additional Medicare Tax and other taxes block unless implemented or ruled out by tested eligibility screens |
 | Payments | Federal withholding from active source records once; supported ACTC | Estimated payments, extension payments, prior-year credit elect, other refundable credits and penalties remain capture-only and block complete draft when applicable |
-| Forms | 1040 and dependent rows; supported portions of Schedules 1, 2, A, B, C, D and SE; Forms 8949, 8889, 8995 and Schedule 8812; required worksheets | Any required unsupported form makes the return partial |
+| Forms | 1040 and dependent rows; supported portions of Schedules 1, 2, A, B, C, D, E, F and SE; Forms 8949, 8889, 8995 and Schedule 8812; required worksheets | Any required unsupported form makes the return partial |
 | State/local | Lossless capture and workpaper display | No state/local calculation, filing, allocation or state-refund promise |
 | Outputs | Draft return package, reviewer workpaper, complete/source-only JSON | No executable e-file payload or vendor-compatible export claim |
 
@@ -4181,7 +4189,7 @@ Refine Section 102 into demonstrable vertical slices. Security and data integrit
 2. One W-2 from secure source upload through canonical import, source correction, trace, supported wage calculation, draft 1040 and audit.
 3. Remaining four source families, full field-preservation tests, corrections, duplicate reconciliation and safe round-trip.
 4. Supported INT/DIV dependency path and Schedule B/qualified-dividend review.
-5. Mapping, supported Schedule C, person-level SE, Schedules 1/2 and simplified QBI as one complete business slice.
+5. Mapping, supported Schedule C/E/F activity profiles, person-level SE, Schedules 1/2 and simplified QBI as one complete activity slice.
 6. Review workflow, invalidation, immutable outputs, workpaper tie-out and failure recovery.
 7. Performance, accessibility, preparer acceptance, security/recovery gates and pilot documentation.
 8. Mock vendor adapter contracts and future roadmap only; no live integration credentials or sync needed for Phase 1.

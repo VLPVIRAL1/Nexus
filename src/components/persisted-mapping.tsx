@@ -35,13 +35,13 @@ export function PersistedMapping({ clientId, year, clientName, initial }: { clie
   }
 
   async function createNewActivity() {
-    const mappingOnly = activityForm.type !== "schedule_c" || activityForm.implementationStatus === "mapping_only";
+    const mappingOnly = activityForm.implementationStatus === "mapping_only";
     const ok = await request(`/api/clients/${clientId}/years/${year}/mapping`, "POST", {
       expectedRevision: initial.revision, ...activityForm,
       implementationStatus: mappingOnly ? "mapping_only" : "supported",
       receiptBasis: mappingOnly ? null : "source_plus_additional_receipts",
-      additionalReceipts: normalizeMoney(activityForm.additionalReceipts),
-      receiptNote: activityForm.receiptNote || null,
+      additionalReceipts: activityForm.type === "schedule_c" ? normalizeMoney(activityForm.additionalReceipts) : "0.00",
+      receiptNote: activityForm.type === "schedule_c" ? activityForm.receiptNote || null : null,
     });
     if (ok) { setShowActivity(false); setActivityForm({ type: "schedule_c", name: "", ownerRole: "taxpayer", implementationStatus: "supported", additionalReceipts: "0.00", receiptNote: "" }); }
   }
@@ -79,13 +79,12 @@ export function PersistedMapping({ clientId, year, clientName, initial }: { clie
     <div className="return-page-top"><Link href={`/clients/${clientId}/years/${year}`}><ArrowLeft size={14} /> {clientName} · {year}</Link><span>Revision {initial.revision}</span><b>{initial.sources.filter(({ reconciliation }) => reconciliation.status !== "fully_mapped" && reconciliation.status !== "not_applicable").length} unresolved</b></div>
     <header><div><p>SOURCE DATA · ALLOCATIONS</p><h1>Mapping center</h1><span>Effective source amounts are reconciled at the cent. Suggestions require preparer confirmation.</span></div><button className="button primary" onClick={() => setShowActivity((value) => !value)}><Plus size={14} /> Add activity</button></header>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {showActivity ? <section className="panel activity-create"><div className="panel-heading"><div><h2>New return activity</h2><p>Supported Schedule C uses source forms plus separately stated additional receipts.</p></div><button className="button primary" disabled={saving} onClick={createNewActivity}>{saving ? "Saving…" : "Create activity"}</button></div><div className="mapping-form-grid">
+    {showActivity ? <section className="panel activity-create"><div className="panel-heading"><div><h2>New return activity</h2><p>Schedule C, E and F share the versioned activity workspace and source reconciliation.</p></div><button className="button primary" disabled={saving} onClick={createNewActivity}>{saving ? "Saving…" : "Create activity"}</button></div><div className="mapping-form-grid">
       <label><span>Name</span><input value={activityForm.name} onChange={(event) => setActivityForm({ ...activityForm, name: event.target.value })} /></label>
-      <label><span>Destination</span><select value={activityForm.type} onChange={(event) => { const type = event.target.value as ActivityType; setActivityForm({ ...activityForm, type, implementationStatus: type === "schedule_c" ? activityForm.implementationStatus : "mapping_only" }); }}><option value="schedule_c">Schedule C</option><option value="schedule_e">Schedule E</option><option value="schedule_f">Schedule F</option><option value="schedule_1_other">Schedule 1 · Other income</option></select></label>
+      <label><span>Destination</span><select value={activityForm.type} onChange={(event) => { const type = event.target.value as ActivityType; setActivityForm({ ...activityForm, type, implementationStatus: type === "schedule_1_other" ? "mapping_only" : activityForm.implementationStatus }); }}><option value="schedule_c">Schedule C</option><option value="schedule_e">Schedule E</option><option value="schedule_f">Schedule F</option><option value="schedule_1_other">Schedule 1 · Other income</option></select></label>
       <label><span>Owner</span><select value={activityForm.ownerRole} onChange={(event) => setActivityForm({ ...activityForm, ownerRole: event.target.value })}><option value="taxpayer">Taxpayer</option><option value="spouse">Spouse</option></select></label>
-      <label><span>Calculation coverage</span><select value={activityForm.implementationStatus} disabled={activityForm.type !== "schedule_c"} onChange={(event) => setActivityForm({ ...activityForm, implementationStatus: event.target.value as "supported" | "mapping_only" })}><option value="supported">Supported Phase 1 path</option><option value="mapping_only">Mapping only</option></select></label>
-      <label><span>Additional receipts excluding these sources</span><input inputMode="decimal" value={activityForm.additionalReceipts} onChange={(event) => setActivityForm({ ...activityForm, additionalReceipts: event.target.value })} /></label>
-      <label className="span-two"><span>Receipt evidence / difference explanation</span><input value={activityForm.receiptNote} onChange={(event) => setActivityForm({ ...activityForm, receiptNote: event.target.value })} /></label>
+      <label><span>Calculation coverage</span><select value={activityForm.implementationStatus} disabled={activityForm.type === "schedule_1_other"} onChange={(event) => setActivityForm({ ...activityForm, implementationStatus: event.target.value as "supported" | "mapping_only" })}><option value="supported">Supported reviewed profile</option><option value="mapping_only">Mapping only</option></select></label>
+      {activityForm.type === "schedule_c" ? <><label><span>Additional receipts excluding these sources</span><input inputMode="decimal" value={activityForm.additionalReceipts} onChange={(event) => setActivityForm({ ...activityForm, additionalReceipts: event.target.value })} /></label><label className="span-two"><span>Receipt evidence / difference explanation</span><input value={activityForm.receiptNote} onChange={(event) => setActivityForm({ ...activityForm, receiptNote: event.target.value })} /></label></> : null}
     </div></section> : null}
     <div className="mapping-layout">
       <section className="panel mapping-sources"><div className="panel-heading"><div><h2>Effective source amounts</h2><p>{initial.sources.length} tax-relevant fields</p></div></div>{initial.sources.length ? initial.sources.map((source) => { const key = `${source.id}:${source.field}`; return <button className={`mapping-source ${selectedKey === key ? "active" : ""}`} onClick={() => setSelectedKey(key)} key={key}><span>{source.formType} · {source.ownerRole}</span><strong>{source.payerName}</strong><small>{source.label}</small><b>{formatMoney(source.amount)}</b><em>{source.reconciliation.status.replaceAll("_", " ")}</em></button>; }) : <p className="empty-panel">No effective 1099-NEC or 1099-MISC income amounts are available to map.</p>}</section>

@@ -210,6 +210,10 @@ export interface Activity {
   owner: OwnerRole;
   implementationStatus: "supported" | "mapping_only";
   active: boolean;
+  additionalReceipts?: DecimalString;
+  receiptNote?: string | null;
+  formData?: Record<string, unknown>;
+  version?: number;
 }
 
 export interface SourceMapping {

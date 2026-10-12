@@ -10,6 +10,7 @@ const accessibleRoutes = [
   { name: "persisted return hub", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025" },
   { name: "persisted intake", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/intake" },
   { name: "return profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile" },
+  { name: "schedule activities", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/activities" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping split", path: "/clients/sample/years/2025/mapping" },
   { name: "review blockers", path: "/clients/sample/years/2025/review" },
@@ -123,7 +124,7 @@ test("global import entry downloads the blank template and routes to the persist
   await expect(page.getByRole("link", { name: "Stage JSON" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/imports");
   const response = await request.get("/api/templates/2025/1040/canonical.json");
   expect(response.ok()).toBe(true);
-  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.2.0-review.json");
+  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.3.0-review.json");
   expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] });
   const example = await request.get("/api/examples/2025/supported-review-return.json");
   expect(example.ok()).toBe(true);

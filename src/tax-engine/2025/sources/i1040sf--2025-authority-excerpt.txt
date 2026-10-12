@@ -1,0 +1,8 @@
+Official source: https://www.irs.gov/pub/irs-prior/i1040sf--2025.pdf
+Document: 2025 Instructions for Schedule F (Form 1040)
+Retrieved: 2026-10-11 America/Chicago
+Official PDF SHA-256: 857bfefc9895a944b2f0094f229a59ab49e8a7395b9fad18ce85387a2e65ece2
+
+Implementation scope note:
+These instructions govern Schedule F classification, calculation boundaries, and explicit linked-form
+diagnostics. Reviewed cash-method amounts are retained separately from accrual inventory information.

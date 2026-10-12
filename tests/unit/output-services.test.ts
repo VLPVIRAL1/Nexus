@@ -70,7 +70,7 @@ describe("output integrity foundations", () => {
     const bytes = await generateWorkpaper({ data, runId: "CALC-SYNTHETIC", calculationStatus: "partial", diagnostics: [], calculationResult, requiredForms: formPlan.requiredForms, renderedForms: formPlan.renderedForms });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer as ArrayBuffer);
-    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Raw Source Fields"]);
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Schedule Activities", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Raw Source Fields"]);
     expect(workbook.getWorksheet("Cover & Tax Summary")?.getCell("B4").value).toBe("CALC-SYNTHETIC");
     expect(workbook.getWorksheet("Required Forms")?.rowCount).toBeGreaterThan(2);
     expect(workbook.getWorksheet("Calculation Trace")?.rowCount).toBeGreaterThan(2);

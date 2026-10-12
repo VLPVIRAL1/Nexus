@@ -1,0 +1,9 @@
+Official source: https://www.irs.gov/pub/irs-prior/f1040se--2025.pdf
+Document: 2025 Schedule E (Form 1040), Supplemental Income and Loss
+Retrieved: 2026-10-11 America/Chicago
+Official PDF SHA-256: c5e2c8fa0ec5ee9153a0167734df634afe0ea8bb8483040766e5f4b1b12780f3
+
+Implementation scope note:
+The activity contract preserves Parts I through V. The supported calculation profile consumes reviewed
+Part I rental or royalty income and ordinary expense amounts. Parts II through IV and unresolved passive,
+basis, at-risk, personal-use, and depreciation limitations remain blocking rather than being omitted.

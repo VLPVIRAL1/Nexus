@@ -1,0 +1,8 @@
+Official source: https://www.irs.gov/pub/irs-prior/i1040se--2025.pdf
+Document: 2025 Instructions for Schedule E (Form 1040)
+Retrieved: 2026-10-11 America/Chicago
+Official PDF SHA-256: ad71de356a6250383ab08097582e982c3c3964792be2d4f5e4bd851816867975
+
+Implementation scope note:
+These instructions govern the Schedule E validation and explicit unsupported-case diagnostics. Capture
+does not establish calculation support, and a populated linked-form topic cannot silently disappear.

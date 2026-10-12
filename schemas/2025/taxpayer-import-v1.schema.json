@@ -2,6 +2,84 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nexus-tax.local/schemas/2025/taxpayer-import-v1.schema.json",
   "title": "Nexus Tax 2025 Canonical Import",
+  "$defs": {
+    "money": { "type": "string", "pattern": "^\\d+\\.\\d{2}$" },
+    "reviewedBoolean": { "type": ["boolean", "null"] },
+    "otherExpense": {
+      "type": "object", "additionalProperties": false, "required": ["id", "description", "amount"],
+      "properties": { "id": { "type": "string", "format": "uuid" }, "description": { "type": "string", "minLength": 1, "maxLength": 200 }, "amount": { "$ref": "#/$defs/money" } }
+    },
+    "activityBase": {
+      "type": "object", "required": ["id", "name", "owner_role", "implementation_status", "additional_receipts", "receipt_note", "active", "version", "form_data"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" }, "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "owner_role": { "enum": ["taxpayer", "spouse"] }, "implementation_status": { "enum": ["supported", "mapping_only"] },
+        "additional_receipts": { "$ref": "#/$defs/money" }, "receipt_note": { "type": ["string", "null"], "maxLength": 2000 },
+        "active": { "type": "boolean" }, "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "scheduleCForm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "scheduleType", "income", "costOfGoodsSold", "expenses", "vehicle", "homeOffice"],
+      "properties": {
+        "schemaVersion": { "const": "2025.1" }, "scheduleType": { "const": "schedule_c" },
+        "businessName": { "type": "string", "maxLength": 500 }, "businessCode": { "type": "string", "maxLength": 6 }, "ein": { "type": "string", "maxLength": 20 }, "businessAddress": { "type": "string", "maxLength": 500 },
+        "accountingMethod": { "enum": ["cash", "accrual", "other"] }, "accountingMethodOther": { "type": "string", "maxLength": 500 },
+        "materiallyParticipated": { "$ref": "#/$defs/reviewedBoolean" }, "startedOrAcquiredIn2025": { "$ref": "#/$defs/reviewedBoolean" }, "payments1099Required": { "$ref": "#/$defs/reviewedBoolean" }, "payments1099Filed": { "$ref": "#/$defs/reviewedBoolean" },
+        "income": { "type": "object", "additionalProperties": false, "properties": { "returnsAndAllowances": { "$ref": "#/$defs/money" }, "otherIncome": { "$ref": "#/$defs/money" } } },
+        "costOfGoodsSold": { "type": "object", "additionalProperties": false, "properties": {
+          "beginningInventory": { "$ref": "#/$defs/money" }, "purchases": { "$ref": "#/$defs/money" }, "costOfLabor": { "$ref": "#/$defs/money" }, "materialsAndSupplies": { "$ref": "#/$defs/money" }, "otherCosts": { "$ref": "#/$defs/money" }, "endingInventory": { "$ref": "#/$defs/money" },
+          "method": { "enum": ["cost", "lower_cost_market", "other"] }, "methodOther": { "type": "string", "maxLength": 500 }, "inventoryChanged": { "$ref": "#/$defs/reviewedBoolean" }
+        } },
+        "expenses": { "type": "object", "additionalProperties": false, "properties": {
+          "advertising": { "$ref": "#/$defs/money" }, "carAndTruck": { "$ref": "#/$defs/money" }, "commissionsAndFees": { "$ref": "#/$defs/money" }, "contractLabor": { "$ref": "#/$defs/money" }, "depletion": { "$ref": "#/$defs/money" }, "depreciationAndSection179": { "$ref": "#/$defs/money" }, "employeeBenefits": { "$ref": "#/$defs/money" }, "businessInsurance": { "$ref": "#/$defs/money" }, "mortgageInterest": { "$ref": "#/$defs/money" }, "otherInterest": { "$ref": "#/$defs/money" }, "legalAndProfessional": { "$ref": "#/$defs/money" }, "office": { "$ref": "#/$defs/money" }, "pensionAndProfitSharing": { "$ref": "#/$defs/money" }, "rentVehiclesMachinery": { "$ref": "#/$defs/money" }, "rentOtherProperty": { "$ref": "#/$defs/money" }, "repairsAndMaintenance": { "$ref": "#/$defs/money" }, "supplies": { "$ref": "#/$defs/money" }, "taxesAndLicenses": { "$ref": "#/$defs/money" }, "travel": { "$ref": "#/$defs/money" }, "deductibleMeals": { "$ref": "#/$defs/money" }, "utilities": { "$ref": "#/$defs/money" }, "wages": { "$ref": "#/$defs/money" }, "energyEfficientBuildingsDeduction": { "$ref": "#/$defs/money" }
+        } },
+        "otherExpenses": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/otherExpense" } },
+        "vehicle": { "type": "object", "additionalProperties": false, "properties": { "used": { "type": "boolean" }, "placedInServiceDate": { "type": "string" }, "businessMiles": { "type": "integer", "minimum": 0 }, "commutingMiles": { "type": "integer", "minimum": 0 }, "otherMiles": { "type": "integer", "minimum": 0 }, "availableForPersonalUse": { "$ref": "#/$defs/reviewedBoolean" }, "anotherVehicleAvailable": { "$ref": "#/$defs/reviewedBoolean" }, "evidenceAvailable": { "$ref": "#/$defs/reviewedBoolean" }, "writtenEvidence": { "$ref": "#/$defs/reviewedBoolean" } } },
+        "homeOffice": { "type": "object", "additionalProperties": false, "properties": { "claimed": { "type": "boolean" }, "reviewedDeduction": { "$ref": "#/$defs/money" }, "method": { "enum": ["simplified", "actual", "none"] } } },
+        "qbiEligible": { "$ref": "#/$defs/reviewedBoolean" }, "selfEmploymentTreatmentConfirmed": { "$ref": "#/$defs/reviewedBoolean" }
+      }
+    },
+    "supplementalActivity": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "incomeOrLoss"],
+      "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string", "minLength": 1, "maxLength": 200 }, "ein": { "type": "string", "maxLength": 20 }, "passive": { "$ref": "#/$defs/reviewedBoolean" }, "incomeOrLoss": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }, "basisAndAtRiskReviewed": { "type": "boolean" } }
+    },
+    "scheduleEForm": {
+      "type": "object", "additionalProperties": false, "required": ["schemaVersion", "scheduleType", "property", "income", "expenses"],
+      "properties": {
+        "schemaVersion": { "const": "2025.1" }, "scheduleType": { "const": "schedule_e" },
+        "property": { "type": "object", "additionalProperties": false, "required": ["propertyType"], "properties": { "propertyType": { "enum": ["single_family", "multi_family", "vacation_short_term", "commercial", "land", "royalties", "self_rental", "other"] }, "propertyTypeOther": { "type": "string", "maxLength": 500 }, "address": { "type": "string", "maxLength": 500 }, "fairRentalDays": { "type": "integer", "minimum": 0, "maximum": 366 }, "personalUseDays": { "type": "integer", "minimum": 0, "maximum": 366 }, "qualifiedJointVenture": { "$ref": "#/$defs/reviewedBoolean" } } },
+        "income": { "type": "object", "additionalProperties": false, "properties": { "rentsReceived": { "$ref": "#/$defs/money" }, "royaltiesReceived": { "$ref": "#/$defs/money" } } },
+        "expenses": { "type": "object", "additionalProperties": false, "properties": { "advertising": { "$ref": "#/$defs/money" }, "autoAndTravel": { "$ref": "#/$defs/money" }, "cleaningAndMaintenance": { "$ref": "#/$defs/money" }, "commissions": { "$ref": "#/$defs/money" }, "insurance": { "$ref": "#/$defs/money" }, "legalAndProfessional": { "$ref": "#/$defs/money" }, "managementFees": { "$ref": "#/$defs/money" }, "mortgageInterest": { "$ref": "#/$defs/money" }, "otherInterest": { "$ref": "#/$defs/money" }, "repairs": { "$ref": "#/$defs/money" }, "supplies": { "$ref": "#/$defs/money" }, "taxes": { "$ref": "#/$defs/money" }, "utilities": { "$ref": "#/$defs/money" }, "depreciation": { "$ref": "#/$defs/money" } } },
+        "otherExpenses": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/otherExpense" } },
+        "activeRentalRealEstateParticipant": { "$ref": "#/$defs/reviewedBoolean" }, "allInvestmentAtRisk": { "$ref": "#/$defs/reviewedBoolean" }, "passiveLossRulesReviewed": { "$ref": "#/$defs/reviewedBoolean" }, "depreciationReviewed": { "$ref": "#/$defs/reviewedBoolean" }, "rentalQbiEligible": { "$ref": "#/$defs/reviewedBoolean" },
+        "partnershipsAndSCorporations": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/supplementalActivity" } }, "estatesAndTrusts": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/supplementalActivity" } },
+        "remicInterests": { "type": "array", "maxItems": 100, "items": { "type": "object", "additionalProperties": false, "required": ["id", "name", "excessInclusion", "taxableIncomeOrLoss"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string", "minLength": 1, "maxLength": 200 }, "ein": { "type": "string", "maxLength": 20 }, "excessInclusion": { "$ref": "#/$defs/money" }, "taxableIncomeOrLoss": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" } } } }
+      }
+    },
+    "scheduleFForm": {
+      "type": "object", "additionalProperties": false, "required": ["schemaVersion", "scheduleType", "income", "expenses", "accrual"],
+      "properties": {
+        "schemaVersion": { "const": "2025.1" }, "scheduleType": { "const": "schedule_f" }, "principalProduct": { "type": "string", "maxLength": 500 }, "agriculturalActivityCode": { "type": "string", "maxLength": 6 }, "ein": { "type": "string", "maxLength": 20 }, "accountingMethod": { "enum": ["cash", "accrual"] },
+        "materiallyParticipated": { "$ref": "#/$defs/reviewedBoolean" }, "payments1099Required": { "$ref": "#/$defs/reviewedBoolean" }, "payments1099Filed": { "$ref": "#/$defs/reviewedBoolean" },
+        "income": { "type": "object", "additionalProperties": false, "properties": { "livestockSalesPurchased": { "$ref": "#/$defs/money" }, "livestockCostOrBasis": { "$ref": "#/$defs/money" }, "livestockProduceSales": { "$ref": "#/$defs/money" }, "cooperativeDistributions": { "$ref": "#/$defs/money" }, "cooperativeTaxable": { "$ref": "#/$defs/money" }, "agriculturalProgramPayments": { "$ref": "#/$defs/money" }, "agriculturalProgramTaxable": { "$ref": "#/$defs/money" }, "cccLoansReportedElection": { "$ref": "#/$defs/money" }, "cccLoansForfeited": { "$ref": "#/$defs/money" }, "cccLoansTaxable": { "$ref": "#/$defs/money" }, "cropInsuranceReceived": { "$ref": "#/$defs/money" }, "cropInsuranceTaxable": { "$ref": "#/$defs/money" }, "cropInsuranceDeferred": { "$ref": "#/$defs/money" }, "customHireIncome": { "$ref": "#/$defs/money" }, "otherIncome": { "$ref": "#/$defs/money" } } },
+        "expenses": { "type": "object", "additionalProperties": false, "properties": { "carAndTruck": { "$ref": "#/$defs/money" }, "chemicals": { "$ref": "#/$defs/money" }, "conservation": { "$ref": "#/$defs/money" }, "customHire": { "$ref": "#/$defs/money" }, "depreciationAndSection179": { "$ref": "#/$defs/money" }, "employeeBenefits": { "$ref": "#/$defs/money" }, "feed": { "$ref": "#/$defs/money" }, "fertilizersAndLime": { "$ref": "#/$defs/money" }, "freightAndTrucking": { "$ref": "#/$defs/money" }, "gasolineFuelOil": { "$ref": "#/$defs/money" }, "insurance": { "$ref": "#/$defs/money" }, "mortgageInterest": { "$ref": "#/$defs/money" }, "otherInterest": { "$ref": "#/$defs/money" }, "laborHired": { "$ref": "#/$defs/money" }, "pensionAndProfitSharing": { "$ref": "#/$defs/money" }, "rentVehiclesMachinery": { "$ref": "#/$defs/money" }, "rentLandAnimals": { "$ref": "#/$defs/money" }, "repairsAndMaintenance": { "$ref": "#/$defs/money" }, "seedsAndPlants": { "$ref": "#/$defs/money" }, "storageAndWarehousing": { "$ref": "#/$defs/money" }, "supplies": { "$ref": "#/$defs/money" }, "taxes": { "$ref": "#/$defs/money" }, "utilities": { "$ref": "#/$defs/money" }, "veterinaryBreedingMedicine": { "$ref": "#/$defs/money" } } },
+        "otherExpenses": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/otherExpense" } },
+        "accrual": { "type": "object", "additionalProperties": false, "properties": { "livestockProduceSales": { "$ref": "#/$defs/money" }, "beginningInventory": { "$ref": "#/$defs/money" }, "purchases": { "$ref": "#/$defs/money" }, "costOfItemsWithdrawn": { "$ref": "#/$defs/money" }, "endingInventory": { "$ref": "#/$defs/money" }, "otherAccrualIncome": { "$ref": "#/$defs/money" } } },
+        "inventoryMethod": { "enum": ["cost", "lower_cost_market", "farm_price", "unit_livestock", "other"] }, "inventoryMethodOther": { "type": "string", "maxLength": 500 }, "qbiEligible": { "$ref": "#/$defs/reviewedBoolean" }, "selfEmploymentTreatmentConfirmed": { "$ref": "#/$defs/reviewedBoolean" }, "cropInsuranceElectionReviewed": { "$ref": "#/$defs/reviewedBoolean" }
+      }
+    },
+    "sourceMapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "sourceRecordId", "sourceField", "sourceAmount", "targetType", "targetActivityId", "allocationMethod", "allocatedAmount", "percentage", "reason", "status", "version"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" }, "sourceRecordId": { "type": "string", "format": "uuid" }, "sourceField": { "type": "string", "minLength": 1, "maxLength": 200 }, "sourceAmount": { "$ref": "#/$defs/money" },
+        "targetType": { "enum": ["schedule_c", "schedule_e", "schedule_f", "schedule_1_other", "excluded"] }, "targetActivityId": { "type": ["string", "null"], "format": "uuid" },
+        "allocationMethod": { "enum": ["amount", "percentage"] }, "allocatedAmount": { "$ref": "#/$defs/money" }, "percentage": { "oneOf": [{ "$ref": "#/$defs/money" }, { "type": "null" }] },
+        "reason": { "type": ["string", "null"], "maxLength": 2000 }, "status": { "enum": ["accepted", "reviewed"] }, "version": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "tax_year", "return_type", "client", "filing_profile", "taxpayer", "dependents", "schedule_a", "source_documents", "forms", "activities", "mappings", "payments", "review_points", "metadata"],
@@ -57,8 +135,16 @@
       },
       "additionalProperties": false
     },
-    "activities": { "type": "object" },
-    "mappings": { "type": "array" },
+    "activities": {
+      "type": "object", "additionalProperties": false, "required": ["schedule_c", "schedule_e", "schedule_f", "other_income"],
+      "properties": {
+        "schedule_c": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/activityBase" }, { "type": "object", "additionalProperties": false, "properties": { "id": true, "name": true, "owner_role": true, "implementation_status": true, "additional_receipts": true, "receipt_note": true, "active": true, "version": true, "form_data": { "$ref": "#/$defs/scheduleCForm" } } }] } },
+        "schedule_e": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/activityBase" }, { "type": "object", "additionalProperties": false, "properties": { "id": true, "name": true, "owner_role": true, "implementation_status": true, "additional_receipts": { "type": "string", "pattern": "^0+\\.00$" }, "receipt_note": true, "active": true, "version": true, "form_data": { "$ref": "#/$defs/scheduleEForm" } } }] } },
+        "schedule_f": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/activityBase" }, { "type": "object", "additionalProperties": false, "properties": { "id": true, "name": true, "owner_role": true, "implementation_status": true, "additional_receipts": { "type": "string", "pattern": "^0+\\.00$" }, "receipt_note": true, "active": true, "version": true, "form_data": { "$ref": "#/$defs/scheduleFForm" } } }] } },
+        "other_income": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "name", "owner_role", "implementation_status", "active", "version"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string", "minLength": 1, "maxLength": 200 }, "owner_role": { "enum": ["taxpayer", "spouse"] }, "implementation_status": { "const": "mapping_only" }, "active": { "type": "boolean" }, "version": { "type": "integer", "minimum": 1 } } } }
+      }
+    },
+    "mappings": { "type": "array", "items": { "$ref": "#/$defs/sourceMapping" } },
     "payments": { "type": "object" },
     "review_points": { "type": "array" },
     "metadata": { "type": "object" }

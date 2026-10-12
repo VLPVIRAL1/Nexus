@@ -1,4 +1,4 @@
-import { AlertTriangle, Calculator, ClipboardCheck, Download, FileJson, FileOutput, FileUp, GitMerge, ListChecks, ShieldCheck, TableProperties, Users } from "lucide-react";
+import { AlertTriangle, BriefcaseBusiness, Calculator, ClipboardCheck, Download, FileJson, FileOutput, FileUp, GitMerge, ListChecks, ShieldCheck, TableProperties, Users } from "lucide-react";
 import Link from "next/link";
 import type { TaxYearWorkspaceRecord } from "@/server/client-repository";
 import { StatusPill } from "./status";
@@ -11,6 +11,7 @@ const workflow = [
   { href: "source-records", title: "Corrections & lineage", description: "Resolve corrected, void and duplicate records without erasing history.", icon: GitMerge },
   { href: "imports", title: "Canonical JSON import", description: "Preview every change, decide explicitly, commit and roll back safely.", icon: FileJson },
   { href: "mapping", title: "Mapping center", description: "Reconcile source amounts to supported activities with cent-perfect allocations.", icon: GitMerge },
+  { href: "activities", title: "Schedule C, E & F activities", description: "Enter complete business, rental, royalty and farm schedule data manually or through canonical JSON.", icon: BriefcaseBusiness },
   { href: "review", title: "Review & diagnostics", description: "Resolve machine blockers and assigned human review points.", icon: ListChecks },
   { href: "overrides", title: "Governed overrides", description: "Request independently reviewed, registered calculation overrides.", icon: ShieldCheck },
   { href: "calculation/summary", title: "2025 calculation", description: "Run the deterministic engine and inspect immutable line traces.", icon: Calculator },

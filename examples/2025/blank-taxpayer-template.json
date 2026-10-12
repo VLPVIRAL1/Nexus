@@ -25,7 +25,8 @@
       "For Form 1099-SA, enter qualifiedMedicalExpenses only from reviewed substantiation; do not infer it from the distribution form.",
       "Select one of the five filing statuses only after eligibility is reviewed.",
       "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
-      "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed."
+      "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
+      "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts."
     ]
   },
   "client": {}, "filing_profile": { "status": "single", "eligibility_confirmed": false }, "taxpayer": {}, "spouse": null, "dependents": [],
@@ -40,9 +41,10 @@
   "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
   "mappings": [], "payments": {}, "review_points": [],
   "metadata": {
-    "template": "nexus-taxpayer-import-2025-v1.2.0-review",
+    "template": "nexus-taxpayer-import-2025-v1.3.0-review",
     "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"],
     "supported_dependent_forms": ["Form 1040 dependents", "Schedule 8812"],
-    "supported_deduction_forms": ["Schedule A"]
+    "supported_deduction_forms": ["Schedule A"],
+    "supported_activity_forms": ["Schedule C", "Schedule E", "Schedule F"]
   }
 }

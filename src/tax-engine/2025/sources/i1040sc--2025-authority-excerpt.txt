@@ -1,0 +1,9 @@
+Official source: https://www.irs.gov/pub/irs-prior/i1040sc--2025.pdf
+Document: 2025 Instructions for Schedule C (Form 1040), Profit or Loss From Business
+Retrieved: 2026-10-11 America/Chicago
+Official PDF SHA-256: b5536db91498a450572e37078d7d5ee8fdc400e385d4fee3a26c230a33e399b6
+
+Implementation scope note:
+The activity contract preserves Schedule C identity questions, Parts I through V, cost of goods sold,
+vehicle facts, home-office facts, and other-expense detail. Calculated treatment is allowed only where
+the platform's capability diagnostics confirm every applicable limitation and linked-form dependency.
