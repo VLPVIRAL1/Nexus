@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, requireSafeMutationRequest } from "@/server/api-guards";
-import { upsertPerson } from "@/server/client-workflow-service";
+import { deleteSpouse, upsertPerson } from "@/server/client-workflow-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
 
 const routeParams = z.object({
@@ -24,6 +24,21 @@ export async function PUT(request: Request, { params }: { params: Promise<{ clie
     const context = await requestAuthorizationContext();
     const body = bodySchema.parse(await request.json());
     return NextResponse.json(await upsertPerson(context, parsedParams.clientId, parsedParams.year, { ...body, role: parsedParams.role }));
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+const deleteBodySchema = z.object({ expectedVersion: z.number().int().positive() }).strict();
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ clientId: string; year: string; role: string }> }) {
+  try {
+    requireSafeMutationRequest(request);
+    const parsedParams = routeParams.parse(await params);
+    if (parsedParams.role !== "spouse") return NextResponse.json({ error: "invalid", message: "The taxpayer profile cannot be removed." }, { status: 400 });
+    const context = await requestAuthorizationContext();
+    const body = deleteBodySchema.parse(await request.json());
+    return NextResponse.json(await deleteSpouse(context, parsedParams.clientId, parsedParams.year, body.expectedVersion));
   } catch (error) {
     return apiError(error);
   }

@@ -5,6 +5,15 @@ const decimalString = z.string().regex(/^-?\d+\.\d{2}$/, "Use a decimal string w
 const nonnegativeDecimalString = decimalString.refine((value) => !value.startsWith("-"), "Use a nonnegative decimal string");
 const ownership = z.enum(["taxpayer", "spouse", "joint", "dependent", "unknown"]);
 const filingStatus = z.enum(["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"]);
+const personProfile = z.object({
+  legal_name: z.string().trim().min(1).max(200).optional(),
+  legalName: z.string().trim().min(1).max(200).optional(),
+  date_of_birth: z.iso.date().nullable().optional(),
+  dateOfBirth: z.iso.date().nullable().optional(),
+  occupation: z.string().trim().max(200).optional(),
+  address: z.record(z.string(), z.unknown()).optional(),
+  facts: z.record(z.string(), z.unknown()).optional(),
+}).passthrough();
 const dependent = z.object({
   id: z.uuid(), legal_name: z.string().trim().min(1).max(200), date_of_birth: z.iso.date(), relationship: z.string().trim().min(1).max(100),
   months_lived_with_taxpayer: z.int().min(0).max(12), qualifies_as_dependent: z.boolean(), qualifies_for_child_tax_credit: z.boolean(),
@@ -53,7 +62,7 @@ export const canonicalTaxReturnSchema = z.object({
   schema_version: z.literal("1.0.0"), tax_year: z.literal(2025), return_type: z.literal("1040"),
   _instructions: z.record(z.string(), z.unknown()).optional(), client: z.record(z.string(), z.unknown()),
   filing_profile: z.object({ status: filingStatus, eligibility_confirmed: z.boolean() }).strict(),
-  taxpayer: z.record(z.string(), z.unknown()), spouse: z.record(z.string(), z.unknown()).nullable().optional(),
+  taxpayer: personProfile, spouse: personProfile.nullable().optional(),
   dependents: z.array(dependent), schedule_a: scheduleA, source_documents: z.array(z.record(z.string(), z.unknown())),
   forms: z.object({
     w2: z.array(sourceRecord.passthrough()), form_1099_nec: z.array(sourceRecord.passthrough()),

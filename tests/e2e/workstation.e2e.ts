@@ -9,6 +9,7 @@ const accessibleRoutes = [
   { name: "return workspace", path: "/clients/sample/years/2025" },
   { name: "persisted return hub", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025" },
   { name: "persisted intake", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/intake" },
+  { name: "taxpayer profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile" },
   { name: "return profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile" },
   { name: "schedule activities", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/activities" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
@@ -46,9 +47,10 @@ test("keyboard users can skip repeated navigation and see focus", async ({ page 
 
 test("authorized client search keeps the query out of the URL and supports the keyboard shortcut", async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto("/dashboard");
-  await page.keyboard.press("Control+k");
+  await page.goto("/dashboard", { waitUntil: "networkidle" });
   const search = page.getByRole("combobox", { name: "Search assigned clients and returns" });
+  await expect(search).toBeVisible();
+  await page.keyboard.press("Control+k");
   await expect(search).toBeFocused();
   const responsePromise = page.waitForResponse(
     (response) => response.url().includes("/api/search/clients") && response.request().method() === "POST",
@@ -75,6 +77,15 @@ test("registered repeatable fields are keyboard-operable", async ({ page }) => {
 });
 
 test("expected-document intake can link clean uploaded evidence", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/sources");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "Synthetic clean W-2.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"),
+  });
+  await page.getByRole("button", { name: "Upload and scan" }).click();
+  await expect(page.getByText("Synthetic clean W-2.pdf")).toBeVisible();
+
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/intake");
   await expect(page.getByRole("heading", { name: "Expected documents" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Upload source" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/sources");
@@ -92,10 +103,19 @@ test("return profile exposes all filing statuses, dependent classification and S
     await expect(page.getByRole("radio", { name: status })).toBeVisible();
   }
   await page.getByRole("button", { name: "Add dependent" }).click();
-  await expect(page.getByRole("textbox", { name: "Legal name" })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "Qualifies for child tax credit" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Legal name" }).last()).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Qualifies for child tax credit" }).last()).toBeVisible();
   await page.getByRole("checkbox", { name: "Use Schedule A" }).check();
   await expect(page.getByRole("textbox", { name: "Medical and dental expenses" })).toBeEnabled();
+});
+
+test("imported taxpayer and spouse profiles expose guarded manual editing", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile");
+  await expect(page.getByRole("heading", { name: "Return identity and address" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Taxpayer", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Legal name").first()).toHaveValue(/John Sample/);
+  await expect(page.getByRole("button", { name: "Save taxpayer" })).toBeVisible();
+  await expect(page.getByText("Profiles imported from canonical JSON become the same editable records used by calculation and output.")).toBeVisible();
 });
 
 test("release closure exposes all five governed workspaces", async ({ page }) => {

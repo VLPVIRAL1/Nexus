@@ -104,7 +104,7 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
   return {
     schema_version: "1.0.0", tax_year: 2025, return_type: "1040", client: {},
     filing_profile: { status: data.filingProfile?.status ?? "single", eligibility_confirmed: data.filingProfile?.eligibilityConfirmed ?? false },
-    taxpayer: data.taxpayer, spouse: data.spouse,
+    taxpayer: toCanonicalPerson(data.taxpayer), spouse: data.spouse ? toCanonicalPerson(data.spouse) : null,
     dependents: data.dependents.map((value) => {
       const row = value as Record<string, unknown>; const facts = row.facts && typeof row.facts === "object" ? row.facts as Record<string, unknown> : row;
       return { id: row.id, legal_name: row.legal_name ?? row.legalName, date_of_birth: facts.dateOfBirth, relationship: facts.relationship, months_lived_with_taxpayer: facts.monthsLivedWithTaxpayer, qualifies_as_dependent: facts.qualifiesAsDependent, qualifies_for_child_tax_credit: facts.qualifiesForChildTaxCredit, has_valid_ssn_for_child_tax_credit: facts.hasValidSsnForChildTaxCredit, qualifies_for_other_dependent_credit: facts.qualifiesForOtherDependentCredit, eligibility_reviewed: facts.eligibilityReviewed };
@@ -121,6 +121,16 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
       other_income: data.activities.filter(({ type }) => type === "schedule_1_other").map((activity) => ({ id: activity.id, name: activity.name, owner_role: activity.owner, implementation_status: "mapping_only", active: activity.active, version: activity.version ?? 1 })),
     },
     mappings: data.mappings, payments: {}, review_points: [], metadata: { ...data.metadata, export_revision: data.revision, canonical_round_trip: true },
+  };
+}
+
+function toCanonicalPerson(value: Record<string, unknown>) {
+  const facts = value.facts && typeof value.facts === "object" && !Array.isArray(value.facts) ? value.facts as Record<string, unknown> : {};
+  return {
+    legal_name: value.legal_name ?? value.legalName,
+    date_of_birth: value.date_of_birth ?? value.dateOfBirth ?? null,
+    address: value.address && typeof value.address === "object" && !Array.isArray(value.address) ? value.address : {},
+    facts,
   };
 }
 

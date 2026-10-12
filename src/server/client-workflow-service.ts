@@ -22,6 +22,39 @@ export interface UpsertPersonInput {
   expectedVersion: number | null;
 }
 
+export interface PersonProfileRecord {
+  role: "taxpayer" | "spouse";
+  legalName: string;
+  dateOfBirth: string | null;
+  address: Record<string, unknown>;
+  facts: Record<string, unknown>;
+  version: number;
+}
+
+export async function getPeopleState(context: AuthorizationContext, clientId: string, year: number) {
+  const client = await databasePool().connect();
+  try {
+    const scope = await authorizedTaxYear(client, context, clientId, year, "client.view", false);
+    const result = await client.query<{
+      role: "taxpayer" | "spouse"; legal_name: string; date_of_birth: string | null;
+      address: Record<string, unknown>; facts: Record<string, unknown>; version: number;
+    }>("SELECT role,legal_name,date_of_birth::text,address,facts,version FROM people WHERE tax_year_id=$1 AND role IN ('taxpayer','spouse') ORDER BY CASE role WHEN 'taxpayer' THEN 1 ELSE 2 END", [scope.taxYearId]);
+    return {
+      revision: scope.revision,
+      people: result.rows.map((row): PersonProfileRecord => ({
+        role: row.role,
+        legalName: row.legal_name,
+        dateOfBirth: row.date_of_birth,
+        address: row.address,
+        facts: row.facts,
+        version: row.version,
+      })),
+    };
+  } finally {
+    client.release();
+  }
+}
+
 export async function createClient(context: AuthorizationContext, input: CreateClientInput) {
   if (!authorize(context, "client.create", { firmId: context.firmId })) throw new WorkflowError("forbidden", "Client creation is not permitted.");
   return inTransaction(async (client) => {
@@ -64,7 +97,7 @@ export async function createTaxYear(context: AuthorizationContext, clientId: str
 
 export async function upsertPerson(context: AuthorizationContext, clientId: string, year: number, input: UpsertPersonInput) {
   return inTransaction(async (client) => {
-    const scope = await authorizedTaxYear(client, context, clientId, year, "person.modify");
+    const scope = await authorizedTaxYear(client, context, clientId, year, "person.modify", true);
     if (input.expectedVersion == null) {
       const inserted = await client.query<{ id: string; role: string; legal_name: string; version: number }>(
         `INSERT INTO people(tax_year_id,role,legal_name,date_of_birth,address,facts)
@@ -77,8 +110,8 @@ export async function upsertPerson(context: AuthorizationContext, clientId: stri
       });
       const created = inserted.rows[0];
       if (!created) throw new Error("Person insert did not return a row.");
-      await bumpTaxYearRevision(client, scope.taxYearId);
-      await appendAuditEvent(client, context, scope.taxYearId, "person.created", "person", created.id, { role: created.role, version: created.version });
+      const revision = await bumpTaxYearRevision(client, scope.taxYearId, withCanonicalPerson(scope.canonicalSnapshot, input));
+      await appendAuditEvent(client, context, scope.taxYearId, "person.created", "person", created.id, { role: created.role, version: created.version, taxYearRevision: revision });
       return created;
     }
 
@@ -94,13 +127,30 @@ export async function upsertPerson(context: AuthorizationContext, clientId: stri
       if (!current.rows[0]) throw new WorkflowError("not_found", "Person record was not found.");
       throw new WorkflowError("conflict", `Person changed from version ${input.expectedVersion} to ${current.rows[0].version}; reload before saving.`);
     }
-    const revision = await bumpTaxYearRevision(client, scope.taxYearId);
+    const revision = await bumpTaxYearRevision(client, scope.taxYearId, withCanonicalPerson(scope.canonicalSnapshot, input));
     await appendAuditEvent(client, context, scope.taxYearId, "person.updated", "person", person.id, { role: person.role, version: person.version, taxYearRevision: revision });
     return person;
   });
 }
 
-async function authorizedClientFirm(client: pg.PoolClient, context: AuthorizationContext, clientId: string, action: "tax_year.create" | "person.modify"): Promise<string> {
+export async function deleteSpouse(context: AuthorizationContext, clientId: string, year: number, expectedVersion: number) {
+  return inTransaction(async (client) => {
+    const scope = await authorizedTaxYear(client, context, clientId, year, "person.modify", true);
+    await client.query("UPDATE source_form_records SET owner_person_id=NULL WHERE tax_year_id=$1 AND owner_person_id=(SELECT id FROM people WHERE tax_year_id=$1 AND role='spouse' AND version=$2)", [scope.taxYearId, expectedVersion]);
+    const deleted = await client.query<{ id: string }>("DELETE FROM people WHERE tax_year_id=$1 AND role='spouse' AND version=$2 RETURNING id", [scope.taxYearId, expectedVersion]);
+    const spouse = deleted.rows[0];
+    if (!spouse) {
+      const current = await client.query<{ version: number }>("SELECT version FROM people WHERE tax_year_id=$1 AND role='spouse'", [scope.taxYearId]);
+      if (!current.rows[0]) throw new WorkflowError("not_found", "Spouse profile was not found.");
+      throw new WorkflowError("conflict", `Spouse profile changed from version ${expectedVersion} to ${current.rows[0].version}; reload before removing it.`);
+    }
+    const revision = await bumpTaxYearRevision(client, scope.taxYearId, { ...scope.canonicalSnapshot, spouse: null });
+    await appendAuditEvent(client, context, scope.taxYearId, "person.removed", "person", spouse.id, { role: "spouse", version: expectedVersion, taxYearRevision: revision });
+    return { id: spouse.id, revision };
+  });
+}
+
+async function authorizedClientFirm(client: pg.PoolClient, context: AuthorizationContext, clientId: string, action: "tax_year.create" | "person.modify" | "client.view"): Promise<string> {
   const result = await client.query<{ firm_id: string }>("SELECT firm_id FROM clients WHERE id=$1 AND archived_at IS NULL", [clientId]);
   const firmId = result.rows[0]?.firm_id;
   if (!firmId) throw new WorkflowError("not_found", "Client was not found.");
@@ -109,24 +159,36 @@ async function authorizedClientFirm(client: pg.PoolClient, context: Authorizatio
   return firmId;
 }
 
-async function authorizedTaxYear(client: pg.PoolClient, context: AuthorizationContext, clientId: string, year: number, action: "person.modify") {
+async function authorizedTaxYear(client: pg.PoolClient, context: AuthorizationContext, clientId: string, year: number, action: "person.modify" | "client.view", lock: boolean) {
   const firmId = await authorizedClientFirm(client, context, clientId, action);
-  const result = await client.query<{ id: string }>("SELECT id FROM tax_years WHERE client_id=$1 AND tax_year=$2", [clientId, year]);
-  const taxYearId = result.rows[0]?.id;
-  if (!taxYearId) throw new WorkflowError("not_found", "Tax year was not found.");
-  return { firmId, taxYearId };
+  const result = await client.query<{ id: string; revision: number; canonical_snapshot: Record<string, unknown> }>(`SELECT id,revision,canonical_snapshot FROM tax_years WHERE client_id=$1 AND tax_year=$2 ${lock ? "FOR UPDATE" : ""}`, [clientId, year]);
+  const row = result.rows[0];
+  if (!row) throw new WorkflowError("not_found", "Tax year was not found.");
+  return { firmId, taxYearId: row.id, revision: row.revision, canonicalSnapshot: row.canonical_snapshot };
 }
 
-async function bumpTaxYearRevision(client: pg.PoolClient, taxYearId: string): Promise<number> {
+async function bumpTaxYearRevision(client: pg.PoolClient, taxYearId: string, canonicalSnapshot: Record<string, unknown>): Promise<number> {
   const result = await client.query<{ revision: number }>(
-    `UPDATE tax_years SET revision=revision+1,validation_status='not_run',calculation_status='stale',
+    `UPDATE tax_years SET revision=revision+1,canonical_snapshot=$2::jsonb,validation_status='not_run',calculation_status='stale',
      preparation_status=CASE WHEN preparation_status IN ('ready_for_review','reviewed_draft') THEN 'changes_requested' ELSE preparation_status END
      WHERE id=$1 RETURNING revision`,
-    [taxYearId],
+    [taxYearId, JSON.stringify(canonicalSnapshot)],
   );
   const revision = result.rows[0]?.revision;
   if (!revision) throw new Error("Tax-year revision update failed.");
   return revision;
+}
+
+function withCanonicalPerson(snapshot: Record<string, unknown>, input: UpsertPersonInput): Record<string, unknown> {
+  return {
+    ...snapshot,
+    [input.role]: {
+      legal_name: input.legalName,
+      date_of_birth: input.dateOfBirth,
+      address: input.address,
+      facts: input.facts,
+    },
+  };
 }
 
 async function appendAuditEvent(

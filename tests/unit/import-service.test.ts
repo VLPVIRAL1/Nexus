@@ -72,6 +72,21 @@ describe("safe canonical import", () => {
     expect(preview.changes.some(({ path }) => path.startsWith("review_points"))).toBe(false);
   });
 
+  it("explains non-authoritative JSON sections while keeping editable tax profiles importable", () => {
+    const imported = structuredClone(template) as Record<string, any>;
+    imported.client = { display_name: "External client label" };
+    imported.taxpayer = { legal_name: "Synthetic Import Taxpayer", date_of_birth: "1980-01-01", address: { city: "Austin" }, facts: { occupation: "Consultant" } };
+    imported.source_documents = [{ file_name: "source.pdf" }];
+    imported.payments = { estimated: "100.00" };
+    const preview = previewImport(bytes(imported), structuredClone(template), 1);
+    expect(preview.changes).toEqual(expect.arrayContaining([expect.objectContaining({ path: "taxpayer.legal_name", importedValue: "Synthetic Import Taxpayer" })]));
+    expect(preview.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining("does not rename"),
+      expect.stringContaining("do not upload evidence bytes"),
+      expect.stringContaining("not authoritative calculation input"),
+    ]));
+  });
+
   it("returns the original exact-replay result and rejects a stale changed preview", () => {
     const current = returnWithW2("86000.00");
     const preview = previewImport(bytes(returnWithW2("87000.00")), current, 2);

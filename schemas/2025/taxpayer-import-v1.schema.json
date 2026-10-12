@@ -5,6 +5,18 @@
   "$defs": {
     "money": { "type": "string", "pattern": "^\\d+\\.\\d{2}$" },
     "reviewedBoolean": { "type": ["boolean", "null"] },
+    "personProfile": {
+      "type": "object",
+      "properties": {
+        "legal_name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "legalName": { "type": "string", "minLength": 1, "maxLength": 200, "deprecated": true },
+        "date_of_birth": { "type": ["string", "null"], "format": "date" },
+        "dateOfBirth": { "type": ["string", "null"], "format": "date", "deprecated": true },
+        "occupation": { "type": "string", "maxLength": 200 },
+        "address": { "type": "object" },
+        "facts": { "type": "object" }
+      }
+    },
     "otherExpense": {
       "type": "object", "additionalProperties": false, "required": ["id", "description", "amount"],
       "properties": { "id": { "type": "string", "format": "uuid" }, "description": { "type": "string", "minLength": 1, "maxLength": 200 }, "amount": { "$ref": "#/$defs/money" } }
@@ -93,8 +105,8 @@
       "type": "object", "additionalProperties": false, "required": ["status", "eligibility_confirmed"],
       "properties": { "status": { "enum": ["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"] }, "eligibility_confirmed": { "type": "boolean" } }
     },
-    "taxpayer": { "type": "object" },
-    "spouse": { "type": ["object", "null"] },
+    "taxpayer": { "$ref": "#/$defs/personProfile" },
+    "spouse": { "oneOf": [{ "$ref": "#/$defs/personProfile" }, { "type": "null" }] },
     "dependents": { "type": "array", "items": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "legal_name", "date_of_birth", "relationship", "months_lived_with_taxpayer", "qualifies_as_dependent", "qualifies_for_child_tax_credit", "has_valid_ssn_for_child_tax_credit", "qualifies_for_other_dependent_credit", "eligibility_reviewed"],

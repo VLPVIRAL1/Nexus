@@ -1,7 +1,7 @@
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createClient, createTaxYear, upsertPerson } from "../../src/server/client-workflow-service";
+import { createClient, createTaxYear, getPeopleState, upsertPerson } from "../../src/server/client-workflow-service";
 import { getClientProfile, listDashboardClients } from "../../src/server/client-repository";
 import { issueSessionFromVerifiedIdentity, resolveSession, revokeSession, sha256 } from "../../src/server/session-service";
 import type { AuthorizationContext } from "../../src/services/authorization";
@@ -423,6 +423,7 @@ suite("PostgreSQL foundation", () => {
     };
     const payload = structuredClone(template) as Record<string, any>;
     payload.metadata = { integration_fixture: randomUUID() };
+    payload.taxpayer = { legal_name: "Synthetic Imported Identity", date_of_birth: "1982-03-04", address: { city: "Austin", state: "TX" }, facts: { occupation: "Consultant" } };
     const dependentId = randomUUID();
     payload.filing_profile = { status: "head_of_household", eligibility_confirmed: true };
     payload.dependents = [{ id: dependentId, legal_name: "Synthetic Import Child", date_of_birth: "2015-06-15", relationship: "Child", months_lived_with_taxpayer: 12, qualifies_as_dependent: true, qualifies_for_child_tax_credit: true, has_valid_ssn_for_child_tax_credit: true, qualifies_for_other_dependent_credit: false, eligibility_reviewed: true }];
@@ -438,10 +439,13 @@ suite("PostgreSQL foundation", () => {
     await statusSetup.connect();
     await statusSetup.query("UPDATE tax_years SET preparation_status='reviewed_draft' WHERE id='40000000-0000-4000-8000-000000000001'");
     await statusSetup.end();
+    const peopleBefore = await getPeopleState(context, "30000000-0000-4000-8000-000000000001", 2025);
     const profileBefore = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
     const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "integration.json", raw);
     const committed = await commitPersistedImport(context, "30000000-0000-4000-8000-000000000001", 2025, preview.batchId, preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })));
     expect(committed.replayed).toBe(false);
+    const importedPeople = await getPeopleState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    expect(importedPeople.people.find(({ role }) => role === "taxpayer")).toMatchObject({ role: "taxpayer", legalName: "Synthetic Imported Identity", dateOfBirth: "1982-03-04", facts: { occupation: "Consultant" } });
     const importedProfile = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(importedProfile).toMatchObject({ filingStatus: "head_of_household", filingStatusEligibilityConfirmed: true, dependents: [{ id: dependentId, legalName: "Synthetic Import Child", qualifiesForChildTaxCredit: true }], scheduleA: { enabled: true, stateLocalIncomeOrSalesTaxes: "12000.00", realEstateTaxes: "5000.00", saltEligibilityConfirmed: true } });
     const statusVerification = new pg.Client({ connectionString });
@@ -455,6 +459,11 @@ suite("PostgreSQL foundation", () => {
     expect(rollback.rolledBackRevision).toBe(committed.committedRevision + 1);
     const restoredProfile = await getReturnProfileState(context, "30000000-0000-4000-8000-000000000001", 2025);
     expect(restoredProfile).toMatchObject({ filingStatus: profileBefore.filingStatus, filingStatusEligibilityConfirmed: profileBefore.filingStatusEligibilityConfirmed, dependents: profileBefore.dependents, scheduleA: profileBefore.scheduleA });
+    const restoredPeople = await getPeopleState(context, "30000000-0000-4000-8000-000000000001", 2025);
+    for (const expected of peopleBefore.people) {
+      const { version: _version, ...profile } = expected;
+      expect(restoredPeople.people.find(({ role }) => role === expected.role)).toMatchObject(profile);
+    }
     const importState=await getImportState(context,"30000000-0000-4000-8000-000000000001",2025);
     expect(importState.batches.find(({id})=>id===preview.batchId)).toMatchObject({status:"committed",resultRevision:committed.committedRevision,attemptCount:4,canRollback:false,rolledBackAt:expect.any(String)});
 
@@ -744,16 +753,35 @@ suite("PostgreSQL foundation", () => {
     expect(stored.rows[0]?.result_hash).toBe(run.resultHash);
   });
 
-  it("imports the supported review example and produces traceable draft 1040 dependent-form output", async () => {
+  it("runs client creation, JSON materialization, manual edits, calculation and draft PDF download end to end", async () => {
     const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
     const client = await createClient(admin, { clientCode: `REVIEW-${randomUUID()}`, displayName: "Synthetic Expanded Review" });
     await createTaxYear(admin, client.id, { year: 2025 });
-    await upsertPerson(admin, client.id, 2025, { role: "taxpayer", legalName: "Synthetic Review Taxpayer", dateOfBirth: "1985-01-01", address: {}, facts: {}, expectedVersion: null });
     let intake = await getIntakeState(admin, client.id, 2025);
     const preview = await stageCanonicalImport(admin, client.id, 2025, "nexus-2025-supported-review-example.json", new TextEncoder().encode(JSON.stringify(createSupportedReviewExample2025())));
     const committed = await commitPersistedImport(admin, client.id, 2025, preview.batchId, preview.changes.map(({ id }) => ({ changeId: id, decision: "use_imported" })));
     if (committed.committedRevision == null) throw new Error("Expected committed review-example revision.");
-    const answered = await saveIntakeAnswers(admin, client.id, 2025, committed.committedRevision, phase1IntakeQuestions.map((question) => ({ questionId: question.id, answer: question.supportedWhenNo === true ? "no" as const : question.supportedWhenYes ? "yes" as const : "no" as const, evidence: "Synthetic supported-profile interview" })));
+    const importedPeople = await getPeopleState(admin, client.id, 2025);
+    expect(importedPeople).toMatchObject({ revision: committed.committedRevision, people: [{ role: "taxpayer", legalName: "Synthetic Review Taxpayer", version: 1 }] });
+
+    await upsertPerson(admin, client.id, 2025, {
+      role: "taxpayer", legalName: "Synthetic Review Taxpayer — manually verified", dateOfBirth: "1985-01-01",
+      address: { line1: "100 Synthetic Way", city: "Austin", state: "TX", postalCode: "78701", country: "United States" },
+      facts: { occupation: "Software consultant" }, expectedVersion: importedPeople.people[0]!.version,
+    });
+    const afterPersonEdit = await getPeopleState(admin, client.id, 2025);
+    expect(afterPersonEdit.people[0]).toMatchObject({ legalName: "Synthetic Review Taxpayer — manually verified", dateOfBirth: "1985-01-01", address: { city: "Austin" }, facts: { occupation: "Software consultant" }, version: 2 });
+
+    const importedSources = await getSourceRecordState(admin, client.id, 2025);
+    const importedW2 = importedSources.records.find((record) => record.formType === "W2" && record.effective);
+    if (!importedW2) throw new Error("Expected imported W-2 source record.");
+    const editedW2 = structuredClone(importedW2.normalizedData);
+    (editedW2.employer as Record<string, unknown>).name = "Synthetic Employer — manually verified";
+    const correctedW2 = await reviseSourceRecord(admin, client.id, 2025, importedW2.id, afterPersonEdit.revision, importedW2.version, "correct", "Manual review after canonical import", editedW2, "taxpayer", "manual_attestation", null, "Verified against the retained synthetic source fixture.");
+    const afterSourceEdit = await getSourceRecordState(admin, client.id, 2025);
+    expect(afterSourceEdit.records.find((record) => record.id === correctedW2.id)).toMatchObject({ effective: true, version: 2, normalizedData: { employer: { name: "Synthetic Employer — manually verified" } } });
+
+    const answered = await saveIntakeAnswers(admin, client.id, 2025, correctedW2.revision, phase1IntakeQuestions.map((question) => ({ questionId: question.id, answer: question.supportedWhenNo === true ? "no" as const : question.supportedWhenYes ? "yes" as const : "no" as const, evidence: "Synthetic supported-profile interview" })));
     const documented = await saveExpectedDocument(admin, client.id, 2025, answered.revision, { registryId: "prior_year_return", documentKey: "prior_year_return", label: "Prior-year return reviewed", status: "not_applicable", evidence: "Synthetic first-year taxpayer fixture has no prior-year filing.", sourceDocumentId: null, expectedVersion: null });
     const attested = await attestCompleteness(admin, client.id, 2025, documented.revision, "Synthetic completeness review for expanded source-form fixture", null);
     const calculation = await runPersistedCalculation(admin, client.id, 2025, attested.revision);

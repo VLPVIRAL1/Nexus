@@ -48,10 +48,16 @@ export function previewImport(rawBytes: Uint8Array, effective: Record<string, un
     throw new ImportError("IMPORT_SCHEMA_INVALID", `${issue.path.join(".") || "root"}: ${issue.message}`);
   }
   const imported = checked.data as unknown as Record<string, unknown>;
-  const warnings = Array.isArray(imported.review_points) && imported.review_points.length > 0
-    ? ["Imported review points are preserved only in the staged payload; they cannot create authoritative application review records."]
-    : [];
+  const warnings: string[] = [];
+  if (Array.isArray(imported.review_points) && imported.review_points.length > 0) warnings.push("Imported review points are preserved only in the staged payload; they cannot create authoritative application review records.");
+  if (isNonemptyRecord(imported.client)) warnings.push("Imported client metadata does not rename or reassign the selected firm client; manage that identity in the guarded client workflow.");
+  if (Array.isArray(imported.source_documents) && imported.source_documents.length > 0) warnings.push("Source-document references do not upload evidence bytes. Upload originals through Source documents before relying on them.");
+  if (isNonemptyRecord(imported.payments)) warnings.push("Standalone payment metadata is preserved but is not authoritative calculation input; enter supported withholding and payment facts through registered source forms and intake.");
   return { previewId: randomUUID(), batchHash, baseRevision, parsed: imported, changes: diffObjects(effective, imported), warnings };
+}
+
+function isNonemptyRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
 }
 
 export function commitImport(preview: ImportPreview, current: Record<string, unknown>, currentRevision: number, previousCommits: Map<string, ImportCommitResult>): ImportCommitResult {

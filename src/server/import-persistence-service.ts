@@ -49,7 +49,8 @@ export async function stageCanonicalImportWithClient(
   rawBytes: Uint8Array,
 ): Promise<PersistedImportPreview> {
   const scope = await authorizedTaxYear(client, context, clientId, year, "source.import", true);
-  const preview = previewImport(rawBytes, scope.snapshot, scope.revision);
+  const effectiveSnapshot = await snapshotWithPeople(client, scope.taxYearId, scope.snapshot);
+  const preview = previewImport(rawBytes, effectiveSnapshot, scope.revision);
   const existing = await client.query<{ id: string; import_status: string }>(
     "SELECT id,import_status FROM import_batches WHERE tax_year_id=$1 AND batch_hash=$2",
     [scope.taxYearId, preview.batchHash],
@@ -107,7 +108,8 @@ export async function commitPersistedImport(
       await client.query("UPDATE import_record_changes SET decision=$3 WHERE import_batch_id=$1 AND change_id=$2", [batchId, decision.changeId, decision.decision]);
     }
     const preview = await importPreviewFromDatabase(client, row);
-    const committed = commitImport(preview, scope.snapshot, scope.revision, new Map());
+    const effectiveSnapshot = await snapshotWithPeople(client, scope.taxYearId, scope.snapshot);
+    const committed = commitImport(preview, effectiveSnapshot, scope.revision, new Map());
     const nextRevision = scope.revision + 1;
     await client.query(
       `UPDATE tax_years SET canonical_snapshot=$2::jsonb,revision=$3,validation_status='not_run',calculation_status='stale',
@@ -115,6 +117,7 @@ export async function commitPersistedImport(
        WHERE id=$1`,
       [scope.taxYearId, JSON.stringify(committed.result), nextRevision],
     );
+    const materializedPeople = await synchronizePeople(client, scope.taxYearId, committed.result);
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
     const profileMaterialized = await synchronizeReturnProfile(client, scope.taxYearId, committed.result);
     const materializedActivities = await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, committed.result);
@@ -123,10 +126,10 @@ export async function commitPersistedImport(
     await client.query(
       `UPDATE import_batches SET import_status='committed',result_revision=$2,previous_snapshot=$3::jsonb,committed_snapshot=$4::jsonb,committed_by=$5,committed_at=now()
        WHERE id=$1`,
-      [batchId, nextRevision, JSON.stringify(scope.snapshot), JSON.stringify(committed.result), context.userId],
+      [batchId, nextRevision, JSON.stringify(effectiveSnapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, mappingBlockers });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedPeople, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -155,6 +158,7 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
        WHERE id=$1`,
       [scope.taxYearId, JSON.stringify(row.previous_snapshot), nextRevision],
     );
+    await synchronizePeople(client, scope.taxYearId, row.previous_snapshot);
     await synchronizeReturnProfile(client, scope.taxYearId, row.previous_snapshot, true);
     await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
@@ -247,6 +251,45 @@ const formTypes = {
   form_1099_r: "1099-R",
   form_1099_sa: "1099-SA",
 } as const;
+
+async function synchronizePeople(client: pg.PoolClient, taxYearId: string, snapshot: Record<string, unknown>): Promise<number> {
+  let materialized = 0;
+  for (const role of ["taxpayer", "spouse"] as const) {
+    const hasRole = Object.hasOwn(snapshot, role);
+    const value = snapshot[role];
+    // As with empty repeated collections, null/absent spouse data is non-destructive.
+    // A spouse can only be removed through the guarded manual profile workflow.
+    if (role === "spouse" && hasRole && value === null) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const person = value as Record<string, unknown>;
+    const legalName = textValue(person, "legal_name", "legalName").trim();
+    if (!legalName) continue;
+    const dateOfBirth = nullableTextValue(person, "date_of_birth", "dateOfBirth");
+    const address = record(person.address);
+    const facts = record(person.facts);
+    if (typeof person.occupation === "string" && !("occupation" in facts)) facts.occupation = person.occupation;
+    const existing = await client.query<{ id: string; legal_name: string; date_of_birth: string | null; address: Record<string, unknown>; facts: Record<string, unknown> }>("SELECT id,legal_name,date_of_birth::text,address,facts FROM people WHERE tax_year_id=$1 AND role=$2 FOR UPDATE", [taxYearId, role]);
+    const current = existing.rows[0];
+    const same = current && current.legal_name === legalName && current.date_of_birth === dateOfBirth && canonicalJson(current.address) === canonicalJson(address) && canonicalJson(current.facts) === canonicalJson(facts);
+    if (same) continue;
+    if (current) {
+      await client.query("UPDATE people SET legal_name=$3,date_of_birth=$4,address=$5::jsonb,facts=$6::jsonb,version=version+1 WHERE id=$1 AND tax_year_id=$2", [current.id, taxYearId, legalName, dateOfBirth, JSON.stringify(address), JSON.stringify(facts)]);
+    } else {
+      await client.query("INSERT INTO people(tax_year_id,role,legal_name,date_of_birth,address,facts) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)", [taxYearId, role, legalName, dateOfBirth, JSON.stringify(address), JSON.stringify(facts)]);
+    }
+    materialized += 1;
+  }
+  return materialized;
+}
+
+async function snapshotWithPeople(client: pg.PoolClient, taxYearId: string, snapshot: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const people = await client.query<{ role: "taxpayer" | "spouse"; legal_name: string; date_of_birth: string | null; address: Record<string, unknown>; facts: Record<string, unknown> }>("SELECT role,legal_name,date_of_birth::text,address,facts FROM people WHERE tax_year_id=$1 AND role IN ('taxpayer','spouse')", [taxYearId]);
+  const effective = { ...snapshot };
+  for (const person of people.rows) {
+    effective[person.role] = { legal_name: person.legal_name, date_of_birth: person.date_of_birth, address: person.address, facts: person.facts };
+  }
+  return effective;
+}
 
 async function synchronizeSourceFormLineage(client: pg.PoolClient, taxYearId: string, importBatchId: string, createdById: string, snapshot: Record<string, unknown>): Promise<number> {
   const forms = snapshot.forms;

@@ -1,6 +1,6 @@
 # Nexus Tax
 
-Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation includes a PostgreSQL-backed work queue, guarded client/year/person APIs, secure-intake foundations, canonical import/output services, manual and JSON-driven Schedule C/E/F activity workspaces, an unapproved deterministic 2025 calculation research package and governed release-closure evidence workspaces. It does not file, transmit, or claim production readiness.
+Nexus Tax is a professional, draft-only U.S. individual tax preparation and review workstation. The current implementation includes a PostgreSQL-backed work queue, guarded client/year/person APIs and taxpayer/spouse editor, secure-intake foundations, canonical import/output services whose supported imported tax data remains manually editable, manual and JSON-driven Schedule C/E/F activity workspaces, an unapproved deterministic 2025 calculation research package and governed release-closure evidence workspaces. It does not file, transmit, or claim production readiness.
 
 ## Prerequisites
 

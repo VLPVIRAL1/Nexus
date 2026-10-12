@@ -24,7 +24,7 @@ describe("output integrity foundations", () => {
     const complete = exportCanonicalJson(canonicalReturnFixture, "complete");
     const completePayload = JSON.parse(new TextDecoder().decode(complete.bytes));
     expect(() => canonicalTaxReturnSchema.parse(completePayload)).not.toThrow();
-    expect(completePayload).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040" });
+    expect(completePayload).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040", taxpayer: { legal_name: "Synthetic Taxpayer", date_of_birth: null, address: {}, facts: {} } });
     expect(createHash("sha256").update(complete.bytes).digest("hex")).toBe(complete.sha256);
 
     const blank = exportCanonicalJson(canonicalReturnFixture, "blank_template");
