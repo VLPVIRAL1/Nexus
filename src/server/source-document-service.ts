@@ -7,7 +7,7 @@ import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 import { ConfiguredFileScanner, DatabaseEncryptedObjectStore } from "./encrypted-source-store";
 
-export const sourceDocumentTypes=["W2","1099-NEC","1099-MISC","1099-INT","1099-DIV","1099-B","1099-G","1099-K","1099-R","1099-SA","W2C","OTHER"] as const;
+export const sourceDocumentTypes=["W2","1098-T","1099-NEC","1099-MISC","1099-INT","1099-DIV","1099-B","1099-G","1099-K","1099-R","1099-SA","W2C","OTHER"] as const;
 export type SourceDocumentType=typeof sourceDocumentTypes[number];
 
 export async function uploadSourceDocument(context:AuthorizationContext,clientId:string,year:number,expectedRevision:number,input:{fileName:string;mimeType:string;bytes:Uint8Array;documentType:SourceDocumentType}){

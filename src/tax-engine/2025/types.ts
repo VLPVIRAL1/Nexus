@@ -1,3 +1,5 @@
+import type { FederalCreditProfile2025 } from "@/domain/federal-credits-2025";
+
 export type FilingStatus2025 =
   | "single"
   | "married_filing_jointly"
@@ -29,7 +31,6 @@ export interface WageInput2025 {
   socialSecurityTaxWithheld?: DollarInput;
   medicareTaxWithheld?: DollarInput;
 }
-
 export interface DependentInput2025 {
   id: string;
   legalName: string;
@@ -220,6 +221,7 @@ export interface CalculationInput2025 {
   governmentPayments?: GovernmentPaymentInput2025[];
   paymentCardReceipts?: PaymentCardInput2025[];
   hsaDistributions?: HsaDistributionInput2025[];
+  federalCredits?: FederalCreditProfile2025 & { employerDependentCareBenefits: DollarInput; valid1098TRecordIds: string[] };
   approvedOverrides?: { form1040IncomeTax?: DollarInput };
 }
 
@@ -298,6 +300,10 @@ export interface CalculationOutput2025 {
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
     schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string };
     schedule2: { selfEmploymentTax: string; additionalHsaTax: string };
+    scheduleEic: { required: boolean; qualifyingChildren: Array<{ dependentId: string }>; earnedIncome: string; adjustedGrossIncome: string; investmentIncome: string; credit: string };
+    form2441: { required: boolean; providerCount: number; qualifyingPersonCount: number; qualifiedExpenses: string; earnedIncomeLimit: string; applicablePercentage: string; credit: string; employerBenefits: string };
+    form8863: { required: boolean; students: Array<{ studentId: string; creditType: "aotc" | "llc"; adjustedExpenses: string; tentativeCredit: string }>; tentativeAmericanOpportunityCredit: string; tentativeLifetimeLearningCredit: string; phaseoutFactor: string; nonrefundableCredit: string; refundableAmericanOpportunityCredit: string };
+    schedule3: { dependentCareCredit: string; educationCredit: string; totalNonrefundableCredits: string };
     form1040: {
       wages: string;
       taxExemptInterest: string;
@@ -319,10 +325,16 @@ export interface CalculationOutput2025 {
       taxableIncome: string;
       incomeTax: string;
       childTaxCreditAndOtherDependentCredit: string;
+      dependentCareCredit: string;
+      educationCredit: string;
+      schedule3NonrefundableCredits: string;
       selfEmploymentTax: string;
       totalTax: string;
       federalWithholding: string;
       additionalChildTaxCredit: string;
+      earnedIncomeCredit: string;
+      refundableAmericanOpportunityCredit: string;
+      totalPayments: string;
       refund: string;
       amountOwed: string;
     };

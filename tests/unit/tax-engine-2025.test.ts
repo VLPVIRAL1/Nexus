@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { emptyFederalCreditProfile2025, type FederalCreditProfile2025 } from "../../src/domain/federal-credits-2025";
 import {
   calculateFederalReturn2025,
   ordinaryIncomeTax2025,
@@ -89,6 +90,17 @@ function supportedInput(overrides: Partial<CalculationInput2025> = {}): Calculat
   };
 }
 
+function creditProfile(overrides: { eitc?: Partial<FederalCreditProfile2025["eitc"]>; dependentCare?: Partial<FederalCreditProfile2025["dependentCare"]>; education?: Partial<FederalCreditProfile2025["education"]> } = {}): NonNullable<CalculationInput2025["federalCredits"]> {
+  return {
+    ...structuredClone(emptyFederalCreditProfile2025),
+    eitc: { ...emptyFederalCreditProfile2025.eitc, ...overrides.eitc },
+    dependentCare: { ...emptyFederalCreditProfile2025.dependentCare, ...overrides.dependentCare },
+    education: { ...emptyFederalCreditProfile2025.education, ...overrides.education },
+    employerDependentCareBenefits: "0.00",
+    valid1098TRecordIds: [],
+  };
+}
+
 describe("2025 tax method registry", () => {
   it("terminates dependency evaluation and reports cycles", () => {
     expect(resolveDependencyGraph({ a: ["b"], b: ["c"], c: [] })).toEqual({ order: ["c", "b", "a"], cycles: [] });
@@ -135,6 +147,72 @@ describe("2025 tax method registry", () => {
 });
 
 describe("2025 supported return graph", () => {
+  it("calculates the 2025 EITC and emits Schedule EIC for a reviewed qualifying child", () => {
+    const child = qualifyingChild("10000000-0000-4000-8000-000000000001");
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "head_of_household", filingStatusEligibilityConfirmed: true, dependents: [child],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+      wages: [{ id: "w2-eitc", owner: "taxpayer", wages: "20000.00", federalWithholding: "0.00", socialSecurityWages: "20000.00" }],
+      federalCredits: creditProfile({ eitc: { enabled: true, eligibilityReviewed: true, taxpayerAgeAtYearEnd: 32, taxpayerWorkEligibleIdentifier: true, notQualifyingChildOfAnother: true, noForm2555: true, noPriorDisallowance: true, noCombatPayElection: true, investmentIncome: "0.00", qualifyingChildren: [{ id: "10000000-0000-4000-8000-000000000002", dependentId: child.id, relationshipTest: true, ageTest: true, residencyTest: true, jointReturnTest: true, validWorkEligibleIdentifier: true, notClaimedByOther: true, disabilityException: false }] } }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleEic).toMatchObject({ required: true, credit: "4328", earnedIncome: "20000", adjustedGrossIncome: "20000" });
+    expect(result.forms?.form1040).toMatchObject({ earnedIncomeCredit: "4328", additionalChildTaxCredit: "1700", totalPayments: "6028", refund: "6028" });
+  });
+
+  it("blocks EITC above the investment-income ceiling", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-eitc-limit", owner: "taxpayer", wages: "15000.00", federalWithholding: "0.00", socialSecurityWages: "15000.00" }],
+      federalCredits: creditProfile({ eitc: { enabled: true, eligibilityReviewed: true, taxpayerAgeAtYearEnd: 30, taxpayerWorkEligibleIdentifier: true, notQualifyingChildOfAnother: true, noForm2555: true, noPriorDisallowance: true, noCombatPayElection: true, investmentIncome: "11950.01" } }),
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toContain("EITC_INVESTMENT_INCOME_LIMIT");
+  });
+
+  it("calculates Form 2441 and Schedule 3 from reconciled providers and qualifying persons", () => {
+    const child = qualifyingChild("20000000-0000-4000-8000-000000000001");
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "head_of_household", filingStatusEligibilityConfirmed: true, dependents: [child],
+      eligibility: { ...supportedInput().eligibility, hasDependents: true },
+      wages: [{ id: "w2-care", owner: "taxpayer", wages: "70000.00", federalWithholding: "0.00", socialSecurityWages: "70000.00" }],
+      federalCredits: creditProfile({ dependentCare: { enabled: true, workRelatedExpensesConfirmed: true, providers: [{ id: "20000000-0000-4000-8000-000000000002", name: "Synthetic Care", address: "100 Test St", tinLast4: "1234", eligibleConfirmed: true, amountPaid: "3000.00" }], qualifyingPersons: [{ id: "20000000-0000-4000-8000-000000000003", dependentId: child.id, name: child.legalName, expenses: "3000.00", qualifiesConfirmed: true }] } }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form2441).toMatchObject({ required: true, qualifiedExpenses: "3000", applicablePercentage: "0.20", credit: "600" });
+    expect(result.forms?.schedule3).toEqual({ dependentCareCredit: "600", educationCredit: "0", totalNonrefundableCredits: "600" });
+  });
+
+  it("calculates AOTC refundable and nonrefundable portions through Form 8863", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatusEligibilityConfirmed: true,
+      wages: [{ id: "w2-aotc", owner: "taxpayer", wages: "60000.00", federalWithholding: "0.00", socialSecurityWages: "60000.00" }],
+      federalCredits: { ...creditProfile({ education: { enabled: true, students: [{ id: "30000000-0000-4000-8000-000000000001", personRole: "taxpayer", dependentId: null, name: "Synthetic Student", institutionName: "Synthetic University", form1098TRecordId: "30000000-0000-4000-8000-000000000002", creditType: "aotc", qualifiedExpenses: "4000.00", taxFreeAssistance: "0.00", eligibleInstitution: true, firstFourYears: true, atLeastHalfTime: true, degreeCandidate: true, noFelonyDrugConviction: true, priorAotcYears: 0, refundabilityConfirmed: true }] } }), valid1098TRecordIds: ["30000000-0000-4000-8000-000000000002"] },
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8863).toMatchObject({ required: true, tentativeAmericanOpportunityCredit: "2500", phaseoutFactor: "1.0000", nonrefundableCredit: "1500", refundableAmericanOpportunityCredit: "1000" });
+    expect(result.forms?.form1040).toMatchObject({ educationCredit: "1500", refundableAmericanOpportunityCredit: "1000" });
+  });
+
+  it("blocks an education credit until the student is linked to an effective Form 1098-T", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-aotc-unlinked", owner: "taxpayer", wages: "60000.00", federalWithholding: "0.00", socialSecurityWages: "60000.00" }],
+      federalCredits: creditProfile({ education: { enabled: true, students: [{ id: "30000000-0000-4000-8000-000000000003", personRole: "taxpayer", dependentId: null, name: "Synthetic Student", institutionName: "Synthetic University", form1098TRecordId: null, creditType: "aotc", qualifiedExpenses: "4000.00", taxFreeAssistance: "0.00", eligibleInstitution: true, firstFourYears: true, atLeastHalfTime: true, degreeCandidate: true, noFelonyDrugConviction: true, priorAotcYears: 0, refundabilityConfirmed: true }] } }),
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toContain("FORM_1098_T_REQUIRED");
+  });
+
+  it("calculates the Lifetime Learning Credit as a nonrefundable Schedule 3 credit", () => {
+    const form1098TRecordId = "30000000-0000-4000-8000-000000000004";
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-llc", owner: "taxpayer", wages: "60000.00", federalWithholding: "0.00", socialSecurityWages: "60000.00" }],
+      federalCredits: { ...creditProfile({ education: { enabled: true, students: [{ id: "30000000-0000-4000-8000-000000000005", personRole: "taxpayer", dependentId: null, name: "Synthetic Student", institutionName: "Synthetic University", form1098TRecordId, creditType: "llc", qualifiedExpenses: "10000.00", taxFreeAssistance: "0.00", eligibleInstitution: true, firstFourYears: false, atLeastHalfTime: false, degreeCandidate: false, noFelonyDrugConviction: false, priorAotcYears: 4, refundabilityConfirmed: false }] } }), valid1098TRecordIds: [form1098TRecordId] },
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8863).toMatchObject({ tentativeLifetimeLearningCredit: "2000", nonrefundableCredit: "2000", refundableAmericanOpportunityCredit: "0" });
+    expect(result.forms?.schedule3).toMatchObject({ educationCredit: "2000", totalNonrefundableCredits: "2000" });
+  });
+
   it("applies all five filing statuses and their 2025 standard deductions", () => {
     const expected: Record<FilingStatus2025, string> = {
       single: "15750",
@@ -320,7 +398,7 @@ describe("2025 supported return graph", () => {
       wages: "190000", taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000",
       iraDistributions: "0", taxableIraDistributions: "0", pensionsAndAnnuities: "0", taxablePensionsAndAnnuities: "0", capitalGainOrLoss: "0", schedule1AdditionalIncome: "18000",
       totalIncome: "214600", adjustedGrossIncome: "213523", standardDeduction: "31500", qbiDeduction: "3385", taxableIncome: "178638",
-      itemizedDeductions: "0", deductionUsed: "31500", incomeTax: "28848", childTaxCreditAndOtherDependentCredit: "0", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", additionalChildTaxCredit: "0", refund: "0", amountOwed: "3402",
+      itemizedDeductions: "0", deductionUsed: "31500", incomeTax: "28848", childTaxCreditAndOtherDependentCredit: "0", dependentCareCredit: "0", educationCredit: "0", schedule3NonrefundableCredits: "0", selfEmploymentTax: "2154", totalTax: "31002", federalWithholding: "27600", additionalChildTaxCredit: "0", earnedIncomeCredit: "0", refundableAmericanOpportunityCredit: "0", totalPayments: "27600", refund: "0", amountOwed: "3402",
     });
     expect(result.dependencyManifest.every(({ status }) => status === "evaluated")).toBe(true);
   });

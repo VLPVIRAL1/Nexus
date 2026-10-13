@@ -1,0 +1,15 @@
+{
+  "form": "1098-T", "tax_year": 2025, "revision": "rev-2025", "registry_version": "2025.1.0-review",
+  "source_url": "https://www.irs.gov/pub/irs-pdf/f1098t.pdf", "source_revision": "2025 form",
+  "fields": [
+    { "key": "paymentsReceived", "label": "Payments received for qualified tuition and related expenses", "type": "money", "calculation": "review_input" },
+    { "key": "priorYearAdjustment", "label": "Adjustment made for a prior year", "type": "money", "calculation": "conditional" },
+    { "key": "scholarshipsOrGrants", "label": "Scholarships or grants", "type": "money", "calculation": "review_input" },
+    { "key": "priorYearScholarshipAdjustment", "label": "Adjustment to scholarships or grants for a prior year", "type": "money", "calculation": "conditional" },
+    { "key": "includedNextPeriod", "label": "Includes amounts for an academic period beginning January–March 2026", "type": "boolean", "calculation": "review_input" },
+    { "key": "halfTimeStudent", "label": "At least half-time student", "type": "boolean", "calculation": "review_input" },
+    { "key": "graduateStudent", "label": "Graduate student", "type": "boolean", "calculation": "review_input" },
+    { "key": "insuranceContractReimbursements", "label": "Insurance contract reimbursements or refunds", "type": "money", "calculation": "conditional" }
+  ],
+  "pdf_output": "supporting_record", "integration": "form_8863_review"
+}

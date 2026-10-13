@@ -11,6 +11,7 @@ const accessibleRoutes = [
   { name: "persisted intake", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/intake" },
   { name: "taxpayer profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile" },
   { name: "return profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile" },
+  { name: "federal credits", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/credits" },
   { name: "schedule activities", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/activities" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping split", path: "/clients/sample/years/2025/mapping" },

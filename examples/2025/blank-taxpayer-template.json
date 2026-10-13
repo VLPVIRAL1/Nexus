@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "tax_year": 2025,
   "return_type": "1040",
   "_instructions": {
@@ -26,7 +26,8 @@
       "Select one of the five filing statuses only after eligibility is reviewed.",
       "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
       "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
-      "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts."
+      "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts.",
+      "Complete credits only from a reviewed EITC, dependent-care, or education interview; Form 1098-T does not by itself establish qualified expenses."
     ]
   },
   "client": {}, "filing_profile": { "status": "single", "eligibility_confirmed": false }, "taxpayer": {}, "spouse": null, "dependents": [],
@@ -36,15 +37,22 @@
     "home_mortgage_interest_and_points": "0.00", "investment_interest": "0.00", "cash_charitable_contributions": "0.00", "noncash_charitable_contributions": "0.00",
     "casualty_and_theft_losses": "0.00", "other_itemized_deductions": "0.00", "salt_eligibility_confirmed": false, "mortgage_limits_applied": false, "charity_limits_applied": false, "casualty_limits_applied": false
   },
+  "credits": {
+    "schemaVersion": "2025.1",
+    "eitc": { "enabled": false, "eligibilityReviewed": false, "taxpayerAgeAtYearEnd": null, "spouseAgeAtYearEnd": null, "taxpayerWorkEligibleIdentifier": false, "spouseWorkEligibleIdentifier": false, "notQualifyingChildOfAnother": false, "investmentIncome": "0.00", "noForm2555": false, "noPriorDisallowance": false, "noCombatPayElection": false, "separatedSpouseEligible": null, "qualifyingChildren": [] },
+    "dependentCare": { "enabled": false, "workRelatedExpensesConfirmed": false, "providers": [], "qualifyingPersons": [], "taxpayerStudentOrDisabledMonths": 0, "spouseStudentOrDisabledMonths": 0, "additionalEmployerBenefits": "0.00" },
+    "education": { "enabled": false, "students": [] }
+  },
   "source_documents": [],
-  "forms": { "w2": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [] },
+  "forms": { "w2": [], "form_1098_t": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [] },
   "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
   "mappings": [], "payments": {}, "review_points": [],
   "metadata": {
-    "template": "nexus-taxpayer-import-2025-v1.3.0-review",
-    "supported_source_forms": ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"],
-    "supported_dependent_forms": ["Form 1040 dependents", "Schedule 8812"],
+    "template": "nexus-taxpayer-import-2025-v1.4.0-credits-review",
+    "supported_source_forms": ["W-2", "1098-T", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"],
+    "supported_dependent_forms": ["Form 1040 dependents", "Schedule 8812", "Schedule EIC", "Form 2441"],
     "supported_deduction_forms": ["Schedule A"],
+    "supported_credit_forms": ["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"],
     "supported_activity_forms": ["Schedule C", "Schedule E", "Schedule F"]
   }
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { activityFormSchemas2025 } from "@/domain/activity-forms-2025";
+import { federalCreditProfileSchema2025 } from "@/domain/federal-credits-2025";
 
 const decimalString = z.string().regex(/^-?\d+\.\d{2}$/, "Use a decimal string with exactly two places");
 const nonnegativeDecimalString = decimalString.refine((value) => !value.startsWith("-"), "Use a nonnegative decimal string");
@@ -59,18 +60,18 @@ const sourceMapping = z.object({
 });
 
 export const canonicalTaxReturnSchema = z.object({
-  schema_version: z.literal("1.0.0"), tax_year: z.literal(2025), return_type: z.literal("1040"),
+  schema_version: z.enum(["1.0.0", "1.1.0"]), tax_year: z.literal(2025), return_type: z.literal("1040"),
   _instructions: z.record(z.string(), z.unknown()).optional(), client: z.record(z.string(), z.unknown()),
   filing_profile: z.object({ status: filingStatus, eligibility_confirmed: z.boolean() }).strict(),
   taxpayer: personProfile, spouse: personProfile.nullable().optional(),
-  dependents: z.array(dependent), schedule_a: scheduleA, source_documents: z.array(z.record(z.string(), z.unknown())),
+  dependents: z.array(dependent), schedule_a: scheduleA, credits: federalCreditProfileSchema2025.optional(), source_documents: z.array(z.record(z.string(), z.unknown())),
   forms: z.object({
     w2: z.array(sourceRecord.passthrough()), form_1099_nec: z.array(sourceRecord.passthrough()),
     form_1099_misc: z.array(sourceRecord.passthrough()), form_1099_int: z.array(sourceRecord.passthrough()),
     form_1099_div: z.array(sourceRecord.passthrough()),
     form_1099_b: z.array(sourceRecord.passthrough()), form_1099_g: z.array(sourceRecord.passthrough()),
     form_1099_k: z.array(sourceRecord.passthrough()), form_1099_r: z.array(sourceRecord.passthrough()),
-    form_1099_sa: z.array(sourceRecord.passthrough()),
+    form_1099_sa: z.array(sourceRecord.passthrough()), form_1098_t: z.array(sourceRecord.passthrough()).optional(),
   }),
   activities: z.object({ schedule_c: z.array(scheduleCActivity), schedule_e: z.array(scheduleEActivity), schedule_f: z.array(scheduleFActivity), other_income: z.array(otherIncomeActivity) }).strict(), mappings: z.array(sourceMapping),
   payments: z.record(z.string(), z.unknown()), review_points: z.array(z.record(z.string(), z.unknown())), metadata: z.record(z.string(), z.unknown()),

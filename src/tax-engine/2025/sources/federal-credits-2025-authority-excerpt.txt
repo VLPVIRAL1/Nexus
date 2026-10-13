@@ -1,0 +1,23 @@
+Nexus Tax 2025 federal-credit authority excerpt
+Retrieved: 2026-10-13
+Status: research input; independent qualified tax-professional approval remains required.
+
+Earned Income Tax Credit
+Official source: IRS Publication 596 (2025), https://www.irs.gov/pub/irs-pdf/p596.pdf
+- Investment-income ceiling: $11,950.
+- Earned-income/AGI ceilings (non-joint / joint): no child $19,104 / $26,214; one child $50,434 / $57,554; two children $57,310 / $64,430; three or more children $61,555 / $68,675.
+- Maximum table credits: $649, $4,328, $7,152, and $8,046 for zero through three-or-more qualifying children.
+- Schedule EIC is attached when a qualifying child is used.
+
+Child and Dependent Care Credit
+Official source: IRS Publication 503 (2025), https://www.irs.gov/pub/irs-pdf/p503.pdf
+- Expense ceiling: generally $3,000 for one qualifying person or $6,000 for two or more.
+- Applicable percentage ranges from 35% through 20%; the percentage decreases by one point for each $2,000 or fraction above $15,000 AGI.
+- Earned-income limitations apply to each spouse on a joint return; deemed income is $250/$500 per eligible student-or-disabled month for one/two-or-more qualifying persons.
+
+Education Credits
+Official source: IRS Publication 970 (2025), https://www.irs.gov/pub/irs-pdf/p970.pdf
+- AOTC: 100% of the first $2,000 plus 25% of the next $2,000 per eligible student; generally 40% refundable.
+- LLC: 20% of up to $10,000 of aggregate adjusted qualified expenses.
+- Phaseout range: $80,000–$90,000, or $160,000–$180,000 for joint returns.
+- Form 1098-T supplies institution and reported-payment facts but does not alone establish adjusted qualified expenses.

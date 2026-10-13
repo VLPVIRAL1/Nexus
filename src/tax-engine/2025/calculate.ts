@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { resolveDependencyGraph } from "../dependency-graph";
+import { calculateFederalCredits2025 } from "./federal-credits";
 import { amount, dollars, nonnegative, sum, whole } from "./math";
 import { constants2025, rulePackage2025 } from "./rule-package";
 import { calculateScheduleSE2025 } from "./self-employment";
@@ -299,7 +300,17 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const threeChildAlternativeLimit = whole(withheldPayrollTaxes.plus(deductibleHalf).plus(selfEmploymentTax));
   const refundableIncomeLimit = qualifyingChildren.length >= 3 ? Decimal.max(earnedIncomeRefundLimit, threeChildAlternativeLimit) : earnedIncomeRefundLimit;
   const additionalChildTaxCredit = Decimal.min(unusedDependentCredit, refundableIncomeLimit, perChildRefundLimit);
-  const totalTax = Decimal.max(0, incomeTax.minus(nonrefundableDependentCredit)).plus(selfEmploymentTax);
+  const ownerEarnedIncome = Object.fromEntries(roles.map((role) => {
+    const ownerWages = sum(wages.filter(({ owner }) => owner === role).map(({ wageAmount }) => wageAmount));
+    const ownerBusiness = sum(scheduleC.filter(({ activity }) => activity.owner === role).map(({ netProfit }) => netProfit));
+    const ownerFarm = sum(scheduleF.filter(({ activity }) => activity.owner === role).map(({ netProfit }) => netProfit));
+    const ownerDeductibleHalf = sum(scheduleSE.filter(({ owner }) => owner === role).map(({ deductibleHalf }) => deductibleHalf));
+    return [role, whole(ownerWages.plus(Decimal.max(0, ownerBusiness.plus(ownerFarm).minus(ownerDeductibleHalf))))];
+  })) as Record<PersonRole2025, Decimal>;
+  const federalCredits = calculateFederalCredits2025({ input, adjustedGrossIncome, earnedIncome, taxAfterDependentCredits: Decimal.max(0, incomeTax.minus(nonrefundableDependentCredit)), ownerEarnedIncome, block: blocking });
+  if (diagnostics.some(({ severity }) => severity === "blocking")) return blockedOutput(input, diagnostics, trace);
+  const schedule3NonrefundableCredits = federalCredits.dependentCareCredit.plus(federalCredits.educationNonrefundableCredit);
+  const totalTax = Decimal.max(0, incomeTax.minus(nonrefundableDependentCredit).minus(schedule3NonrefundableCredits)).plus(selfEmploymentTax);
   const federalWithholding = whole(sum([
     ...wages.map(({ withholdingAmount }) => withholdingAmount),
     ...interest.map(({ withholdingAmount }) => withholdingAmount),
@@ -310,7 +321,7 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     ...governmentPayments.map(({ withholdingAmount }) => withholdingAmount),
     ...paymentCardReceipts.map(({ withholdingAmount }) => withholdingAmount),
   ]));
-  const totalPayments = federalWithholding.plus(additionalChildTaxCredit);
+  const totalPayments = federalWithholding.plus(additionalChildTaxCredit).plus(federalCredits.earnedIncomeCredit).plus(federalCredits.refundableAmericanOpportunityCredit);
   const refund = Decimal.max(0, totalPayments.minus(totalTax));
   const amountOwed = Decimal.max(0, totalTax.minus(totalPayments));
   const scheduleBRequired = taxableInterest.gt(constants2025.scheduleBThreshold)
@@ -333,7 +344,10 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   addTrace(trace, "form-1040.income-tax", "Form 1040, line 16", input.approvedOverrides?.form1040IncomeTax != null ? "APPROVED-MANUAL-OVERRIDE" : preferential ? "QD-CAPITAL-GAIN-WORKSHEET" : taxableIncome.lt(100000) ? "IRS-TAX-TABLE" : "IRS-TAX-COMPUTATION-WORKSHEET", { taxableIncome: taxableIncome.toFixed(0), qualifiedDividends: qualifiedDividends.toFixed(0), netCapitalGain: netCapitalGainForPreferentialTax.toFixed(0), calculatedIncomeTax: calculatedIncomeTax.toFixed(0) }, incomeTax);
   addTrace(trace, "schedule-8812.credit", "Schedule 8812 / Form 1040, line 19", "SCHEDULE-8812-CTC-ODC-2025", { qualifyingChildren: String(qualifyingChildren.length), otherDependents: String(otherDependents.length), phaseoutReduction: phaseoutReduction.toFixed(0) }, nonrefundableDependentCredit);
   addTrace(trace, "schedule-8812.additional-child-tax-credit", "Schedule 8812 / Form 1040, line 28", "SCHEDULE-8812-ACTC-2025", { earnedIncome: earnedIncome.toFixed(0), unusedCredit: unusedDependentCredit.toFixed(0), perChildLimit: perChildRefundLimit.toFixed(0), threeChildAlternativeLimit: threeChildAlternativeLimit.toFixed(0) }, additionalChildTaxCredit);
-  addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), dependentCredit: nonrefundableDependentCredit.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
+  addTrace(trace, "schedule-eic.credit", "Form 1040, line 27a", "EITC-2025", { earnedIncome: earnedIncome.toFixed(0), adjustedGrossIncome: adjustedGrossIncome.toFixed(0), qualifyingChildren: String(federalCredits.scheduleEic.qualifyingChildren.length) }, federalCredits.earnedIncomeCredit);
+  addTrace(trace, "form-2441.credit", "Schedule 3, line 2", "FORM-2441-2025", { qualifiedExpenses: federalCredits.form2441.qualifiedExpenses, applicablePercentage: federalCredits.form2441.applicablePercentage }, federalCredits.dependentCareCredit);
+  addTrace(trace, "form-8863.credit", "Schedule 3, line 3", "FORM-8863-2025", { aotc: federalCredits.form8863.tentativeAmericanOpportunityCredit, llc: federalCredits.form8863.tentativeLifetimeLearningCredit, phaseoutFactor: federalCredits.form8863.phaseoutFactor }, federalCredits.educationNonrefundableCredit);
+  addTrace(trace, "form-1040.total-tax", "Form 1040, line 24", "FORM-1040-TOTAL-TAX", { incomeTax: incomeTax.toFixed(0), dependentCredit: nonrefundableDependentCredit.toFixed(0), schedule3Credits: schedule3NonrefundableCredits.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0) }, totalTax);
   addTrace(trace, "form-1040.payments", "Form 1040, line 25d", "ACTIVE-SOURCE-WITHHOLDING", { sourceCount: String(wages.length + interest.length + dividends.length + businessWithholding.length + brokerTransactions.length + retirementDistributions.length + governmentPayments.length + paymentCardReceipts.length) }, federalWithholding);
 
   diagnostics.push({
@@ -377,13 +391,17 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
       form8995: { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0), deduction: qbiDeduction.toFixed(0) },
       schedule1: { businessIncome: businessIncome.toFixed(0), rentalRealEstateRoyalties: rentalRealEstateRoyalties.toFixed(0), farmIncome: farmIncome.toFixed(0), unemploymentCompensation: unemploymentCompensation.toFixed(0), deductiblePartOfSelfEmploymentTax: deductibleHalf.toFixed(0) },
       schedule2: { selfEmploymentTax: selfEmploymentTax.toFixed(0), additionalHsaTax: "0" },
+      scheduleEic: federalCredits.scheduleEic,
+      form2441: federalCredits.form2441,
+      form8863: federalCredits.form8863,
+      schedule3: { dependentCareCredit: federalCredits.dependentCareCredit.toFixed(0), educationCredit: federalCredits.educationNonrefundableCredit.toFixed(0), totalNonrefundableCredits: schedule3NonrefundableCredits.toFixed(0) },
       form1040: {
         wages: wageTotal.toFixed(0), taxExemptInterest: taxExemptInterest.toFixed(0), taxableInterest: taxableInterest.toFixed(0),
         qualifiedDividends: qualifiedDividends.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0), iraDistributions: iraGross.toFixed(0), taxableIraDistributions: iraTaxable.toFixed(0),
         pensionsAndAnnuities: pensionGross.toFixed(0), taxablePensionsAndAnnuities: pensionTaxable.toFixed(0), capitalGainOrLoss: capitalGainOrLoss.toFixed(0), schedule1AdditionalIncome: schedule1AdditionalIncome.toFixed(0), totalIncome: totalIncome.toFixed(0),
         adjustedGrossIncome: adjustedGrossIncome.toFixed(0), standardDeduction: standardDeduction.toFixed(0), itemizedDeductions: usesScheduleA ? totalItemizedDeductions.toFixed(0) : "0", deductionUsed: deductionUsed.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0),
-        taxableIncome: taxableIncome.toFixed(0), incomeTax: incomeTax.toFixed(0), childTaxCreditAndOtherDependentCredit: nonrefundableDependentCredit.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0), totalTax: totalTax.toFixed(0),
-        federalWithholding: federalWithholding.toFixed(0), additionalChildTaxCredit: additionalChildTaxCredit.toFixed(0), refund: refund.toFixed(0), amountOwed: amountOwed.toFixed(0),
+        taxableIncome: taxableIncome.toFixed(0), incomeTax: incomeTax.toFixed(0), childTaxCreditAndOtherDependentCredit: nonrefundableDependentCredit.toFixed(0), dependentCareCredit: federalCredits.dependentCareCredit.toFixed(0), educationCredit: federalCredits.educationNonrefundableCredit.toFixed(0), schedule3NonrefundableCredits: schedule3NonrefundableCredits.toFixed(0), selfEmploymentTax: selfEmploymentTax.toFixed(0), totalTax: totalTax.toFixed(0),
+        federalWithholding: federalWithholding.toFixed(0), additionalChildTaxCredit: additionalChildTaxCredit.toFixed(0), earnedIncomeCredit: federalCredits.earnedIncomeCredit.toFixed(0), refundableAmericanOpportunityCredit: federalCredits.refundableAmericanOpportunityCredit.toFixed(0), totalPayments: totalPayments.toFixed(0), refund: refund.toFixed(0), amountOwed: amountOwed.toFixed(0),
       },
     },
     trace,
@@ -405,8 +423,12 @@ const dependencies: Record<string, string[]> = {
   "form-8995": ["schedule-c", "schedule-e", "schedule-f", "schedule-se", "qualified-dividends"],
   "schedule-a": ["filing-status", "adjusted-gross-income", "itemized-deduction-facts"],
   "schedule-8812": ["filing-status", "dependents", "adjusted-gross-income", "earned-income", "income-tax"],
+  "schedule-eic": ["filing-status", "dependents", "adjusted-gross-income", "earned-income", "investment-income"],
+  "form-2441": ["filing-status", "care-providers", "qualifying-persons", "earned-income", "adjusted-gross-income"],
+  "form-8863": ["education-students", "form-1098-t", "adjusted-gross-income", "income-tax"],
+  "schedule-3": ["form-2441", "form-8863"],
   "qualified-dividend-worksheet": ["form-8995", "qualified-dividends", "schedule-d"],
-  "form-1040": ["schedule-1", "schedule-2", "schedule-a", "schedule-8812", "schedule-b", "schedule-d", "retirement-distributions", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
+  "form-1040": ["schedule-1", "schedule-2", "schedule-3", "schedule-a", "schedule-8812", "schedule-eic", "schedule-b", "schedule-d", "retirement-distributions", "form-8995", "qualified-dividend-worksheet", "withholding-ledger"],
 };
 
 function validateEligibility(input: CalculationInput2025, blocking: (code: string, message: string, path?: string | null) => void): void {

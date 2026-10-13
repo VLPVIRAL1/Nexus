@@ -27,9 +27,11 @@ import { issueProvisionedExternalIdentitySession } from "../../src/server/supaba
 import { decideManualAcceptanceSession, decideOutputTieOut, decideReleaseGate, decideTaxReviewFixture, getReleaseClosureState, ingestProductionReadiness, saveInfrastructureControl, saveManualAcceptanceSession, saveOutputTieOut, saveReleaseGate, saveTaxReviewFixture } from "../../src/server/release-closure-service";
 import { createSupportedReviewExample2025 } from "../../src/services/outputs/json-export-service";
 import { getReturnProfileState, saveReturnProfile } from "../../src/server/return-profile-service";
+import { getFederalCreditState, saveFederalCreditProfile } from "../../src/server/federal-credit-service";
 
 const importCollections = {
   W2: "w2",
+  "1098-T": "form_1098_t",
   "1099-NEC": "form_1099_nec",
   "1099-MISC": "form_1099_misc",
   "1099-INT": "form_1099_int",
@@ -114,6 +116,8 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0022_external_identities.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0023_release_closure.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0024_return_profiles.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0025_activity_form_revisions.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0026_federal_credit_profiles.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
@@ -499,7 +503,22 @@ suite("PostgreSQL foundation", () => {
       await expect(saveReturnProfile(admin, createdClient.id, 2025, { ...state, expectedRevision: initial.revision, expectedVersion: initial.version })).rejects.toMatchObject({ code: "conflict" });
   });
 
-  it("round-trips every registered field and repeated row across all ten supported source families", async () => {
+  it("persists the federal credit interview with audit history and optimistic concurrency", async () => {
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const createdClient = await createClient(admin, { clientCode: `CR-${randomUUID().slice(0, 12)}`, displayName: "Credit profile fixture" });
+    await createTaxYear(admin, createdClient.id, { year: 2025 });
+    await upsertPerson(admin, createdClient.id, 2025, { role: "taxpayer", legalName: "Synthetic Taxpayer", dateOfBirth: "1990-01-01", address: {}, facts: {}, expectedVersion: null });
+    const initial = await getFederalCreditState(admin, createdClient.id, 2025);
+    const saved = await saveFederalCreditProfile(admin, createdClient.id, 2025, { expectedRevision: initial.revision, expectedVersion: initial.version, profile: { ...initial.profile, eitc: { ...initial.profile.eitc, enabled: true, eligibilityReviewed: true, taxpayerAgeAtYearEnd: 35, taxpayerWorkEligibleIdentifier: true, notQualifyingChildOfAnother: true, noForm2555: true, noPriorDisallowance: true, noCombatPayElection: true } } });
+    const state = await getFederalCreditState(admin, createdClient.id, 2025);
+    expect(state).toMatchObject({ revision: saved.revision, version: saved.version, profile: { eitc: { enabled: true, taxpayerAgeAtYearEnd: 35 } } });
+    const client = new pg.Client({ connectionString }); await client.connect();
+    try { expect((await client.query("SELECT version,change_source FROM federal_credit_profile_revisions WHERE tax_year_id=(SELECT id FROM tax_years WHERE client_id=$1 AND tax_year=2025)", [createdClient.id])).rows).toEqual([{ version: saved.version, change_source: "manual" }]); }
+    finally { await client.end(); }
+    await expect(saveFederalCreditProfile(admin, createdClient.id, 2025, { expectedRevision: initial.revision, expectedVersion: initial.version, profile: state.profile })).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("round-trips every registered field and repeated row across all eleven supported source families", async () => {
     const context: AuthorizationContext = {
       userId: "20000000-0000-4000-8000-000000000001",
       firmId: "10000000-0000-4000-8000-000000000001",
@@ -516,7 +535,7 @@ suite("PostgreSQL foundation", () => {
     payload.metadata = { acceptanceScenario: "AC-03", fixtureId: randomUUID() };
 
     const raw = new TextEncoder().encode(JSON.stringify(payload));
-    const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "ac03-ten-form-round-trip.json", raw);
+    const preview = await stageCanonicalImport(context, "30000000-0000-4000-8000-000000000001", 2025, "ac03-eleven-form-round-trip.json", raw);
     for (const { collection, record } of expectedRecords) {
       expect(preview.changes).toEqual(expect.arrayContaining([
         expect.objectContaining({ path: `forms.${collection}[id=${record.id}]`, kind: "add", importedValue: record }),
@@ -549,7 +568,7 @@ suite("PostgreSQL foundation", () => {
         "SELECT form_type,external_source_id,normalized_data,raw_fields,unmapped_fields FROM source_form_records WHERE import_batch_id=$1 AND effective ORDER BY form_type",
         [preview.batchId],
       );
-      expect(persisted.rowCount).toBe(10);
+      expect(persisted.rowCount).toBe(11);
       expect(new Set(persisted.rows.map(({ form_type }) => form_type))).toEqual(new Set(Object.keys(importCollections)));
       for (const row of persisted.rows) {
         const expected = expectedRecords.find(({ record }) => record.external_source_id === row.external_source_id);
@@ -818,7 +837,7 @@ suite("PostgreSQL foundation", () => {
     await expect(generatePersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, calculation.revision, "complete_json")).rejects.toMatchObject({ code: "forbidden" });
     await expect(downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id)).rejects.toMatchObject({ code: "forbidden" });
     const downloadedComplete = await downloadPersistedArtifact(admin, "30000000-0000-4000-8000-000000000001", 2025, completeJson.id);
-    expect(JSON.parse(downloadedComplete.bytes.toString())).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040", metadata: { export_revision: calculation.revision, canonical_round_trip: true } });
+    expect(JSON.parse(downloadedComplete.bytes.toString())).toMatchObject({ schema_version: "1.1.0", tax_year: 2025, return_type: "1040", metadata: { export_revision: calculation.revision, canonical_round_trip: true } });
     const downloadedBlank = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, blankJson.id);
     expect(JSON.parse(downloadedBlank.bytes.toString())).toMatchObject({ client: {}, taxpayer: {}, source_documents: [], mappings: [] });
     const downloaded = await downloadPersistedArtifact(context, "30000000-0000-4000-8000-000000000001", 2025, pdf.id);

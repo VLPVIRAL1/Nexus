@@ -37,10 +37,14 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
       money("15", "Taxable income", forms.form1040.taxableIncome, "form-1040.taxable-income"),
       money("16", "Income tax", forms.form1040.incomeTax, "form-1040.income-tax"),
       money("19", "Child tax credit / credit for other dependents", forms.form1040.childTaxCreditAndOtherDependentCredit, "schedule-8812.credit"),
+      money("20", "Amount from Schedule 3", forms.form1040.schedule3NonrefundableCredits, "schedule-3.total-nonrefundable-credits"),
       money("23", "Other taxes — self-employment tax", forms.form1040.selfEmploymentTax, "schedule-se.tax"),
       money("24", "Total tax", forms.form1040.totalTax, "form-1040.total-tax"),
       money("25d", "Federal income tax withheld", forms.form1040.federalWithholding, "form-1040.payments"),
       money("28", "Additional child tax credit", forms.form1040.additionalChildTaxCredit, "schedule-8812.additional-child-tax-credit"),
+      money("27a", "Earned income credit", forms.form1040.earnedIncomeCredit, "schedule-eic.credit"),
+      money("29", "Refundable American Opportunity Credit", forms.form1040.refundableAmericanOpportunityCredit, "form-8863.credit"),
+      money("33", "Total payments", forms.form1040.totalPayments, "form-1040.payments"),
       money("35a", "Refund", forms.form1040.refund, "form-1040.refund"),
       money("37", "Amount owed", forms.form1040.amountOwed, "form-1040.amount-owed"),
     ]),
@@ -75,6 +79,39 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("11", "Modified AGI phaseout reduction", forms.schedule8812.phaseoutReduction, "schedule-8812.credit"),
     money("14", "Nonrefundable credit", forms.schedule8812.nonrefundableCredit, "schedule-8812.credit"),
     money("27", "Additional child tax credit", forms.schedule8812.additionalChildTaxCredit, "schedule-8812.additional-child-tax-credit"),
+  ]));
+
+  if (forms.scheduleEic.required) pages.push(page("Schedule EIC", "Earned Income Credit — qualifying children and calculation summary", [
+    ...forms.scheduleEic.qualifyingChildren.flatMap((child, index) => [text(`${index + 1}`, "Qualifying child dependent ID", child.dependentId, "schedule-eic.credit")]),
+    money("Earned income", "Earned income used", forms.scheduleEic.earnedIncome, "schedule-eic.credit"),
+    money("AGI", "Adjusted gross income", forms.scheduleEic.adjustedGrossIncome, "schedule-eic.credit"),
+    money("Investment", "Reviewed investment income", forms.scheduleEic.investmentIncome, "schedule-eic.credit"),
+    money("27a", "Earned income credit", forms.scheduleEic.credit, "schedule-eic.credit"),
+  ]));
+
+  if (forms.form2441.required) pages.push(page("Form 2441", "Child and Dependent Care Expenses — calculation summary", [
+    text("Providers", "Eligible care providers", String(forms.form2441.providerCount), "form-2441.credit"),
+    text("Persons", "Qualifying persons", String(forms.form2441.qualifyingPersonCount), "form-2441.credit"),
+    money("Expenses", "Qualified expenses after limits", forms.form2441.qualifiedExpenses, "form-2441.credit"),
+    money("Earned limit", "Earned-income limitation", forms.form2441.earnedIncomeLimit, "form-2441.credit"),
+    text("Rate", "Applicable percentage", forms.form2441.applicablePercentage, "form-2441.credit"),
+    money("Credit", "Child and dependent care credit", forms.form2441.credit, "form-2441.credit"),
+    money("Benefits", "Employer dependent-care benefits", forms.form2441.employerBenefits, "form-2441.credit"),
+  ]));
+
+  if (forms.form8863.required) pages.push(page("Form 8863", "Education Credits — AOTC and Lifetime Learning Credit summary", [
+    ...forms.form8863.students.flatMap((student, index) => [text(`${index + 1}`, "Student / credit type", `${student.studentId} · ${student.creditType.toUpperCase()}`, "form-8863.credit"), money(`${index + 1} exp.`, "Adjusted qualified expenses", student.adjustedExpenses, "form-8863.credit")]),
+    money("AOTC", "Tentative American Opportunity Credit", forms.form8863.tentativeAmericanOpportunityCredit, "form-8863.credit"),
+    money("LLC", "Tentative Lifetime Learning Credit", forms.form8863.tentativeLifetimeLearningCredit, "form-8863.credit"),
+    text("Phaseout", "MAGI phaseout factor", forms.form8863.phaseoutFactor, "form-8863.credit"),
+    money("Part I", "Refundable American Opportunity Credit", forms.form8863.refundableAmericanOpportunityCredit, "form-8863.credit"),
+    money("Part II", "Nonrefundable education credit", forms.form8863.nonrefundableCredit, "form-8863.credit"),
+  ]));
+
+  if (Number(forms.schedule3.totalNonrefundableCredits) !== 0) pages.push(page("Schedule 3", "Additional Credits and Payments — supported lines", [
+    money("2", "Child and dependent care credit", forms.schedule3.dependentCareCredit, "form-2441.credit"),
+    money("3", "Education credit", forms.schedule3.educationCredit, "form-8863.credit"),
+    money("8", "Total nonrefundable credits", forms.schedule3.totalNonrefundableCredits, "schedule-3.total-nonrefundable-credits"),
   ]));
 
   if (forms.scheduleB.required) pages.push(page("Schedule B", "Interest and Ordinary Dividends — supported totals", [
@@ -176,6 +213,10 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (forms.dependents.length) required.push("Form 1040 Dependents");
   if (forms.scheduleA.required) required.push("Schedule A");
   if (forms.schedule8812.qualifyingChildren || forms.schedule8812.otherDependents) required.push("Schedule 8812");
+  if (forms.scheduleEic.required) required.push("Schedule EIC");
+  if (forms.form2441.required) required.push("Form 2441");
+  if (forms.form8863.required) required.push("Form 8863");
+  if (Number(forms.schedule3.totalNonrefundableCredits) !== 0) required.push("Schedule 3");
   if (forms.scheduleB.required) required.push("Schedule B");
   if (forms.scheduleC.length) required.push("Schedule C");
   if (forms.scheduleE.length) required.push("Schedule E");

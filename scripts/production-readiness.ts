@@ -49,8 +49,8 @@ if (value("DATABASE_URL")) {
   const database = new pg.Client({ connectionString: value("DATABASE_URL"), connectionTimeoutMillis: 8_000 });
   try {
     await database.connect();
-    const migrations = await database.query<{ present: boolean }>("SELECT EXISTS(SELECT 1 FROM _migrations WHERE name='0023_release_closure.sql') AS present");
-    check("Production schema", migrations.rows[0]?.present === true, "Migration 0023 must be present.");
+    const migrations = await database.query<{ present: boolean }>("SELECT EXISTS(SELECT 1 FROM _migrations WHERE name='0026_federal_credit_profiles.sql') AS present");
+    check("Production schema", migrations.rows[0]?.present === true, "Migration 0026 must be present.");
     const identities = await database.query<{ count: string }>("SELECT count(*)::text AS count FROM external_identities WHERE provider_code='supabase'");
     check("Provisioned identities", Number(identities.rows[0]?.count ?? 0) > 0, "At least one Supabase identity must be explicitly linked.");
   } catch {

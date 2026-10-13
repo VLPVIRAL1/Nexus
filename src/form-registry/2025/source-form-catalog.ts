@@ -15,6 +15,7 @@ export interface SourceFormCatalogEntry {
 export const sourceFormCatalog2025: SourceFormCatalogEntry[] = [
   ["W-2", "supported_capture", "Typed capture and supported-envelope calculation"],
   ["W-2C", "document_only_blocking", "Correction evidence; reconcile to a typed W-2 record"],
+  ["1098-T", "supported_capture", "Typed capture; reviewed tuition facts feed Form 8863 education-credit interviews"],
   ["1099-NEC", "supported_capture", "Typed capture; calculation depends on accepted mapping"],
   ["1099-MISC", "supported_capture", "Typed capture; unsupported boxes and destinations block approval"],
   ["1099-INT", "supported_capture", "Typed capture; unsupported boxes block approval"],

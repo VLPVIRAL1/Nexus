@@ -191,7 +191,14 @@ export interface Form1099SA extends PayerRecipientForm {
   boxes: { grossDistribution: DecimalString | null; earningsOnExcessContributions: DecimalString | null; distributionCode: string | null; fairMarketValueAtDeath: DecimalString | null; accountType: "HSA" | "Archer MSA" | "Medicare Advantage MSA" | null; qualifiedMedicalExpenses: DecimalString | null };
 }
 
-export type SourceForm = W2Record | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV | Form1099B | Form1099G | Form1099K | Form1099R | Form1099SA;
+export interface Form1098T extends SourceFormBase {
+  formType: "1098-T";
+  institution: { name: string | null; tin: string | null; phone: string | null; address: Address };
+  student: { name: string | null; tin: string | null; address: Address };
+  boxes: Record<string, DecimalString | string | boolean | null>;
+}
+
+export type SourceForm = W2Record | Form1098T | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV | Form1099B | Form1099G | Form1099K | Form1099R | Form1099SA;
 
 export interface IntakeAnswer {
   id: UUID;
@@ -232,7 +239,7 @@ export interface SourceMapping {
 }
 
 export interface CanonicalTaxReturnData {
-  schemaVersion: "1.0.0";
+  schemaVersion: "1.0.0" | "1.1.0";
   taxYear: 2025;
   returnType: "1040";
   firmId: UUID;
@@ -241,6 +248,7 @@ export interface CanonicalTaxReturnData {
   revision: number;
   filingProfile?: { status: "single" | "married_filing_jointly" | "married_filing_separately" | "head_of_household" | "qualifying_surviving_spouse"; eligibilityConfirmed: boolean };
   scheduleA?: Record<string, unknown>;
+  credits?: Record<string, unknown>;
   taxpayer: Record<string, unknown>;
   spouse: Record<string, unknown> | null;
   dependents: Array<Record<string, unknown>>;

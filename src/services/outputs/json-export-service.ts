@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CanonicalTaxReturnData } from "@/domain/canonical";
 import { parseActivityForm2025 } from "@/domain/activity-forms-2025";
+import { emptyFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
 
 export type JsonExportMode = "complete" | "source_only" | "blank_template";
 
@@ -13,7 +14,7 @@ export interface JsonExportResult {
 
 export function createBlankCanonicalTemplate2025() {
   return {
-    schema_version: "1.0.0",
+    schema_version: "1.1.0",
     tax_year: 2025,
     return_type: "1040",
     _instructions: {
@@ -41,6 +42,7 @@ export function createBlankCanonicalTemplate2025() {
         "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
         "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
         "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts.",
+        "Complete credits only from a reviewed EITC, dependent-care, or education interview; Form 1098-T does not by itself establish qualified expenses.",
       ],
     },
     client: {}, filing_profile: { status: "single", eligibility_confirmed: false }, taxpayer: {}, spouse: null, dependents: [],
@@ -50,11 +52,12 @@ export function createBlankCanonicalTemplate2025() {
       home_mortgage_interest_and_points: "0.00", investment_interest: "0.00", cash_charitable_contributions: "0.00", noncash_charitable_contributions: "0.00",
       casualty_and_theft_losses: "0.00", other_itemized_deductions: "0.00", salt_eligibility_confirmed: false, mortgage_limits_applied: false, charity_limits_applied: false, casualty_limits_applied: false,
     },
+    credits: emptyFederalCreditProfile2025,
     source_documents: [],
-    forms: { w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] },
+    forms: { w2: [], form_1098_t: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] },
     activities: { schedule_c: [], schedule_e: [], schedule_f: [], other_income: [] },
     mappings: [], payments: {}, review_points: [],
-    metadata: { template: "nexus-taxpayer-import-2025-v1.3.0-review", supported_source_forms: ["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812"], supported_deduction_forms: ["Schedule A"], supported_activity_forms: ["Schedule C", "Schedule E", "Schedule F"] },
+    metadata: { template: "nexus-taxpayer-import-2025-v1.4.0-credits-review", supported_source_forms: ["W-2", "1098-T", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812", "Schedule EIC", "Form 2441"], supported_deduction_forms: ["Schedule A"], supported_credit_forms: ["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"], supported_activity_forms: ["Schedule C", "Schedule E", "Schedule F"] },
   } as const;
 }
 
@@ -91,8 +94,8 @@ export function exportCanonicalJson(data: CanonicalTaxReturnData, mode: JsonExpo
 }
 
 function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
-  const formCollections: Record<string, unknown[]> = { w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] };
-  const collectionByType: Record<string, string> = { W2: "w2", "1099-NEC": "form_1099_nec", "1099-MISC": "form_1099_misc", "1099-INT": "form_1099_int", "1099-DIV": "form_1099_div", "1099-B": "form_1099_b", "1099-G": "form_1099_g", "1099-K": "form_1099_k", "1099-R": "form_1099_r", "1099-SA": "form_1099_sa" };
+  const formCollections: Record<string, unknown[]> = { w2: [], form_1098_t: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] };
+  const collectionByType: Record<string, string> = { W2: "w2", "1098-T": "form_1098_t", "1099-NEC": "form_1099_nec", "1099-MISC": "form_1099_misc", "1099-INT": "form_1099_int", "1099-DIV": "form_1099_div", "1099-B": "form_1099_b", "1099-G": "form_1099_g", "1099-K": "form_1099_k", "1099-R": "form_1099_r", "1099-SA": "form_1099_sa" };
   for (const source of data.sourceForms) {
     const collection = collectionByType[source.formType];
     if (!collection) continue;
@@ -102,7 +105,7 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
   const schedule = data.scheduleA ?? {};
   const scheduleValue = (key: string, fallback: unknown) => key in schedule ? schedule[key] : fallback;
   return {
-    schema_version: "1.0.0", tax_year: 2025, return_type: "1040", client: {},
+    schema_version: "1.1.0", tax_year: 2025, return_type: "1040", client: {},
     filing_profile: { status: data.filingProfile?.status ?? "single", eligibility_confirmed: data.filingProfile?.eligibilityConfirmed ?? false },
     taxpayer: toCanonicalPerson(data.taxpayer), spouse: data.spouse ? toCanonicalPerson(data.spouse) : null,
     dependents: data.dependents.map((value) => {
@@ -113,6 +116,7 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
       enabled: scheduleValue("enabled", false), married_filing_separately_spouse_itemizes: scheduleValue("marriedFilingSeparatelySpouseItemizes", null),
       medical_and_dental_expenses: scheduleValue("medicalAndDentalExpenses", "0.00"), state_local_income_or_sales_taxes: scheduleValue("stateLocalIncomeOrSalesTaxes", "0.00"), real_estate_taxes: scheduleValue("realEstateTaxes", "0.00"), personal_property_taxes: scheduleValue("personalPropertyTaxes", "0.00"), other_taxes: scheduleValue("otherTaxes", "0.00"), home_mortgage_interest_and_points: scheduleValue("homeMortgageInterestAndPoints", "0.00"), investment_interest: scheduleValue("investmentInterest", "0.00"), cash_charitable_contributions: scheduleValue("cashCharitableContributions", "0.00"), noncash_charitable_contributions: scheduleValue("noncashCharitableContributions", "0.00"), casualty_and_theft_losses: scheduleValue("casualtyAndTheftLosses", "0.00"), other_itemized_deductions: scheduleValue("otherItemizedDeductions", "0.00"), salt_eligibility_confirmed: scheduleValue("saltEligibilityConfirmed", false), mortgage_limits_applied: scheduleValue("mortgageLimitsApplied", false), charity_limits_applied: scheduleValue("charityLimitsApplied", false), casualty_limits_applied: scheduleValue("casualtyLimitsApplied", false),
     },
+    credits: data.credits ?? emptyFederalCreditProfile2025,
     source_documents: data.sourceDocuments, forms: formCollections,
     activities: {
       schedule_c: data.activities.filter(({ type }) => type === "schedule_c").map(toCanonicalActivity),

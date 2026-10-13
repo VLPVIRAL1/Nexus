@@ -3,7 +3,7 @@ import { formRegistries2025,registryFieldPath,validateRegisteredSourceData } fro
 import { sourceFormCatalog2025,typedSourceForms2025 } from "../../src/form-registry/2025/source-form-catalog";
 
 describe("2025 source form registry",()=>{
-  it("publishes all ten year-pinned form layouts and canonical paths",()=>{expect(Object.keys(formRegistries2025).sort()).toEqual(["1099-B","1099-DIV","1099-G","1099-INT","1099-K","1099-MISC","1099-NEC","1099-R","1099-SA","W2"]);expect(registryFieldPath("W2","box1")).toEqual(["federal","box1"]);expect(registryFieldPath("1099-NEC","box3")).toEqual(["boxes","excessGoldenParachutePayments"]);expect(registryFieldPath("1099-MISC","box14")).toEqual(["boxes","nonqualifiedDeferredCompensation"]);expect(registryFieldPath("1099-R","grossDistribution")).toEqual(["boxes","grossDistribution"]);});
+  it("publishes all eleven year-pinned form layouts and canonical paths",()=>{expect(Object.keys(formRegistries2025).sort()).toEqual(["1098-T","1099-B","1099-DIV","1099-G","1099-INT","1099-K","1099-MISC","1099-NEC","1099-R","1099-SA","W2"]);expect(registryFieldPath("W2","box1")).toEqual(["federal","box1"]);expect(registryFieldPath("1098-T","paymentsReceived")).toEqual(["boxes","paymentsReceived"]);expect(registryFieldPath("1099-NEC","box3")).toEqual(["boxes","excessGoldenParachutePayments"]);expect(registryFieldPath("1099-MISC","box14")).toEqual(["boxes","nonqualifiedDeferredCompensation"]);expect(registryFieldPath("1099-R","grossDistribution")).toEqual(["boxes","grossDistribution"]);});
   it("captures every numbered 2025 field for the five supported source families",()=>{
     expect(keys("W2")).toEqual(["box1","box2","box3","box4","box5","box6","box7","box8","box9","box10","box11","box12","box13","box14","stateRows","localRows"]);
     expect(keys("1099-NEC")).toEqual(["box1","box2","box3","box4","stateRows"]);
@@ -15,7 +15,8 @@ describe("2025 source form registry",()=>{
     expect(keys("1099-K")).toContain("grossPaymentAmount");
     expect(keys("1099-R")).toEqual(expect.arrayContaining(["grossDistribution","taxableAmount","distributionCode","iraSepSimple","stateRows"]));
     expect(keys("1099-SA")).toEqual(["grossDistribution","earningsOnExcessContributions","distributionCode","fairMarketValueAtDeath","accountType","qualifiedMedicalExpenses"]);
-    for(const formType of ["1099-B","1099-G","1099-K","1099-R","1099-SA"]) expect(formRegistries2025[formType].source_url).toMatch(/^https:\/\/www\.irs\.gov\//);
+    expect(keys("1098-T")).toEqual(["paymentsReceived","priorYearAdjustment","scholarshipsOrGrants","priorYearScholarshipAdjustment","includedNextPeriod","halfTimeStudent","graduateStudent","insuranceContractReimbursements"]);
+    for(const formType of ["1098-T","1099-B","1099-G","1099-K","1099-R","1099-SA"]) expect(formRegistries2025[formType].source_url).toMatch(/^https:\/\/www\.irs\.gov\//);
     expect(formRegistries2025["1099-MISC"].fields.find(({key})=>key==="box11")).toMatchObject({type:"money",label:"Fish purchased for resale"});
   });
   it("validates registered money, boolean, repeatable, and checkbox values while preserving unknown fields",()=>{expect(()=>validateRegisteredSourceData("W2",{federal:{box1:"100.00"},box12:[],box13:{retirementPlan:true},unknownFutureField:{raw:"preserved"}})).not.toThrow();expect(()=>validateRegisteredSourceData("1099-NEC",{boxes:{nonemployeeCompensation:100}})).toThrow("decimal string");expect(()=>validateRegisteredSourceData("1099-DIV",{stateRows:{state:"UT"}})).toThrow("must be an array");});

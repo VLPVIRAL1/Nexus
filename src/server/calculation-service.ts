@@ -4,14 +4,15 @@ import type pg from "pg";
 import { addMoney, asDecimalString, money } from "@/domain/money";
 import { parseActivityForm2025, type ScheduleCFormData2025, type ScheduleEFormData2025, type ScheduleFFormData2025 } from "@/domain/activity-forms-2025";
 import { phase1IntakeQuestions } from "@/domain/intake";
+import { emptyFederalCreditProfile2025, parseFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type FilingStatus2025, type PersonRole2025, type ScheduleAInput2025 } from "@/tax-engine/2025";
 import { emptyScheduleA2025 } from "./return-profile-service";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 
-const engineVersion = "nexus-federal-2025-v3-schedule-cef-review";
-const formRegistryVersion = "2025-supported-forms-v3-schedule-cef-review";
+const engineVersion = "nexus-federal-2025-v4-federal-credits-review";
+const formRegistryVersion = "2025-supported-forms-v4-1098t-credits-review";
 
 export async function runPersistedCalculation(context: AuthorizationContext, clientId: string, year: number, expectedRevision: number) {
   if (year !== 2025) throw new WorkflowError("invalid", "Only the 2025 federal calculation package is available.");
@@ -54,12 +55,13 @@ export async function getCalculationState(context: AuthorizationContext, clientI
 }
 
 async function assembleInput(client: pg.PoolClient, taxYearId: string, revision: number, calculationId: string): Promise<CalculationInput2025> {
-  const [people, answersResult, attestation, dependents, profileResult, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
+  const [people, answersResult, attestation, dependents, profileResult, creditProfileResult, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
     client.query<{ role: string }>("SELECT role FROM people WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ question_id: string; answer: "yes" | "no" | "unknown" }>("SELECT DISTINCT ON (question_id) question_id,answer FROM intake_answers WHERE tax_year_id=$1 ORDER BY question_id,answer_revision DESC", [taxYearId]),
     client.query("SELECT 1 FROM completeness_attestations WHERE tax_year_id=$1 AND tax_year_revision=$2", [taxYearId, revision]),
     client.query<{ id: string; legal_name: string; facts: Record<string, unknown> }>("SELECT id,legal_name,facts FROM dependents WHERE tax_year_id=$1 ORDER BY legal_name,id", [taxYearId]),
     client.query<{ filing_status: FilingStatus2025; filing_status_eligibility_confirmed: boolean; schedule_a: ScheduleAInput2025 }>("SELECT filing_status,filing_status_eligibility_confirmed,schedule_a FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ profile: unknown }>("SELECT profile FROM federal_credit_profiles WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,owner_role,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
     client.query<{ id: string; activity_type: "schedule_c"|"schedule_e"|"schedule_f"; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,activity_type,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type IN ('schedule_c','schedule_e','schedule_f') AND implementation_status='supported' ORDER BY activity_type,name,id", [taxYearId]),
     client.query<{ source_record_id: string; source_field: string; target_type: "schedule_c"|"schedule_e"|"schedule_f"; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.source_field,sm.target_type,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type IN ('schedule_c','schedule_e','schedule_f') AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
@@ -75,6 +77,10 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   unsupportedApplicableTopics.push(...externalBlockers.rows.map(({ code, message }) => `${code}: ${message}`));
   const roles = new Set(people.rows.map(({ role }) => role));
   const profile = profileResult.rows[0];
+  const creditProfile = creditProfileResult.rows[0] ? parseFederalCreditProfile2025(creditProfileResult.rows[0].profile) : emptyFederalCreditProfile2025;
+  if (answer("credits.eitc") === "yes" && !creditProfile.eitc.enabled) unsupportedApplicableTopics.push("EITC intake applies, but the EITC credit interview has not been enabled and completed.");
+  if (answer("credits.dependent_care") === "yes" && !creditProfile.dependentCare.enabled) unsupportedApplicableTopics.push("Dependent-care intake applies, but the Form 2441 profile has not been enabled and completed.");
+  if (answer("credits.education") === "yes" && !creditProfile.education.enabled) unsupportedApplicableTopics.push("Education-credit intake applies, but the Form 8863 profile has not been enabled and completed.");
   const filingStatus = profile?.filing_status ?? (roles.has("spouse") ? "married_filing_jointly" : "single");
   const scheduleA = { ...emptyScheduleA2025, ...(profile?.schedule_a ?? {}) };
   const owner = (role: string): PersonRole2025 => role === "spouse" ? "spouse" : "taxpayer";
@@ -84,6 +90,7 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   };
   const sourcesByType = Map.groupBy(sources.rows, ({ form_type }) => form_type);
   const wages = (sourcesByType.get("W2") ?? []).map((source) => ({ id: source.id, owner: owner(source.owner_role), wages: amountAt(source.normalized_data, ["federal.box1", "box_1_wages_tips_other_compensation", "box1"]), federalWithholding: amountAt(source.normalized_data, ["federal.box2", "box_2_federal_income_tax_withheld", "box2"]), socialSecurityWages: amountAt(source.normalized_data, ["federal.box3", "box_3_social_security_wages", "box3"]), socialSecurityTaxWithheld: amountAt(source.normalized_data, ["federal.box4", "box_4_social_security_tax_withheld", "box4"]), medicareTaxWithheld: amountAt(source.normalized_data, ["federal.box6", "box_6_medicare_tax_withheld", "box6"]) }));
+  const employerDependentCareBenefits = addMoney((sourcesByType.get("W2") ?? []).map((source) => amountAt(source.normalized_data, ["federal.box10", "box_10_dependent_care_benefits", "box10"])));
   const interest = (sourcesByType.get("1099-INT") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryInterest: amountAt(source.normalized_data, ["boxes.interestIncome", "box_1_interest_income"]), treasuryInterest: amountAt(source.normalized_data, ["boxes.usSavingsBondInterest", "box_3_interest_on_us_savings_bonds_and_treasury_obligations"]), taxExemptInterest: amountAt(source.normalized_data, ["boxes.taxExemptInterest", "box_8_tax_exempt_interest"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
   const dividends = (sourcesByType.get("1099-DIV") ?? []).map((source) => ({ id: source.id, payerName: stringAt(source.normalized_data, ["payer.name"]) ?? "Payer not named", ordinaryDividends: amountAt(source.normalized_data, ["boxes.ordinaryDividends", "box_1a_total_ordinary_dividends"]), qualifiedDividends: amountAt(source.normalized_data, ["boxes.qualifiedDividends", "box_1b_qualified_dividends"]), capitalGainDistributions: amountAt(source.normalized_data, ["boxes.capitalGainDistributions", "box_2a_total_capital_gain_distributions"]), exemptInterestDividends: amountAt(source.normalized_data, ["boxes.exemptInterestDividends", "box_12_exempt_interest_dividends"]), section199ADividends: amountAt(source.normalized_data, ["boxes.section199ADividends", "box_5_section_199a_dividends"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding", "box_4_federal_income_tax_withheld"]) }));
   const brokerTransactions = (sourcesByType.get("1099-B") ?? []).map((source) => ({
@@ -133,10 +140,11 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     scheduleA,
     eligibility: {
       fullYearUsResident: answer("identity.full_year_resident") === "yes", claimableAsDependent: answer("identity.claimable_dependent") !== "no", hasDependents: Boolean(dependents.rowCount), taxpayerAge65OrOlder: answer("identity.age_or_blindness") !== "no", taxpayerBlind: answer("identity.age_or_blindness") !== "no", spouseAge65OrOlder: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", spouseBlind: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", usesItemizedDeductions: scheduleA.enabled || answer("deductions.itemize") === "yes", allRequiredIntakeAnswered: phase1IntakeQuestions.every(({ id }) => answers.has(id) && answer(id) !== "unknown"), documentsCompleteAttested: Boolean(attestation.rowCount), unsupportedApplicableTopics,
-      treatmentScreens: { earnedIncomeCredit: screen(answer("deductions.credits")), otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
+      treatmentScreens: { earnedIncomeCredit: "ruled_out", otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
     },
     scheduleBScreening: { foreignAccount: answer("schedule_b.foreign_account"), foreignTrust: answer("schedule_b.foreign_trust"), otherScheduleBTrigger: answer("schedule_b.other_trigger") },
     wages, interest, dividends, scheduleCActivities, scheduleEActivities, scheduleFActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, paymentCardReceipts, hsaDistributions,
+    federalCredits: { ...creditProfile, employerDependentCareBenefits, valid1098TRecordIds: (sourcesByType.get("1098-T") ?? []).map(({ id }) => id) },
     ...(override ? { approvedOverrides: { form1040IncomeTax: override.override_value } } : {}),
   };
 }
@@ -148,6 +156,7 @@ function booleanAt(value: Record<string, unknown>, path: string) { return object
 function addUnsupportedSourceFacts(blockers:string[],sources:Array<{id:string;form_type:string;normalized_data:Record<string,unknown>}>){
   const amountIsPresent=(data:Record<string,unknown>,path:string)=>{const value=objectAtPath(data,path);return (typeof value==="string"||typeof value==="number")&&Number(value)!==0;};
   const fields:Record<string,string[]>={
+    "1098-T":["boxes.priorYearAdjustment","boxes.priorYearScholarshipAdjustment","boxes.insuranceContractReimbursements"],
     "1099-NEC":["boxes.excessGoldenParachutePayments"],
     "1099-INT":["boxes.earlyWithdrawalPenalty","boxes.investmentExpenses","boxes.foreignTaxPaid","boxes.privateActivityBondInterest","boxes.marketDiscount","boxes.bondPremium","boxes.treasuryBondPremium","boxes.taxExemptBondPremium"],
     "1099-DIV":["boxes.unrecaptured1250Gain","boxes.section1202Gain","boxes.collectiblesGain","boxes.section897OrdinaryDividends","boxes.section897CapitalGain","boxes.nondividendDistributions","boxes.investmentExpenses","boxes.foreignTaxPaid","boxes.cashLiquidationDistributions","boxes.noncashLiquidationDistributions","boxes.privateActivityBondInterestDividends"],

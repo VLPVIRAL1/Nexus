@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type pg from "pg";
+import { emptyFederalCreditProfile2025, parseFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import {
   commitImport,
@@ -120,6 +121,7 @@ export async function commitPersistedImport(
     const materializedPeople = await synchronizePeople(client, scope.taxYearId, committed.result);
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
     const profileMaterialized = await synchronizeReturnProfile(client, scope.taxYearId, committed.result);
+    const creditsMaterialized = await synchronizeFederalCredits(client, scope.taxYearId, context.userId, committed.result, "import");
     const materializedActivities = await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, committed.result);
     const materializedMappings = await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, committed.result);
     const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
@@ -129,7 +131,7 @@ export async function commitPersistedImport(
       [batchId, nextRevision, JSON.stringify(effectiveSnapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedPeople, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, mappingBlockers });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedPeople, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, creditsMaterialized, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -160,6 +162,7 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
     );
     await synchronizePeople(client, scope.taxYearId, row.previous_snapshot);
     await synchronizeReturnProfile(client, scope.taxYearId, row.previous_snapshot, true);
+    await synchronizeFederalCredits(client, scope.taxYearId, context.userId, row.previous_snapshot, "rollback", true);
     await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
@@ -241,6 +244,7 @@ function jsonValue(value: unknown): string {
 
 const formTypes = {
   w2: "W2",
+  form_1098_t: "1098-T",
   form_1099_nec: "1099-NEC",
   form_1099_misc: "1099-MISC",
   form_1099_int: "1099-INT",
@@ -525,6 +529,23 @@ async function synchronizeReturnProfile(client: pg.PoolClient, taxYearId: string
   } else if (resetMissing) {
     await client.query("DELETE FROM dependents WHERE tax_year_id=$1", [taxYearId]);
   }
+  return true;
+}
+
+async function synchronizeFederalCredits(client: pg.PoolClient, taxYearId: string, changedById: string, snapshot: Record<string, unknown>, changeSource: "import" | "rollback", resetMissing = false): Promise<boolean> {
+  if (!Object.hasOwn(snapshot, "credits") && !resetMissing) return false;
+  const imported = record(Object.hasOwn(snapshot, "credits") ? snapshot.credits : emptyFederalCreditProfile2025);
+  const profile = parseFederalCreditProfile2025({
+    ...emptyFederalCreditProfile2025, ...imported,
+    eitc: { ...emptyFederalCreditProfile2025.eitc, ...record(imported.eitc) },
+    dependentCare: { ...emptyFederalCreditProfile2025.dependentCare, ...record(imported.dependentCare) },
+    education: { ...emptyFederalCreditProfile2025.education, ...record(imported.education) },
+  });
+  const saved = await client.query<{ version: number }>(`INSERT INTO federal_credit_profiles(tax_year_id,profile,version) VALUES($1,$2::jsonb,1)
+    ON CONFLICT(tax_year_id) DO UPDATE SET profile=EXCLUDED.profile,version=federal_credit_profiles.version+1 RETURNING version`, [taxYearId, JSON.stringify(profile)]);
+  const version = saved.rows[0]?.version;
+  if (!version) throw new Error("Federal credit import did not persist.");
+  await client.query("INSERT INTO federal_credit_profile_revisions(tax_year_id,profile,version,changed_by_id,change_source) VALUES($1,$2::jsonb,$3,$4,$5)", [taxYearId, JSON.stringify(profile), version, changedById, changeSource]);
   return true;
 }
 

@@ -20,6 +20,11 @@ consumed by the expanded profile and the SHA-256 identity of each complete
 official PDF retrieved on October 11, 2026. They do not replace the full IRS
 instructions or independent professional review.
 
+`federal-credits-2025-authority-excerpt.txt` records the EITC, dependent-care
+and education-credit constants consumed by research package 0.5.0 and links to
+IRS Publications 596, 503 and 970 retrieved on October 13, 2026. It likewise
+requires independent professional review before package approval.
+
 To reproduce `../data/tax-table.json`, run:
 
 ```bash

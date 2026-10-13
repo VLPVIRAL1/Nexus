@@ -3,7 +3,7 @@ export interface RuleSource2025 {
   title: string;
   url: string;
   archivedFile: string;
-  retrievedOn: "2026-10-06" | "2026-10-11";
+  retrievedOn: "2026-10-06" | "2026-10-11" | "2026-10-13";
   sha256: string;
 }
 
@@ -28,17 +28,20 @@ export const ruleSources2025: RuleSource2025[] = [
   { id: "irs-1099-misc-nec-instructions-2025", title: "2025 Instructions for Forms 1099-MISC and 1099-NEC", url: "https://www.irs.gov/pub/irs-prior/i1099mec--2025.pdf", archivedFile: "sources/i1099mec--2025.pdf", retrievedOn: "2026-10-06", sha256: "372a0f683aa10650889d4ddcbe96b33bc0998ab31fdbf6e36d2262e3f1542dce" },
   { id: "irs-schedule-a-instructions-2025-excerpt", title: "2025 Schedule A instructions authority excerpt and official PDF identity", url: "https://www.irs.gov/pub/irs-prior/i1040sca--2025.pdf", archivedFile: "sources/i1040sca--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "baaa3de8f6adcc8a3a81dea9809073cd0ab2522e2a36752c5c63e3f894643a40" },
   { id: "irs-schedule-8812-2025-excerpt", title: "2025 Schedule 8812 authority excerpt and official PDF identity", url: "https://www.irs.gov/pub/irs-prior/f1040s8--2025.pdf", archivedFile: "sources/f1040s8--2025-authority-excerpt.txt", retrievedOn: "2026-10-11", sha256: "e1ffcfbf13c4cddd226404c2d808367424952cac3c44f347bb1372dc2f9ee1eb" },
+  { id: "irs-publication-596-2025-excerpt", title: "2025 Earned Income Credit authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p596.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
+  { id: "irs-publication-503-2025-excerpt", title: "2025 Child and Dependent Care Expenses authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p503.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
+  { id: "irs-publication-970-2025-excerpt", title: "2025 Education Benefits authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p970.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
 ];
 
 export const rulePackage2025 = {
-  id: "us-federal-1040-2025-supported-v4-review",
+  id: "us-federal-1040-2025-supported-v5-credits-review",
   taxYear: 2025,
-  version: "0.4.0-research.1",
-  effectiveRevision: "2026-10-11-schedule-c-e-f-activities",
+  version: "0.5.0-research.1",
+  effectiveRevision: "2026-10-13-eitc-dependent-care-education",
   status: "research_unapproved" as const,
   reviewer: null,
   taxTableSha256: "349208c4f25adbdb81cc418c75843364ae15dd36fbe762bc2adf2829a238d10a",
-  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SCHEDULE-C-E-F-2025", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
+  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SCHEDULE-C-E-F-2025", "SUPPORTED-EITC-2025", "SUPPORTED-FORM-2441-2025", "SUPPORTED-FORM-8863-2025", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
   sources: ruleSources2025,
 };
 

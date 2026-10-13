@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
+import { emptyFederalCreditProfile2025 } from "../../src/domain/federal-credits-2025";
 import { canonicalReturnFixture } from "../fixtures/canonical-return";
 import { canonicalTaxReturnSchema } from "../../src/lib/canonical-schema";
 import { createBlankCanonicalTemplate2025, createSupportedReviewExample2025, exportCanonicalJson } from "../../src/services/outputs/json-export-service";
@@ -24,7 +25,7 @@ describe("output integrity foundations", () => {
     const complete = exportCanonicalJson(canonicalReturnFixture, "complete");
     const completePayload = JSON.parse(new TextDecoder().decode(complete.bytes));
     expect(() => canonicalTaxReturnSchema.parse(completePayload)).not.toThrow();
-    expect(completePayload).toMatchObject({ schema_version: "1.0.0", tax_year: 2025, return_type: "1040", taxpayer: { legal_name: "Synthetic Taxpayer", date_of_birth: null, address: {}, facts: {} } });
+    expect(completePayload).toMatchObject({ schema_version: "1.1.0", tax_year: 2025, return_type: "1040", taxpayer: { legal_name: "Synthetic Taxpayer", date_of_birth: null, address: {}, facts: {} } });
     expect(createHash("sha256").update(complete.bytes).digest("hex")).toBe(complete.sha256);
 
     const blank = exportCanonicalJson(canonicalReturnFixture, "blank_template");
@@ -34,7 +35,7 @@ describe("output integrity foundations", () => {
     expect(JSON.stringify(parsed)).not.toContain(canonicalReturnFixture.clientId);
     expect(createHash("sha256").update(blank.bytes).digest("hex")).toBe(blank.sha256);
     expect(parsed._instructions.critical_rules).toContain("Preserve all W-2 Box 12 code entries.");
-    expect(parsed.metadata.supported_source_forms).toEqual(["W-2", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"]);
+    expect(parsed.metadata.supported_source_forms).toEqual(["W-2", "1098-T", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"]);
     expect(createBlankCanonicalTemplate2025()).toEqual(parsed);
   });
 
@@ -116,6 +117,25 @@ describe("output integrity foundations", () => {
     expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "Status", value: "head of household" }), expect.objectContaining({ line: "19" }), expect.objectContaining({ line: "28" })]));
     expect(plan.pages.find(({ formName }) => formName === "Schedule A")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "5e", value: "$17,000" }), expect.objectContaining({ line: "17" })]));
     expect(plan.pages.find(({ formName }) => formName === "Schedule 8812")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4", value: "1" }), expect.objectContaining({ line: "27" })]));
+  });
+
+  it("renders Schedule EIC, Form 2441, Form 8863 and Schedule 3 from calculated credits", () => {
+    const childId = "40000000-0000-4000-8000-000000000001";
+    const calculation = supportedCalculation({
+      filingStatus: "head_of_household", filingStatusEligibilityConfirmed: true,
+      dependents: [{ id: childId, legalName: "Synthetic Child", dateOfBirth: "2015-06-15", relationship: "Child", monthsLivedWithTaxpayer: 12, qualifiesAsDependent: true, qualifiesForChildTaxCredit: true, hasValidSsnForChildTaxCredit: true, qualifiesForOtherDependentCredit: false, eligibilityReviewed: true }],
+      eligibility: { ...supportedCalculationInput().eligibility, hasDependents: true },
+      federalCredits: {
+        ...structuredClone(emptyFederalCreditProfile2025), employerDependentCareBenefits: "0.00", valid1098TRecordIds: ["40000000-0000-4000-8000-000000000006"],
+        eitc: { ...emptyFederalCreditProfile2025.eitc, enabled: true, eligibilityReviewed: true, taxpayerAgeAtYearEnd: 35, taxpayerWorkEligibleIdentifier: true, notQualifyingChildOfAnother: true, noForm2555: true, noPriorDisallowance: true, noCombatPayElection: true, qualifyingChildren: [{ id: "40000000-0000-4000-8000-000000000002", dependentId: childId, relationshipTest: true, ageTest: true, residencyTest: true, jointReturnTest: true, validWorkEligibleIdentifier: true, notClaimedByOther: true, disabilityException: false }] },
+        dependentCare: { ...emptyFederalCreditProfile2025.dependentCare, enabled: true, workRelatedExpensesConfirmed: true, providers: [{ id: "40000000-0000-4000-8000-000000000003", name: "Synthetic Care", address: "1 Test St", tinLast4: "1234", eligibleConfirmed: true, amountPaid: "3000.00" }], qualifyingPersons: [{ id: "40000000-0000-4000-8000-000000000004", dependentId: childId, name: "Synthetic Child", expenses: "3000.00", qualifiesConfirmed: true }] },
+        education: { enabled: true, students: [{ id: "40000000-0000-4000-8000-000000000005", personRole: "taxpayer", dependentId: null, name: "Synthetic Taxpayer", institutionName: "Synthetic University", form1098TRecordId: "40000000-0000-4000-8000-000000000006", creditType: "aotc", qualifiedExpenses: "4000.00", taxFreeAssistance: "0.00", eligibleInstitution: true, firstFourYears: true, atLeastHalfTime: true, degreeCandidate: true, noFelonyDrugConviction: true, priorAotcYears: 0, refundabilityConfirmed: true }] },
+      },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"]));
+    expect(plan.missingForms).toEqual([]);
+    expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "20" }), expect.objectContaining({ line: "27a" }), expect.objectContaining({ line: "29" }), expect.objectContaining({ line: "33" })]));
   });
 });
 
