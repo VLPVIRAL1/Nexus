@@ -61,7 +61,7 @@ jobs:
           grep 'Artifact worker' /tmp/nexus-server.log
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/dashboard
           curl --fail --silent --output /tmp/nexus-template.json http://127.0.0.1:3000/api/templates/2025/1040/canonical.json
-          grep '"schema_version": "1.1.0"' /tmp/nexus-template.json
+          node -e 'const value=JSON.parse(require("node:fs").readFileSync("/tmp/nexus-template.json","utf8"));if(value.schema_version!=="1.4.0"||!Array.isArray(value.forms?.form_ssa_1099)||!Array.isArray(value.forms?.form_rrb_1099))process.exit(1)'
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/imports/new
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/administration/release-closure
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/clients/sample/years/2025
