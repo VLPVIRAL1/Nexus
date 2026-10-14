@@ -73,7 +73,7 @@ describe("output integrity foundations", () => {
     const bytes = await generateWorkpaper({ data, runId: "CALC-SYNTHETIC", calculationStatus: "partial", diagnostics: [], calculationResult, requiredForms: formPlan.requiredForms, renderedForms: formPlan.renderedForms });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer as ArrayBuffer);
-    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Schedule Activities", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Additional Taxes", "Capital Gains", "Premium Tax Credit", "Retirement & IRA", "Raw Source Fields"]);
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Schedule Activities", "Business Workpapers", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Additional Taxes", "Capital Gains", "Premium Tax Credit", "Retirement & IRA", "Raw Source Fields"]);
     expect(workbook.getWorksheet("Cover & Tax Summary")?.getCell("B4").value).toBe("CALC-SYNTHETIC");
     expect(workbook.getWorksheet("Required Forms")?.rowCount).toBeGreaterThan(2);
     expect(workbook.getWorksheet("Calculation Trace")?.rowCount).toBeGreaterThan(2);
@@ -130,7 +130,7 @@ describe("output integrity foundations", () => {
       advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), adjustments, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: [] },
     });
     const plan = buildFormRenderingPlan2025(calculation);
-    expect(calculation.status).toBe("calculated_draft");
+    expect(calculation.status, JSON.stringify(calculation.diagnostics)).toBe("calculated_draft");
     expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8606", "Retirement Distribution Worksheet", "Form 5329", "Schedule 2"]));
     expect(plan.renderedForms).toEqual(expect.arrayContaining(["Form 8606", "Retirement Distribution Worksheet", "Form 5329", "Schedule 2"]));
     expect(plan.pages.find(({ formName }) => formName === "Form 8606")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "13", value: "$2,000" }), expect.objectContaining({ line: "14", value: "$3,000" })]));
@@ -273,6 +273,24 @@ describe("output integrity foundations", () => {
     expect(plan.requiredForms).toEqual(expect.arrayContaining(["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"]));
     expect(plan.missingForms).toEqual([]);
     expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "20" }), expect.objectContaining({ line: "27a" }), expect.objectContaining({ line: "29" }), expect.objectContaining({ line: "33" })]));
+  });
+
+  it("renders Form 8995-A and applicable Schedules A through D without package gaps", () => {
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.qualifiedBusinessIncome = { schemaVersion: "2025.1", enabled: true, priorQualifiedBusinessLoss: "100.00", lossesReviewed: true, aggregationReviewed: true, publiclyTradedPartnershipIncome: "500.00", publiclyTradedPartnershipLossCarryover: "0.00", trades: [{ id: "50000000-0000-4000-8000-000000000091", activityId: "50000000-0000-4000-8000-000000000092", name: "Synthetic consulting", specifiedServiceTradeOrBusiness: true, w2Wages: "10000.00", unadjustedBasisImmediatelyAfterAcquisition: "20000.00", qualifiedIncomeAdjustment: "0.00", patronReduction: "0.00", aggregationGroup: "Synthetic group", classificationReviewed: true }] };
+    adjustments.netInvestmentIncomeTax = { ...adjustments.netInvestmentIncomeTax, enabled: true, applicabilityReviewed: true, classificationsReviewed: true };
+    const eligibility = structuredClone(supportedCalculationInput().eligibility);
+    eligibility.treatmentScreens.netInvestmentIncomeTax = "applies";
+    const calculation = supportedCalculation({
+      eligibility,
+      scheduleCActivities: [{ id: "50000000-0000-4000-8000-000000000092", name: "Synthetic consulting", owner: "taxpayer", grossReceipts: "50000.00", expenses: { supplies: "5000.00" }, qbiEligible: true, selfEmploymentTreatmentConfirmed: true, receiptBasis: "source_plus_additional_receipts" }],
+      retirementDistributions: [{ id: "pension-high", owner: "taxpayer", grossDistribution: "130000.00", taxableAmount: "130000.00", federalWithholding: "0.00", distributionCode: "7", iraSepSimple: false, taxableAmountNotDetermined: false }],
+      advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), adjustments, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: ["50000000-0000-4000-8000-000000000092"] },
+    });
+    expect(calculation.status, JSON.stringify(calculation.diagnostics)).toBe("calculated_draft");
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8995-A", "Form 8995-A Schedule A", "Form 8995-A Schedule B", "Form 8995-A Schedule C", "Form 8995-A Schedule D"]));
+    expect(plan.missingForms).toEqual([]);
   });
 });
 

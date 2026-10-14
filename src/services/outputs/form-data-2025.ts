@@ -167,20 +167,62 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("7", "Gross income", activity.grossIncome, "schedule-c.net-profit"),
     money("28", "Total expenses", activity.expenses, "schedule-c.expenses"),
     money("31", "Net profit or loss", activity.netProfit, "schedule-c.net-profit"),
+    money("31 allowed", "Allowed profit or loss after limitations", activity.allowedNetProfit, "schedule-c.net-profit"),
+    money("Carryforward", "Disallowed loss carried forward", activity.disallowedLossCarryforward, "schedule-c.net-profit"),
   ], `Activity ${index + 1}: ${activity.activityId}`)));
 
-  forms.scheduleE.forEach((activity, index) => pages.push(page("Schedule E", "Supplemental Income and Loss — supported Part I", [
+  forms.scheduleE.forEach((activity, index) => pages.push(page("Schedule E", "Supplemental Income and Loss — Parts I through IV", [
     money("3", "Rents received", activity.rents, "schedule-e.net-income-loss"),
     money("4", "Royalties received", activity.royalties, "schedule-e.net-income-loss"),
     money("20", "Total expenses", activity.expenses, "schedule-e.net-income-loss"),
-    money("26", "Total rental real estate and royalty income or loss", activity.netIncomeOrLoss, "schedule-e.net-income-loss"),
+    money("26", "Part I rental real estate and royalty income or loss", activity.part1IncomeOrLoss, "schedule-e.net-income-loss"),
+    money("32", "Part II partnership and S corporation income or loss", activity.part2IncomeOrLoss, "schedule-e.net-income-loss"),
+    money("37", "Part III estate and trust income or loss", activity.part3IncomeOrLoss, "schedule-e.net-income-loss"),
+    money("40", "Part IV REMIC income or loss", activity.part4IncomeOrLoss, "schedule-e.net-income-loss"),
+    money("41", "Combined income or loss before limitations", activity.netIncomeOrLoss, "schedule-e.net-income-loss"),
+    money("41 allowed", "Allowed Schedule E income or loss", activity.allowedNetIncomeOrLoss, "schedule-e.net-income-loss"),
+    money("Carryforward", "Disallowed rental loss carried forward", activity.disallowedLossCarryforward, "schedule-e.net-income-loss"),
   ], `Activity ${index + 1}: ${activity.activityId}`)));
 
-  forms.scheduleF.forEach((activity, index) => pages.push(page("Schedule F", "Profit or Loss From Farming — supported cash method", [
+  forms.scheduleF.forEach((activity, index) => pages.push(page("Schedule F", `Profit or Loss From Farming — ${activity.accountingMethod} method`, [
     money("9", "Gross farm income", activity.grossIncome, "schedule-f.net-profit"),
     money("33", "Total expenses", activity.expenses, "schedule-f.net-profit"),
     money("34", "Net farm profit or loss", activity.netProfit, "schedule-f.net-profit"),
+    money("34 allowed", "Allowed farm profit or loss after limitations", activity.allowedNetProfit, "schedule-f.net-profit"),
+    money("Carryforward", "Disallowed farm loss carried forward", activity.disallowedLossCarryforward, "schedule-f.net-profit"),
   ], `Activity ${index + 1}: ${activity.activityId}`)));
+
+  forms.form4562.forEach((asset) => pages.push(page("Form 4562", "Depreciation and Amortization — asset workpaper", [
+    money("Basis", "Original basis", asset.basis, "form-4562.depreciation"),
+    money("Business basis", "Business-use basis", asset.businessBasis, "form-4562.depreciation"),
+    money("12", "Section 179 deduction", asset.section179, "form-4562.depreciation"),
+    money("14", "Special depreciation allowance", asset.bonusDepreciation, "form-4562.depreciation"),
+    money("19", "MACRS depreciation", asset.macrsDepreciation, "form-4562.depreciation"),
+    money("Current", "Current-year depreciation", asset.currentDepreciation, "form-4562.depreciation"),
+    money("Accumulated", "Accumulated depreciation", asset.accumulatedDepreciation, "form-4562.depreciation"),
+    money("Disposition", "Disposition gain or loss workpaper", asset.dispositionGainOrLoss, "form-4562.depreciation"),
+  ], `${asset.description} · activity ${asset.activityId}`)));
+  forms.form8829.forEach((office) => pages.push(page("Form 8829", "Expenses for Business Use of Your Home", [
+    text("Method", "Deduction method", office.method, "form-8829.deduction"),
+    text("Area", "Business-use percentage", `${office.areaPercentage}%`, "form-8829.deduction"),
+    money("Tentative", "Tentative deduction", office.tentativeDeduction, "form-8829.deduction"),
+    money("Allowed", "Allowed deduction", office.allowedDeduction, "form-8829.deduction"),
+    money("Carryforward", "Expense carryforward", office.carryforward, "form-8829.deduction"),
+  ], `Activity ${office.activityId}`)));
+  forms.form6198.forEach((loss) => pages.push(page("Form 6198", "At-Risk Limitations — activity workpaper", [
+    text("Schedule", "Source schedule", loss.schedule, "form-6198.allowed-loss"),
+    money("Loss", "Current-year loss", loss.currentLoss, "form-6198.allowed-loss"),
+    money("Prior", "Prior disallowed loss", loss.priorDisallowedLoss, "form-6198.allowed-loss"),
+    money("At risk", "Amount at risk", loss.amountAtRisk, "form-6198.allowed-loss"),
+    money("Allowed", "Allowed loss", loss.allowedLoss, "form-6198.allowed-loss"),
+    money("Carryforward", "Disallowed loss carryforward", loss.carryforward, "form-6198.allowed-loss"),
+  ], `Activity ${loss.activityId}`)));
+  forms.form8582.forEach((loss) => pages.push(page("Form 8582", "Passive Activity Loss Limitations — activity workpaper", [
+    money("Current", "Current passive loss", loss.currentLoss, "form-8582.allowed-loss"),
+    money("Prior", "Prior passive carryover", loss.priorCarryover, "form-8582.allowed-loss"),
+    money("Allowed", "Allowed passive loss", loss.allowedLoss, "form-8582.allowed-loss"),
+    money("Carryforward", "Passive loss carryforward", loss.carryforward, "form-8582.allowed-loss"),
+  ], `${loss.activityName} · ${loss.activityId}`)));
 
   forms.form8949.forEach((transaction, index) => pages.push(page("Form 8949", "Sales and Other Dispositions of Capital Assets — simple review profile", [
       money("1d", "Proceeds", transaction.proceeds, "form-8949.proceeds"),
@@ -328,12 +370,49 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("17", "Net Investment Income Tax", forms.form8960.netInvestmentIncomeTax, "form-8960.net-investment-income-tax"),
   ]));
 
-  if (Number(forms.form8995.deduction) > 0) pages.push(page("Form 8995", "Qualified Business Income Deduction — simplified supported lines", [
+  if (Number(forms.form8995.deduction) > 0 && !forms.form8995A.required) pages.push(page("Form 8995", "Qualified Business Income Deduction — simplified supported lines", [
     money("QBI", "Qualified business income", forms.form8995.qbi, "form-8995.qbi"),
     money("199A", "Section 199A dividends", forms.form8995.section199ADividends, "form-8995.section-199a-dividends"),
     money("Limit", "Income limitation base", forms.form8995.incomeLimitationBase, "form-8995.income-limitation"),
     money("15", "Qualified business income deduction", forms.form8995.deduction, "form-8995.deduction"),
   ]));
+  if (forms.form8995A.required) {
+    pages.push(page("Form 8995-A", "Qualified Business Income Deduction — trade and limitation summary", [
+      money("Threshold", "Filing-status threshold", forms.form8995A.threshold, "form-8995.deduction"),
+      text("Phase-in", "Phase-in percentage", `${forms.form8995A.phaseInPercentage}%`, "form-8995.deduction"),
+      money("Loss", "Prior qualified-business loss", forms.form8995A.priorQualifiedBusinessLoss, "form-8995.deduction"),
+      money("Carryforward", "Qualified-business loss carryforward", forms.form8995A.qualifiedBusinessLossCarryforward, "form-8995.deduction"),
+      money("Trade deduction", "Allowed trade deduction", forms.form8995A.tradeDeduction, "form-8995.deduction"),
+      money("REIT/PTP", "REIT dividend and PTP component", forms.form8995A.reitPtpDeduction, "form-8995.deduction"),
+      money("Income limit", "Taxable-income limitation", forms.form8995A.incomeLimitation, "form-8995.deduction"),
+      money("39", "Qualified business income deduction", forms.form8995A.deduction, "form-8995.deduction"),
+    ]));
+    forms.form8995A.trades.filter((trade) => trade.specifiedServiceTradeOrBusiness).forEach((trade, index) => pages.push(page("Form 8995-A Schedule A", "Specified Service Trades or Businesses and wage/property limitation", [
+      text("Trade", "Trade or business", trade.name, "form-8995.deduction"),
+      text("SSTB", "Specified service trade or business", trade.specifiedServiceTradeOrBusiness ? "Yes" : "No", "form-8995.deduction"),
+      money("QBI", "Qualified business income", trade.qualifiedBusinessIncome, "form-8995.deduction"),
+      money("W-2", "W-2 wages", trade.w2Wages, "form-8995.deduction"),
+      money("UBIA", "Unadjusted basis immediately after acquisition", trade.ubia, "form-8995.deduction"),
+      text("Applicable", "Applicable percentage", `${trade.applicablePercentage}%`, "form-8995.deduction"),
+      money("Limit", "W-2 wage / UBIA limitation", trade.wagePropertyLimit, "form-8995.deduction"),
+      money("Allowed", "Allowed trade deduction", trade.allowedDeduction, "form-8995.deduction"),
+    ], `Trade ${index + 1}: ${trade.id}`)));
+    const aggregationGroups = [...new Set(forms.form8995A.trades.map(({ aggregationGroup }) => aggregationGroup).filter(Boolean))];
+    if (aggregationGroups.length) pages.push(page("Form 8995-A Schedule B", "Aggregation of Business Operations", aggregationGroups.flatMap((group, index) => {
+      const trades = forms.form8995A.trades.filter(({ aggregationGroup }) => aggregationGroup === group);
+      return [text(`${index + 1}`, "Aggregation group", group, "form-8995.deduction"), money(`${index + 1} QBI`, "Aggregated qualified business income", String(trades.reduce((total, trade) => total + Number(trade.qualifiedBusinessIncome), 0)), "form-8995.deduction"), money(`${index + 1} wages`, "Aggregated W-2 wages", String(trades.reduce((total, trade) => total + Number(trade.w2Wages), 0)), "form-8995.deduction"), money(`${index + 1} UBIA`, "Aggregated UBIA", String(trades.reduce((total, trade) => total + Number(trade.ubia), 0)), "form-8995.deduction")];
+    })));
+    if (Number(forms.form8995A.currentQualifiedBusinessLoss) !== 0 || Number(forms.form8995A.priorQualifiedBusinessLoss) !== 0 || Number(forms.form8995A.qualifiedBusinessLossCarryforward) !== 0) pages.push(page("Form 8995-A Schedule C", "Loss Netting and Carryforward", [
+      money("Current", "Current-year qualified-business loss", forms.form8995A.currentQualifiedBusinessLoss, "form-8995.deduction"),
+      money("Prior", "Prior qualified-business loss", forms.form8995A.priorQualifiedBusinessLoss, "form-8995.deduction"),
+      money("Carryforward", "Qualified-business loss carried to 2026", forms.form8995A.qualifiedBusinessLossCarryforward, "form-8995.deduction"),
+    ]));
+    if (Number(forms.form8995A.reitPtpDeduction) !== 0 || Number(forms.form8995A.publiclyTradedPartnershipIncome) !== 0) pages.push(page("Form 8995-A Schedule D", "Special Rules for Patrons and REIT/PTP Components", [
+      money("PTP", "Qualified publicly traded partnership income", forms.form8995A.publiclyTradedPartnershipIncome, "form-8995.deduction"),
+      money("PTP 20%", "Publicly traded partnership deduction", forms.form8995A.publiclyTradedPartnershipDeduction, "form-8995.deduction"),
+      money("REIT/PTP", "Combined REIT dividend and PTP component", forms.form8995A.reitPtpDeduction, "form-8995.deduction"),
+    ]));
+  }
 
   const incomeTaxTrace = output.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax");
   if (incomeTaxTrace?.ruleId === "QD-CAPITAL-GAIN-WORKSHEET") {
@@ -375,6 +454,10 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (forms.scheduleC.length) required.push("Schedule C");
   if (forms.scheduleE.length) required.push("Schedule E");
   if (forms.scheduleF.length) required.push("Schedule F");
+  if (forms.form4562.length) required.push("Form 4562");
+  if (forms.form8829.length) required.push("Form 8829");
+  if (forms.form6198.length) required.push("Form 6198");
+  if (forms.form8582.length) required.push("Form 8582");
   if (forms.form8949.length) required.push("Form 8949");
   if (forms.form8949.length || Number(forms.scheduleD.netGainOrLoss) !== 0) required.push("Schedule D");
   if (forms.capitalGainTaxWorksheet.required) required.push("Schedule D Tax Worksheet");
@@ -385,7 +468,14 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (forms.scheduleSE.length) required.push("Schedule SE", "Schedule 1", "Schedule 2");
   else if (forms.scheduleE.length || forms.scheduleF.length || Object.entries(forms.schedule1).some(([key,value]) => key !== "totalAdjustments" && Number(value) !== 0)) required.push("Schedule 1");
   if (!forms.scheduleSE.length && (Number(forms.schedule2.alternativeMinimumTax) !== 0 || Number(forms.schedule2.additionalMedicareTax) !== 0 || Number(forms.schedule2.netInvestmentIncomeTax) !== 0 || Number(forms.schedule2.additionalRetirementTax) !== 0 || Number(forms.schedule2.additionalHsaTax) !== 0 || Number(forms.schedule2.excessAdvancePtcRepayment) !== 0)) required.push("Schedule 2");
-  if (Number(forms.form8995.deduction) > 0) required.push("Form 8995");
+  if (forms.form8995A.required) {
+    required.push("Form 8995-A");
+    if (forms.form8995A.trades.some(({ specifiedServiceTradeOrBusiness }) => specifiedServiceTradeOrBusiness)) required.push("Form 8995-A Schedule A");
+    if (forms.form8995A.trades.some(({ aggregationGroup }) => Boolean(aggregationGroup))) required.push("Form 8995-A Schedule B");
+    if (Number(forms.form8995A.currentQualifiedBusinessLoss) !== 0 || Number(forms.form8995A.priorQualifiedBusinessLoss) !== 0 || Number(forms.form8995A.qualifiedBusinessLossCarryforward) !== 0) required.push("Form 8995-A Schedule C");
+    if (Number(forms.form8995A.reitPtpDeduction) !== 0 || Number(forms.form8995A.publiclyTradedPartnershipIncome) !== 0) required.push("Form 8995-A Schedule D");
+  }
+  else if (Number(forms.form8995.deduction) > 0) required.push("Form 8995");
   const incomeTaxTrace = output.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax");
   if (incomeTaxTrace?.ruleId === "QD-CAPITAL-GAIN-WORKSHEET") required.push("Qualified Dividends Tax Worksheet");
   return unique(required);

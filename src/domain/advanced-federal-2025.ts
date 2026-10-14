@@ -118,6 +118,19 @@ const capitalTransactionTreatment = z.object({
   adjustmentReviewed: z.boolean(),
 }).strict();
 
+const qbiTrade = z.object({
+  id: uuid,
+  activityId: uuid.nullable(),
+  name: z.string().trim().min(1).max(200),
+  specifiedServiceTradeOrBusiness: z.boolean(),
+  w2Wages: money,
+  unadjustedBasisImmediatelyAfterAcquisition: money,
+  qualifiedIncomeAdjustment: z.string().regex(/^-?\d+\.\d{2}$/),
+  patronReduction: money,
+  aggregationGroup: z.string().trim().max(100),
+  classificationReviewed: z.boolean(),
+}).strict();
+
 export const adjustmentProfileSchema2025 = z.object({
   schemaVersion: z.literal("2025.1"),
   educator: z.object({ enabled: z.boolean(), expenses: ownerAdjustment, reimbursements: ownerAdjustment, eligible: ownerBoolean }).strict(),
@@ -133,6 +146,10 @@ export const adjustmentProfileSchema2025 = z.object({
     shortTermLossCarryover: money, longTermLossCarryover: money, carryoverSourceYear: z.number().int().min(1900).max(2024).nullable(),
     treatments: z.array(capitalTransactionTreatment).max(2000),
   }).strict().default({ schemaVersion: "2025.1", enabled: false, carryoversReviewed: false, shortTermLossCarryover: "0.00", longTermLossCarryover: "0.00", carryoverSourceYear: null, treatments: [] }),
+  qualifiedBusinessIncome: z.object({
+    schemaVersion: z.literal("2025.1"), enabled: z.boolean(), priorQualifiedBusinessLoss: money, lossesReviewed: z.boolean(), aggregationReviewed: z.boolean(),
+    publiclyTradedPartnershipIncome: z.string().regex(/^-?\d+\.\d{2}$/), publiclyTradedPartnershipLossCarryover: money, trades: z.array(qbiTrade).max(200),
+  }).strict().default({ schemaVersion: "2025.1", enabled: false, priorQualifiedBusinessLoss: "0.00", lossesReviewed: false, aggregationReviewed: false, publiclyTradedPartnershipIncome: "0.00", publiclyTradedPartnershipLossCarryover: "0.00", trades: [] }),
   studentLoan: z.object({ enabled: z.boolean(), interestPaid: money, form1098ERecordId: uuid.nullable(), eligibilityReviewed: z.boolean() }).strict(),
   hsa: z.object({
     enabled: z.boolean(), owner: z.enum(["taxpayer", "spouse"]), coverageType: z.enum(["self", "family"]), eligibleMonths: z.number().int().min(0).max(12),
@@ -262,6 +279,7 @@ export const emptyAdjustmentProfile2025: AdjustmentProfile2025 = {
   },
   retirementDistributions: { schemaVersion: "2025.1", enabled: false, allSourceRecordsReviewed: false, treatments: [] },
   capitalGains: { schemaVersion: "2025.1", enabled: false, carryoversReviewed: false, shortTermLossCarryover: "0.00", longTermLossCarryover: "0.00", carryoverSourceYear: null, treatments: [] },
+  qualifiedBusinessIncome: { schemaVersion: "2025.1", enabled: false, priorQualifiedBusinessLoss: "0.00", lossesReviewed: false, aggregationReviewed: false, publiclyTradedPartnershipIncome: "0.00", publiclyTradedPartnershipLossCarryover: "0.00", trades: [] },
   studentLoan: { enabled: false, interestPaid: "0.00", form1098ERecordId: null, eligibilityReviewed: false },
   hsa: { enabled: false, owner: "taxpayer", coverageType: "self", eligibleMonths: 0, age55OrOlder: false, personalContributions: "0.00", employerContributions: "0.00", qualifiedDistributions: "0.00", nonqualifiedDistributions: "0.00", excessContributions: "0.00", lastMonthRuleUsed: false, testingPeriodSatisfied: false, additionalTaxException: "none", additionalTaxExceptionReviewed: false },
   selfEmployedHealthInsurance: { enabled: false, premiums: "0.00", activityId: null, employerEligibleMonths: 0, eligibilityReviewed: false },

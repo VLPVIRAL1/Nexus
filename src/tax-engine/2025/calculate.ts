@@ -4,6 +4,7 @@ import { resolveDependencyGraph } from "../dependency-graph";
 import { calculateAdjustments2025, calculatePayments2025, calculatePremiumTaxCredit2025, validateDueDiligence2025 } from "./advanced-federal";
 import { calculateAlternativeMinimumTax2025 } from "./alternative-minimum-tax";
 import { calculateAdditionalMedicareTax2025, calculateNetInvestmentIncomeTax2025 } from "./additional-taxes";
+import { calculateComplexQbi2025, calculateDepreciation2025, calculateHomeOffice2025, calculateVehicleDeduction2025, limitBusinessLoss2025 } from "./business";
 import { calculateFederalCredits2025 } from "./federal-credits";
 import { amount, dollars, nonnegative, sum, whole } from "./math";
 import { constants2025, rulePackage2025 } from "./rule-package";
@@ -186,48 +187,73 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     const returnsAndAllowances = whole(read(activity.returnsAndAllowances ?? "0.00", `scheduleCActivities.${activityIndex}.returnsAndAllowances`));
     const costOfGoodsSold = whole(read(activity.costOfGoodsSold ?? "0.00", `scheduleCActivities.${activityIndex}.costOfGoodsSold`));
     const otherIncome = whole(read(activity.otherIncome ?? "0.00", `scheduleCActivities.${activityIndex}.otherIncome`));
-    const expenses = whole(sum([...Object.entries(activity.expenses).map(([category, value]) => read(value ?? "0", `scheduleCActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses ?? "0.00", `scheduleCActivities.${activityIndex}.otherExpenses`), read(activity.homeOfficeDeduction ?? "0.00", `scheduleCActivities.${activityIndex}.homeOfficeDeduction`)]));
     const grossIncome = grossReceipts.minus(returnsAndAllowances).minus(costOfGoodsSold).plus(otherIncome);
-    const netProfit = grossIncome.minus(expenses);
-    if (activity.accountingMethod && activity.accountingMethod !== "cash") blocking("SCHEDULE_C_ACCOUNTING_METHOD_UNSUPPORTED", "The supported Schedule C calculation profile requires the cash method.", `scheduleCActivities.${activityIndex}.accountingMethod`);
-    if (activity.vehicleUsed) blocking("SCHEDULE_C_VEHICLE_FORM_UNSUPPORTED", "Vehicle facts are preserved, but the vehicle deduction and Part IV require a linked calculation module.", `scheduleCActivities.${activityIndex}.vehicleUsed`);
-    if (activity.homeOfficeClaimed) blocking("SCHEDULE_C_HOME_OFFICE_FORM_UNSUPPORTED", "Home-office facts are preserved, but Form 8829 or the simplified-method worksheet is not yet calculated.", `scheduleCActivities.${activityIndex}.homeOfficeClaimed`);
-    if (netProfit.isNegative()) {
-      blocking("SCHEDULE_C_LOSS_UNSUPPORTED", "The supported Schedule C profile requires nonnegative profit.", `scheduleCActivities.${activityIndex}`);
-    }
-    if (!activity.qbiEligible) {
-      blocking("QBI_TREATMENT_UNSUPPORTED", "A supported Schedule C activity must have confirmed simplified QBI eligibility.", `scheduleCActivities.${activityIndex}.qbiEligible`);
-    }
+    const depreciation = calculateDepreciation2025({ activityId: activity.id, assets: activity.assets ?? [], path: `scheduleCActivities.${activityIndex}.assets`, block: blocking });
+    const vehicleDeduction = calculateVehicleDeduction2025(activity.vehicle, `scheduleCActivities.${activityIndex}.vehicle`, blocking);
+    const baseExpenses = whole(sum([...Object.entries(activity.expenses).filter(([category]) => category !== "carAndTruck" && category !== "depreciationAndSection179").map(([category, value]) => read(value ?? "0", `scheduleCActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses ?? "0.00", `scheduleCActivities.${activityIndex}.otherExpenses`)]));
+    const enteredVehicle = read(activity.expenses.carAndTruck ?? "0.00", `scheduleCActivities.${activityIndex}.expenses.carAndTruck`);
+    const enteredDepreciation = read(activity.expenses.depreciationAndSection179 ?? "0.00", `scheduleCActivities.${activityIndex}.expenses.depreciationAndSection179`);
+    if (activity.vehicle?.used && !enteredVehicle.isZero() && !enteredVehicle.eq(vehicleDeduction)) blocking("VEHICLE_DEDUCTION_RECONCILIATION_REQUIRED", "The Schedule C car and truck line must be zero or equal the structured vehicle workpaper deduction.", `scheduleCActivities.${activityIndex}.expenses.carAndTruck`);
+    if ((activity.assets?.length ?? 0) > 0 && !enteredDepreciation.isZero() && !enteredDepreciation.eq(depreciation.currentDepreciation)) blocking("DEPRECIATION_RECONCILIATION_REQUIRED", "The Schedule C depreciation line must be zero or equal Form 4562 computed depreciation.", `scheduleCActivities.${activityIndex}.expenses.depreciationAndSection179`);
+    const effectiveVehicle = activity.vehicle?.used ? vehicleDeduction : enteredVehicle;
+    const effectiveDepreciation = (activity.assets?.length ?? 0) > 0 ? depreciation.currentDepreciation : enteredDepreciation;
+    const profitBeforeHomeOffice = whole(grossIncome.minus(baseExpenses).minus(effectiveVehicle).minus(effectiveDepreciation));
+    const homeOffice = calculateHomeOffice2025({ activityId: activity.id, input: activity.homeOffice, profitBeforeHomeOffice, path: `scheduleCActivities.${activityIndex}.homeOffice`, block: blocking });
+    const expenses = whole(baseExpenses.plus(effectiveVehicle).plus(effectiveDepreciation).plus(homeOffice.allowedDeduction));
+    const netProfit = whole(grossIncome.minus(expenses));
+    const loss = activity.lossLimitations;
+    const limited = limitBusinessLoss2025({ currentResult: netProfit, priorDisallowedLoss: read(loss?.priorDisallowedLoss ?? "0.00", `scheduleCActivities.${activityIndex}.lossLimitations.priorDisallowedLoss`), reviewed: loss?.reviewed === true, limits: [read(loss?.amountAtRisk ?? "0.00", `scheduleCActivities.${activityIndex}.lossLimitations.amountAtRisk`), read(loss?.excessBusinessLossLimit ?? "0.00", `scheduleCActivities.${activityIndex}.lossLimitations.excessBusinessLossLimit`)], path: `scheduleCActivities.${activityIndex}.lossLimitations`, block: blocking });
+    if (activity.accountingMethod === "other") blocking("SCHEDULE_C_ACCOUNTING_METHOD_DETAIL_REQUIRED", "An other Schedule C accounting method needs a reviewed tax-method workpaper.", `scheduleCActivities.${activityIndex}.accountingMethod`);
+    if (activity.qbiEligible == null) blocking("QBI_TREATMENT_REQUIRED", "Confirm whether the Schedule C activity is eligible for the QBI deduction.", `scheduleCActivities.${activityIndex}.qbiEligible`);
     if (activity.selfEmploymentTreatmentConfirmed === false) blocking("SCHEDULE_C_SE_TREATMENT_UNCONFIRMED", "Schedule C self-employment treatment must be confirmed.", `scheduleCActivities.${activityIndex}.selfEmploymentTreatmentConfirmed`);
-    return { activity, grossReceipts, returnsAndAllowances, costOfGoodsSold, grossIncome, expenses, netProfit };
+    return { activity, grossReceipts, returnsAndAllowances, costOfGoodsSold, grossIncome, expenses, vehicleDeduction: effectiveVehicle, homeOffice, depreciation, netProfit, allowedNetProfit: limited.allowedResult, lossLimitation: limited };
   });
   const scheduleE = (input.scheduleEActivities ?? []).map((activity, activityIndex) => {
     const rents = whole(read(activity.rentsReceived, `scheduleEActivities.${activityIndex}.rentsReceived`));
     const royalties = whole(read(activity.royaltiesReceived, `scheduleEActivities.${activityIndex}.royaltiesReceived`));
-    const expenses = whole(sum([...Object.entries(activity.expenses).map(([category, value]) => read(value ?? "0", `scheduleEActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses, `scheduleEActivities.${activityIndex}.otherExpenses`)]));
-    const netIncomeOrLoss = rents.plus(royalties).minus(expenses);
-    if (activity.personalUseDays > 0) blocking("SCHEDULE_E_PERSONAL_USE_ALLOCATION_REQUIRED", "Rental property with personal-use days requires allocation and vacation-home rules outside the supported profile.", `scheduleEActivities.${activityIndex}.personalUseDays`);
-    if (["vacation_short_term", "self_rental", "other"].includes(activity.propertyType)) blocking("SCHEDULE_E_PROPERTY_PROFILE_UNSUPPORTED", "Vacation/short-term, self-rental, or unclassified property requires treatment outside the supported simple rental/royalty profile.", `scheduleEActivities.${activityIndex}.propertyType`);
-    if (activity.qualifiedJointVenture !== false) blocking("SCHEDULE_E_QJV_REVIEW_REQUIRED", "Confirm that the activity is not a qualified joint venture; qualified joint venture treatment requires separate spouse reporting outside the supported profile.", `scheduleEActivities.${activityIndex}.qualifiedJointVenture`);
-    if (activity.supplementalActivityCount > 0 || activity.remicInterestCount > 0) blocking("SCHEDULE_E_PARTS_II_IV_UNSUPPORTED", "Schedule E Parts II through IV are captured but require pass-through, estate/trust, or REMIC calculation support.", `scheduleEActivities.${activityIndex}`);
-    if (activity.allInvestmentAtRisk !== true || activity.passiveLossRulesReviewed !== true) blocking("SCHEDULE_E_LIMITATION_REVIEW_REQUIRED", "Schedule E at-risk and passive-activity treatment must be reviewed before calculation.", `scheduleEActivities.${activityIndex}`);
-    if (Number(activity.expenses.depreciation ?? 0) !== 0 && activity.depreciationReviewed !== true) blocking("SCHEDULE_E_DEPRECIATION_REVIEW_REQUIRED", "A reviewed depreciation amount and linked basis workpaper are required.", `scheduleEActivities.${activityIndex}.expenses.depreciation`);
+    const depreciation = calculateDepreciation2025({ activityId: activity.id, assets: activity.assets ?? [], path: `scheduleEActivities.${activityIndex}.assets`, block: blocking });
+    const enteredDepreciation = read(activity.expenses.depreciation ?? "0.00", `scheduleEActivities.${activityIndex}.expenses.depreciation`);
+    if ((activity.assets?.length ?? 0) > 0 && !enteredDepreciation.isZero() && !enteredDepreciation.eq(depreciation.currentDepreciation)) blocking("DEPRECIATION_RECONCILIATION_REQUIRED", "The Schedule E depreciation line must be zero or equal Form 4562 computed depreciation.", `scheduleEActivities.${activityIndex}.expenses.depreciation`);
+    const effectiveDepreciation = (activity.assets?.length ?? 0) > 0 ? depreciation.currentDepreciation : enteredDepreciation;
+    const expenses = whole(sum([...Object.entries(activity.expenses).filter(([category]) => category !== "depreciation").map(([category, value]) => read(value ?? "0", `scheduleEActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses, `scheduleEActivities.${activityIndex}.otherExpenses`), effectiveDepreciation]));
+    const part1IncomeOrLoss = whole(rents.plus(royalties).minus(expenses));
+    if (activity.personalUseDays > 0 && activity.personalUseAllocationReviewed !== true) blocking("SCHEDULE_E_PERSONAL_USE_ALLOCATION_REQUIRED", "Rental property with personal-use days requires a reviewed expense-allocation workpaper.", `scheduleEActivities.${activityIndex}.personalUseAllocationReviewed`);
+    if (activity.qualifiedJointVenture == null) blocking("SCHEDULE_E_QJV_REVIEW_REQUIRED", "Review qualified-joint-venture treatment for this property.", `scheduleEActivities.${activityIndex}.qualifiedJointVenture`);
+    if (Number(activity.expenses.depreciation ?? 0) !== 0 && activity.depreciationReviewed !== true && !(activity.assets?.length)) blocking("SCHEDULE_E_DEPRECIATION_REVIEW_REQUIRED", "An entered depreciation amount requires a reviewed basis workpaper or structured assets.", `scheduleEActivities.${activityIndex}.expenses.depreciation`);
     if (activity.rentalQbiEligible == null) blocking("SCHEDULE_E_QBI_TREATMENT_REQUIRED", "Confirm whether this rental or royalty activity is a qualified trade or business for QBI.", `scheduleEActivities.${activityIndex}.rentalQbiEligible`);
-    if (netIncomeOrLoss.isNegative()) blocking("SCHEDULE_E_LOSS_LIMITATION_UNSUPPORTED", "A Schedule E loss requires passive, basis, and at-risk limitation calculations outside the supported profile.", `scheduleEActivities.${activityIndex}`);
-    return { activity, rents, royalties, expenses, netIncomeOrLoss };
+    const entityRows = [...(activity.partnershipsAndSCorporations ?? []), ...(activity.estatesAndTrusts ?? [])].map((row, rowIndex) => {
+      const raw = readSigned(row.incomeOrLoss, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.incomeOrLoss`);
+      const limited = limitBusinessLoss2025({ currentResult: raw, priorDisallowedLoss: read(row.priorPassiveCarryover, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.priorPassiveCarryover`), reviewed: row.basisAndAtRiskReviewed, limits: [read(row.basisLimit, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.basisLimit`), read(row.atRiskLimit, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.atRiskLimit`), row.passive === false ? raw.abs().plus(read(row.priorPassiveCarryover, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.priorPassiveCarryover`)) : read(row.passiveLossAllowed, `scheduleEActivities.${activityIndex}.entities.${rowIndex}.passiveLossAllowed`)], path: `scheduleEActivities.${activityIndex}.entities.${rowIndex}`, block: blocking });
+      return { row, raw, ...limited };
+    });
+    const part2IncomeOrLoss = whole(sum(entityRows.slice(0, activity.partnershipsAndSCorporations?.length ?? 0).map(({ allowedResult }) => allowedResult)));
+    const part3IncomeOrLoss = whole(sum(entityRows.slice(activity.partnershipsAndSCorporations?.length ?? 0).map(({ allowedResult }) => allowedResult)));
+    const part4IncomeOrLoss = whole(sum((activity.remicInterests ?? []).flatMap((row, rowIndex) => [read(row.excessInclusion, `scheduleEActivities.${activityIndex}.remicInterests.${rowIndex}.excessInclusion`), readSigned(row.taxableIncomeOrLoss, `scheduleEActivities.${activityIndex}.remicInterests.${rowIndex}.taxableIncomeOrLoss`)])));
+    const propertyLimits = activity.lossLimitations;
+    const propertyLimited = limitBusinessLoss2025({ currentResult: part1IncomeOrLoss, priorDisallowedLoss: read(propertyLimits?.priorPassiveCarryover ?? "0.00", `scheduleEActivities.${activityIndex}.lossLimitations.priorPassiveCarryover`), reviewed: propertyLimits?.reviewed === true && activity.passiveLossRulesReviewed === true, limits: [read(propertyLimits?.basisLimit ?? "0.00", `scheduleEActivities.${activityIndex}.lossLimitations.basisLimit`), read(propertyLimits?.atRiskLimit ?? "0.00", `scheduleEActivities.${activityIndex}.lossLimitations.atRiskLimit`), read(propertyLimits?.passiveLossAllowed ?? "0.00", `scheduleEActivities.${activityIndex}.lossLimitations.passiveLossAllowed`)], path: `scheduleEActivities.${activityIndex}.lossLimitations`, block: blocking });
+    const netIncomeOrLoss = whole(part1IncomeOrLoss.plus(sum(entityRows.map(({ raw }) => raw))).plus(part4IncomeOrLoss));
+    const allowedNetIncomeOrLoss = whole(propertyLimited.allowedResult.plus(part2IncomeOrLoss).plus(part3IncomeOrLoss).plus(part4IncomeOrLoss));
+    return { activity, rents, royalties, expenses, depreciation, part1IncomeOrLoss, part2IncomeOrLoss, part3IncomeOrLoss, part4IncomeOrLoss, netIncomeOrLoss, allowedNetIncomeOrLoss, propertyLossLimitation: propertyLimited, entityRows };
   });
   const scheduleF = (input.scheduleFActivities ?? []).map((activity, activityIndex) => {
     const income = Object.fromEntries(Object.entries(activity.income).map(([key, value]) => [key, read(value ?? "0", `scheduleFActivities.${activityIndex}.income.${key}`)])) as Record<string, Decimal>;
-    const grossIncome = whole(sum([income.livestockSalesPurchased?.minus(income.livestockCostOrBasis ?? 0) ?? 0, income.livestockProduceSales ?? 0, income.cooperativeTaxable ?? 0, income.agriculturalProgramTaxable ?? 0, income.cccLoansReportedElection ?? 0, income.cccLoansTaxable ?? 0, income.cropInsuranceTaxable ?? 0, income.customHireIncome ?? 0, income.otherIncome ?? 0]));
-    const expenses = whole(sum([...Object.entries(activity.expenses).map(([category, value]) => read(value ?? "0", `scheduleFActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses, `scheduleFActivities.${activityIndex}.otherExpenses`)]));
-    const netProfit = grossIncome.minus(expenses);
-    if (activity.accountingMethod !== "cash" || Object.values(activity.accrualAmounts).some((value) => Number(value) !== 0)) blocking("SCHEDULE_F_ACCRUAL_METHOD_UNSUPPORTED", "Accrual-method Schedule F amounts are preserved, but Part III calculation is outside the supported profile.", `scheduleFActivities.${activityIndex}.accountingMethod`);
+    const cashGrossIncome = whole(sum([income.livestockSalesPurchased?.minus(income.livestockCostOrBasis ?? 0) ?? 0, income.livestockProduceSales ?? 0, income.cooperativeTaxable ?? 0, income.agriculturalProgramTaxable ?? 0, income.cccLoansReportedElection ?? 0, income.cccLoansTaxable ?? 0, income.cropInsuranceTaxable ?? 0, income.customHireIncome ?? 0, income.otherIncome ?? 0]));
+    const accrual = Object.fromEntries(Object.entries(activity.accrualAmounts).map(([key, value]) => [key, read(value ?? "0", `scheduleFActivities.${activityIndex}.accrualAmounts.${key}`)])) as Record<string, Decimal>;
+    const accrualGrossIncome = whole(sum([accrual.livestockProduceSales ?? 0, accrual.endingInventory ?? 0, accrual.otherAccrualIncome ?? 0]).minus(sum([accrual.beginningInventory ?? 0, accrual.purchases ?? 0, accrual.costOfItemsWithdrawn ?? 0])));
+    const grossIncome = activity.accountingMethod === "accrual" ? accrualGrossIncome : cashGrossIncome;
+    const depreciation = calculateDepreciation2025({ activityId: activity.id, assets: activity.assets ?? [], path: `scheduleFActivities.${activityIndex}.assets`, block: blocking });
+    const enteredDepreciation = read(activity.expenses.depreciationAndSection179 ?? "0.00", `scheduleFActivities.${activityIndex}.expenses.depreciationAndSection179`);
+    if ((activity.assets?.length ?? 0) > 0 && !enteredDepreciation.isZero() && !enteredDepreciation.eq(depreciation.currentDepreciation)) blocking("DEPRECIATION_RECONCILIATION_REQUIRED", "The Schedule F depreciation line must be zero or equal Form 4562 computed depreciation.", `scheduleFActivities.${activityIndex}.expenses.depreciationAndSection179`);
+    const effectiveDepreciation = (activity.assets?.length ?? 0) > 0 ? depreciation.currentDepreciation : enteredDepreciation;
+    const expenses = whole(sum([...Object.entries(activity.expenses).filter(([category]) => category !== "depreciationAndSection179").map(([category, value]) => read(value ?? "0", `scheduleFActivities.${activityIndex}.expenses.${category}`)), read(activity.otherExpenses, `scheduleFActivities.${activityIndex}.otherExpenses`), effectiveDepreciation]));
+    const netProfit = whole(grossIncome.minus(expenses));
     if (activity.materiallyParticipated !== true) blocking("SCHEDULE_F_MATERIAL_PARTICIPATION_REQUIRED", "The supported Schedule F profile requires confirmed material participation.", `scheduleFActivities.${activityIndex}.materiallyParticipated`);
     if (Number(activity.income.cropInsuranceDeferred ?? 0) !== 0 && activity.cropInsuranceElectionReviewed !== true) blocking("SCHEDULE_F_CROP_INSURANCE_ELECTION_REVIEW_REQUIRED", "Deferred crop-insurance proceeds require a reviewed election.", `scheduleFActivities.${activityIndex}.income.cropInsuranceDeferred`);
-    if (activity.qbiEligible !== true) blocking("SCHEDULE_F_QBI_TREATMENT_REQUIRED", "A supported Schedule F activity requires confirmed simplified QBI eligibility.", `scheduleFActivities.${activityIndex}.qbiEligible`);
+    if (activity.qbiEligible == null) blocking("SCHEDULE_F_QBI_TREATMENT_REQUIRED", "Confirm whether the Schedule F activity is eligible for QBI.", `scheduleFActivities.${activityIndex}.qbiEligible`);
     if (activity.selfEmploymentTreatmentConfirmed !== true) blocking("SCHEDULE_F_SE_TREATMENT_REQUIRED", "Schedule F self-employment treatment must be confirmed.", `scheduleFActivities.${activityIndex}.selfEmploymentTreatmentConfirmed`);
-    if (netProfit.isNegative()) blocking("SCHEDULE_F_LOSS_LIMITATION_UNSUPPORTED", "A Schedule F loss requires limitation and carryover support outside the supported profile.", `scheduleFActivities.${activityIndex}`);
-    return { activity, grossIncome, expenses, netProfit };
+    const loss = activity.lossLimitations;
+    const limited = limitBusinessLoss2025({ currentResult: netProfit, priorDisallowedLoss: read(loss?.priorDisallowedLoss ?? "0.00", `scheduleFActivities.${activityIndex}.lossLimitations.priorDisallowedLoss`), reviewed: loss?.reviewed === true, limits: [read(loss?.amountAtRisk ?? "0.00", `scheduleFActivities.${activityIndex}.lossLimitations.amountAtRisk`), read(loss?.excessFarmLossLimit ?? "0.00", `scheduleFActivities.${activityIndex}.lossLimitations.excessFarmLossLimit`)], path: `scheduleFActivities.${activityIndex}.lossLimitations`, block: blocking });
+    return { activity, grossIncome, expenses, depreciation, netProfit, allowedNetProfit: limited.allowedResult, lossLimitation: limited };
   });
   const businessWithholding = input.businessWithholding.map((entry, index) => read(entry.federalWithholding, `businessWithholding.${index}.federalWithholding`));
 
@@ -244,10 +270,10 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const ordinaryDividends = whole(sum(dividends.map(({ ordinaryAmount }) => ordinaryAmount)));
   const qualifiedDividends = whole(sum(dividends.map(({ qualifiedAmount }) => qualifiedAmount)));
   const section199ADividends = whole(sum(dividends.map(({ section199AAmount }) => section199AAmount)));
-  const businessIncome = whole(sum(scheduleC.map(({ netProfit }) => netProfit)));
-  const rentalRealEstateRoyalties = whole(sum(scheduleE.map(({ netIncomeOrLoss }) => netIncomeOrLoss)));
-  const farmIncome = whole(sum(scheduleF.map(({ netProfit }) => netProfit)));
-  const qbiActivityIncome = whole(businessIncome.plus(farmIncome).plus(sum(scheduleE.filter(({ activity }) => activity.rentalQbiEligible === true).map(({ netIncomeOrLoss }) => netIncomeOrLoss))));
+  const businessIncome = whole(sum(scheduleC.map(({ allowedNetProfit }) => allowedNetProfit)));
+  const rentalRealEstateRoyalties = whole(sum(scheduleE.map(({ allowedNetIncomeOrLoss }) => allowedNetIncomeOrLoss)));
+  const farmIncome = whole(sum(scheduleF.map(({ allowedNetProfit }) => allowedNetProfit)));
+  const qbiActivityIncome = whole(sum(scheduleC.filter(({ activity }) => activity.qbiEligible === true).map(({ allowedNetProfit }) => allowedNetProfit)).plus(sum(scheduleF.filter(({ activity }) => activity.qbiEligible === true).map(({ allowedNetProfit }) => allowedNetProfit))).plus(sum(scheduleE.filter(({ activity }) => activity.rentalQbiEligible === true).map(({ allowedNetIncomeOrLoss }) => allowedNetIncomeOrLoss))));
   const shortTermCarryover = capitalProfile.enabled ? whole(read(capitalProfile.shortTermLossCarryover, "advancedFederal.adjustments.capitalGains.shortTermLossCarryover")) : new Decimal(0);
   const longTermCarryover = capitalProfile.enabled ? whole(read(capitalProfile.longTermLossCarryover, "advancedFederal.adjustments.capitalGains.longTermLossCarryover")) : new Decimal(0);
   if ((shortTermCarryover.gt(0) || longTermCarryover.gt(0)) && capitalProfile.carryoverSourceYear == null) blocking("CAPITAL_CARRYOVER_SOURCE_YEAR_REQUIRED", "Capital-loss carryovers require their source tax year.", "advancedFederal.adjustments.capitalGains.carryoverSourceYear");
@@ -284,7 +310,7 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const scheduleSE = roles
     .filter((owner) => input.filingStatus === "married_filing_jointly" || owner === "taxpayer")
     .map((owner) => {
-      const ownerProfit = whole(sum([...scheduleC.filter(({ activity }) => activity.owner === owner).map(({ netProfit }) => netProfit), ...scheduleF.filter(({ activity }) => activity.owner === owner).map(({ netProfit }) => netProfit)]));
+      const ownerProfit = whole(sum([...scheduleC.filter(({ activity }) => activity.owner === owner).map(({ allowedNetProfit }) => allowedNetProfit), ...scheduleF.filter(({ activity }) => activity.owner === owner).map(({ allowedNetProfit }) => allowedNetProfit)]));
       const ownerSocialSecurityWages = whole(sum(wages.filter((wage) => wage.owner === owner).map(({ socialSecurityWageAmount }) => socialSecurityWageAmount)));
       return calculateScheduleSE2025(owner, ownerProfit, ownerSocialSecurityWages);
     })
@@ -359,19 +385,45 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const deductionUsed = usesScheduleA ? totalItemizedDeductions : standardDeduction;
   const taxableBeforeQbi = nonnegative(whole(adjustedGrossIncome.minus(deductionUsed)));
 
-  if (taxableBeforeQbi.gt(constants2025.qbiSimplifiedThreshold[input.filingStatus]) && (qbiActivityIncome.gt(0) || section199ADividends.gt(0))) {
-    blocking("FORM_8995_A_REQUIRED", "Taxable income exceeds the simplified Form 8995 threshold; Form 8995-A is outside Phase 1.", "forms.form8995");
-    return blockedOutput(input, diagnostics, trace);
+  const qbiProfile = advancedFederal.adjustments.qualifiedBusinessIncome;
+  const complexQbiRequired = taxableBeforeQbi.gt(constants2025.qbiSimplifiedThreshold[input.filingStatus]) && (qbiActivityIncome.gt(0) || section199ADividends.gt(0));
+  if (complexQbiRequired && !qbiProfile.enabled) blocking("FORM_8995_A_PROFILE_REQUIRED", "Taxable income exceeds the simplified Form 8995 threshold; enable and complete the Form 8995-A trade profile.", "advancedFederal.adjustments.qualifiedBusinessIncome");
+  const eligibleActivityIncome = new Map<string, Decimal>([
+    ...scheduleC.filter(({ activity }) => activity.qbiEligible === true).map(({ activity, allowedNetProfit }) => [activity.id, allowedNetProfit] as const),
+    ...scheduleE.filter(({ activity }) => activity.rentalQbiEligible === true).map(({ activity, allowedNetIncomeOrLoss }) => [activity.id, allowedNetIncomeOrLoss] as const),
+    ...scheduleF.filter(({ activity }) => activity.qbiEligible === true).map(({ activity, allowedNetProfit }) => [activity.id, allowedNetProfit] as const),
+  ]);
+  if (qbiProfile.enabled) {
+    if (!qbiProfile.lossesReviewed) blocking("QBI_LOSS_REVIEW_REQUIRED", "Review prior qualified-business and PTP loss carryovers before Form 8995-A calculation.", "advancedFederal.adjustments.qualifiedBusinessIncome.lossesReviewed");
+    if (!qbiProfile.aggregationReviewed) blocking("QBI_AGGREGATION_REVIEW_REQUIRED", "Review aggregation elections and consistency before Form 8995-A calculation.", "advancedFederal.adjustments.qualifiedBusinessIncome.aggregationReviewed");
+    const linked = new Set<string>();
+    qbiProfile.trades.forEach((trade, index) => {
+      if (!trade.classificationReviewed) blocking("QBI_TRADE_CLASSIFICATION_REVIEW_REQUIRED", "Each QBI trade needs a reviewed SSTB and wage/property classification.", `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.classificationReviewed`);
+      if (trade.activityId == null || !eligibleActivityIncome.has(trade.activityId)) blocking("QBI_TRADE_ACTIVITY_INVALID", "Each Form 8995-A trade must link to a QBI-eligible Schedule C, E, or F activity.", `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.activityId`);
+      else if (linked.has(trade.activityId)) blocking("QBI_TRADE_ACTIVITY_DUPLICATE", "A QBI activity may be linked to only one Form 8995-A trade row.", `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.activityId`);
+      else linked.add(trade.activityId);
+    });
+    for (const activityId of eligibleActivityIncome.keys()) if (!linked.has(activityId)) blocking("QBI_ELIGIBLE_ACTIVITY_UNLINKED", "Every QBI-eligible activity must be linked to a Form 8995-A trade row.", "advancedFederal.adjustments.qualifiedBusinessIncome.trades");
   }
   if (diagnostics.some(({ severity }) => severity === "blocking")) {
     return blockedOutput(input, diagnostics, trace);
   }
 
-  const qbi = nonnegative(whole(qbiActivityIncome.minus(deductibleHalf)));
-  const qbiComponent = whole(qbi.mul("0.20"));
-  const reitComponent = whole(section199ADividends.mul("0.20"));
   const incomeLimitationBase = nonnegative(whole(taxableBeforeQbi.minus(qualifiedDividends)));
   const incomeLimitation = whole(incomeLimitationBase.mul("0.20"));
+  const complexQbi = qbiProfile.enabled ? calculateComplexQbi2025({
+    taxableIncomeBeforeQbi: taxableBeforeQbi,
+    threshold: amount(constants2025.qbiSimplifiedThreshold[input.filingStatus]),
+    phaseInRange: amount(constants2025.qbiPhaseInRange[input.filingStatus]),
+    deductibleHalfSelfEmploymentTax: deductibleHalf,
+    priorQualifiedBusinessLoss: read(qbiProfile.priorQualifiedBusinessLoss, "advancedFederal.adjustments.qualifiedBusinessIncome.priorQualifiedBusinessLoss"),
+    publiclyTradedPartnershipIncome: readSigned(qbiProfile.publiclyTradedPartnershipIncome, "advancedFederal.adjustments.qualifiedBusinessIncome.publiclyTradedPartnershipIncome"),
+    publiclyTradedPartnershipLossCarryover: read(qbiProfile.publiclyTradedPartnershipLossCarryover, "advancedFederal.adjustments.qualifiedBusinessIncome.publiclyTradedPartnershipLossCarryover"),
+    trades: qbiProfile.trades.map((trade, index) => ({ id: trade.id, name: trade.name, specifiedServiceTradeOrBusiness: trade.specifiedServiceTradeOrBusiness, qualifiedBusinessIncome: whole((trade.activityId ? eligibleActivityIncome.get(trade.activityId) ?? new Decimal(0) : new Decimal(0)).plus(readSigned(trade.qualifiedIncomeAdjustment, `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.qualifiedIncomeAdjustment`))), w2Wages: read(trade.w2Wages, `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.w2Wages`), ubia: read(trade.unadjustedBasisImmediatelyAfterAcquisition, `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.unadjustedBasisImmediatelyAfterAcquisition`), patronReduction: read(trade.patronReduction, `advancedFederal.adjustments.qualifiedBusinessIncome.trades.${index}.patronReduction`), aggregationGroup: trade.aggregationGroup })),
+  }) : null;
+  const qbi = complexQbi ? whole(sum(complexQbi.rows.map(({ qualifiedBusinessIncome }) => qualifiedBusinessIncome))) : nonnegative(whole(qbiActivityIncome.minus(deductibleHalf)));
+  const qbiComponent = complexQbi?.tradeDeduction ?? whole(qbi.mul("0.20"));
+  const reitComponent = whole(section199ADividends.mul("0.20").plus(complexQbi?.ptpDeduction ?? 0));
   const qbiDeduction = Decimal.min(qbiComponent.plus(reitComponent), incomeLimitation);
   const taxableIncome = nonnegative(whole(taxableBeforeQbi.minus(qbiDeduction)));
 
@@ -422,8 +474,8 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   const additionalChildTaxCredit = Decimal.min(unusedDependentCredit, refundableIncomeLimit, perChildRefundLimit);
   const ownerEarnedIncome = Object.fromEntries(roles.map((role) => {
     const ownerWages = sum(wages.filter(({ owner }) => owner === role).map(({ wageAmount }) => wageAmount));
-    const ownerBusiness = sum(scheduleC.filter(({ activity }) => activity.owner === role).map(({ netProfit }) => netProfit));
-    const ownerFarm = sum(scheduleF.filter(({ activity }) => activity.owner === role).map(({ netProfit }) => netProfit));
+    const ownerBusiness = sum(scheduleC.filter(({ activity }) => activity.owner === role).map(({ allowedNetProfit }) => allowedNetProfit));
+    const ownerFarm = sum(scheduleF.filter(({ activity }) => activity.owner === role).map(({ allowedNetProfit }) => allowedNetProfit));
     const ownerDeductibleHalf = sum(scheduleSE.filter(({ owner }) => owner === role).map(({ deductibleHalf }) => deductibleHalf));
     return [role, whole(ownerWages.plus(Decimal.max(0, ownerBusiness.plus(ownerFarm).minus(ownerDeductibleHalf))))];
   })) as Record<PersonRole2025, Decimal>;
@@ -458,8 +510,8 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
     || input.scheduleBScreening.foreignTrust === "yes"
     || input.scheduleBScreening.otherScheduleBTrigger === "yes";
 
-  addTrace(trace, "schedule-c.net-profit", "Schedule C, line 31", "SCH-C-NET-PROFIT", { grossReceipts: dollars(sum(scheduleC.map(({ grossReceipts }) => grossReceipts))), returnsAndAllowances: dollars(sum(scheduleC.map(({ returnsAndAllowances }) => returnsAndAllowances))), costOfGoodsSold: dollars(sum(scheduleC.map(({ costOfGoodsSold }) => costOfGoodsSold))), expenses: dollars(sum(scheduleC.map(({ expenses }) => expenses))) }, businessIncome);
-  addTrace(trace, "schedule-e.net-income-loss", "Schedule E, line 26", "SCH-E-PART-I-NET", { rents: dollars(sum(scheduleE.map(({ rents }) => rents))), royalties: dollars(sum(scheduleE.map(({ royalties }) => royalties))), expenses: dollars(sum(scheduleE.map(({ expenses }) => expenses))) }, rentalRealEstateRoyalties);
+  addTrace(trace, "schedule-c.net-profit", "Schedule C, line 31", "SCH-C-ALLOWED-NET-PROFIT", { grossReceipts: dollars(sum(scheduleC.map(({ grossReceipts }) => grossReceipts))), returnsAndAllowances: dollars(sum(scheduleC.map(({ returnsAndAllowances }) => returnsAndAllowances))), costOfGoodsSold: dollars(sum(scheduleC.map(({ costOfGoodsSold }) => costOfGoodsSold))), expenses: dollars(sum(scheduleC.map(({ expenses }) => expenses))) }, businessIncome);
+  addTrace(trace, "schedule-e.net-income-loss", "Schedule E, line 41", "SCH-E-ALLOWED-NET", { rents: dollars(sum(scheduleE.map(({ rents }) => rents))), royalties: dollars(sum(scheduleE.map(({ royalties }) => royalties))), expenses: dollars(sum(scheduleE.map(({ expenses }) => expenses))) }, rentalRealEstateRoyalties);
   addTrace(trace, "schedule-f.net-profit", "Schedule F, line 34", "SCH-F-CASH-NET-PROFIT", { grossIncome: dollars(sum(scheduleF.map(({ grossIncome }) => grossIncome))), expenses: dollars(sum(scheduleF.map(({ expenses }) => expenses))) }, farmIncome);
   addTrace(trace, "schedule-d.net-gain-loss", "Schedule D, lines 6-16", "SCHEDULE-D-TRANSACTIONS-AND-CARRYOVERS", { shortTermCarryover: shortTermCarryover.toFixed(0), longTermCarryover: longTermCarryover.toFixed(0), shortTerm: shortTermGainOrLoss.toFixed(0), longTerm: longTermGainOrLoss.toFixed(0) }, netCapitalGainOrLoss);
   addTrace(trace, "schedule-d.next-year-carryover", "Capital Loss Carryover Worksheet", "SCHEDULE-D-CARRYOVER-2025", { lossLimit: capitalLossLimit.toFixed(0), deductibleLoss: deductibleCapitalLoss.toFixed(0) }, nextYearShortTermCarryover.plus(nextYearLongTermCarryover));
@@ -469,7 +521,7 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
   addTrace(trace, "schedule-se.tax", "Schedule SE, line 12", "SCH-SE-REGULAR", { netProfit: businessIncome.plus(farmIncome).toFixed(0), wageBase: String(constants2025.socialSecurityWageBase) }, selfEmploymentTax);
   addTrace(trace, "schedule-1.se-deduction", "Schedule 1, line 15", "SCH-SE-DEDUCTIBLE-HALF", { selfEmploymentTax: selfEmploymentTax.toFixed(0) }, deductibleHalf);
   addTrace(trace, "schedule-1.adjustments", "Schedule 1, lines 11-26", "SCHEDULE-1-ADJUSTMENTS-2025", { preliminaryAgi: preliminaryAgi.toFixed(0) }, adjustmentCalculation.totalAdjustments);
-  addTrace(trace, "form-8995.deduction", "Form 8995, line 15", "FORM-8995-SIMPLIFIED", { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0) }, qbiDeduction);
+  addTrace(trace, "form-8995.deduction", complexQbi ? "Form 8995-A, line 39" : "Form 8995, line 15", complexQbi ? "FORM-8995-A-WAGE-PROPERTY-LIMIT" : "FORM-8995-SIMPLIFIED", { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0) }, qbiDeduction);
   addTrace(trace, "schedule-a.total-itemized-deductions", "Schedule A, line 17", "SCHEDULE-A-2025", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), medicalFloor: medicalFloor.toFixed(0), saltLimit: stateAndLocalTaxLimit.toFixed(0) }, totalItemizedDeductions);
   addTrace(trace, "form-1040.standard-deduction", "Form 1040, line 12e", input.eligibility.claimableAsDependent ? "DEPENDENT-STANDARD-DEDUCTION-WORKSHEET" : additionalBoxes ? "AGE-BLINDNESS-STANDARD-DEDUCTION-CHART" : "STANDARD-DEDUCTION-2025", { regularStandardDeduction: regularStandardDeduction.toFixed(0), earnedIncome: earnedIncome.toFixed(0), basicStandardDeduction: basicStandardDeduction.toFixed(0), additionalBoxes: String(additionalBoxes), additionalStandardDeduction: additionalStandardDeduction.toFixed(0) }, standardDeduction);
   addTrace(trace, "form-1040.taxable-income", "Form 1040, line 15", "FORM-1040-TAXABLE-INCOME", { adjustedGrossIncome: adjustedGrossIncome.toFixed(0), deductionUsed: deductionUsed.toFixed(0), qbiDeduction: qbiDeduction.toFixed(0) }, taxableIncome);
@@ -521,9 +573,13 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
       },
       schedule8812: { qualifyingChildren: qualifyingChildren.length, otherDependents: otherDependents.length, potentialChildTaxCredit: potentialChildTaxCredit.toFixed(0), potentialOtherDependentCredit: potentialOtherDependentCredit.toFixed(0), phaseoutReduction: phaseoutReduction.toFixed(0), nonrefundableCredit: nonrefundableDependentCredit.toFixed(0), additionalChildTaxCredit: additionalChildTaxCredit.toFixed(0) },
       scheduleB: { required: scheduleBRequired, taxableInterest: taxableInterest.toFixed(0), ordinaryDividends: ordinaryDividends.toFixed(0) },
-      scheduleC: scheduleC.map(({ activity, grossReceipts, returnsAndAllowances, costOfGoodsSold, grossIncome, expenses, netProfit }) => ({ activityId: activity.id, grossReceipts: grossReceipts.toFixed(0), returnsAndAllowances: returnsAndAllowances.toFixed(0), costOfGoodsSold: costOfGoodsSold.toFixed(0), grossIncome: grossIncome.toFixed(0), expenses: expenses.toFixed(0), netProfit: netProfit.toFixed(0) })),
-      scheduleE: scheduleE.map(({ activity, rents, royalties, expenses, netIncomeOrLoss }) => ({ activityId: activity.id, rents: rents.toFixed(0), royalties: royalties.toFixed(0), expenses: expenses.toFixed(0), netIncomeOrLoss: netIncomeOrLoss.toFixed(0) })),
-      scheduleF: scheduleF.map(({ activity, grossIncome, expenses, netProfit }) => ({ activityId: activity.id, grossIncome: grossIncome.toFixed(0), expenses: expenses.toFixed(0), netProfit: netProfit.toFixed(0) })),
+      scheduleC: scheduleC.map(({ activity, grossReceipts, returnsAndAllowances, costOfGoodsSold, grossIncome, expenses, vehicleDeduction, homeOffice, depreciation, netProfit, allowedNetProfit, lossLimitation }) => ({ activityId: activity.id, grossReceipts: grossReceipts.toFixed(0), returnsAndAllowances: returnsAndAllowances.toFixed(0), costOfGoodsSold: costOfGoodsSold.toFixed(0), grossIncome: grossIncome.toFixed(0), expenses: expenses.toFixed(0), vehicleDeduction: vehicleDeduction.toFixed(0), homeOfficeDeduction: homeOffice.allowedDeduction.toFixed(0), depreciation: depreciation.currentDepreciation.toFixed(0), netProfit: netProfit.toFixed(0), allowedNetProfit: allowedNetProfit.toFixed(0), disallowedLossCarryforward: lossLimitation.carryforward.toFixed(0) })),
+      scheduleE: scheduleE.map(({ activity, rents, royalties, expenses, depreciation, part1IncomeOrLoss, part2IncomeOrLoss, part3IncomeOrLoss, part4IncomeOrLoss, netIncomeOrLoss, allowedNetIncomeOrLoss, propertyLossLimitation }) => ({ activityId: activity.id, rents: rents.toFixed(0), royalties: royalties.toFixed(0), expenses: expenses.toFixed(0), depreciation: depreciation.currentDepreciation.toFixed(0), part1IncomeOrLoss: part1IncomeOrLoss.toFixed(0), part2IncomeOrLoss: part2IncomeOrLoss.toFixed(0), part3IncomeOrLoss: part3IncomeOrLoss.toFixed(0), part4IncomeOrLoss: part4IncomeOrLoss.toFixed(0), netIncomeOrLoss: netIncomeOrLoss.toFixed(0), allowedNetIncomeOrLoss: allowedNetIncomeOrLoss.toFixed(0), disallowedLossCarryforward: propertyLossLimitation.carryforward.toFixed(0) })),
+      scheduleF: scheduleF.map(({ activity, grossIncome, expenses, depreciation, netProfit, allowedNetProfit, lossLimitation }) => ({ activityId: activity.id, accountingMethod: activity.accountingMethod, grossIncome: grossIncome.toFixed(0), expenses: expenses.toFixed(0), depreciation: depreciation.currentDepreciation.toFixed(0), netProfit: netProfit.toFixed(0), allowedNetProfit: allowedNetProfit.toFixed(0), disallowedLossCarryforward: lossLimitation.carryforward.toFixed(0) })),
+      form4562: [...scheduleC, ...scheduleE, ...scheduleF].flatMap(({ depreciation }) => depreciation.rows.map((row) => ({ activityId: row.activityId, assetId: row.assetId, description: row.description, basis: row.basis.toFixed(0), businessBasis: row.businessBasis.toFixed(0), section179: row.section179.toFixed(0), bonusDepreciation: row.bonusDepreciation.toFixed(0), macrsDepreciation: row.macrsDepreciation.toFixed(0), currentDepreciation: row.currentDepreciation.toFixed(0), accumulatedDepreciation: row.accumulatedDepreciation.toFixed(0), dispositionGainOrLoss: row.dispositionGainOrLoss.toFixed(0) }))),
+      form8829: scheduleC.filter(({ activity }) => activity.homeOffice?.claimed).map(({ activity, homeOffice }) => ({ activityId: activity.id, method: homeOffice.method, areaPercentage: homeOffice.areaPercentage.mul(100).toDecimalPlaces(2).toFixed(2), tentativeDeduction: homeOffice.tentativeDeduction.toFixed(0), allowedDeduction: homeOffice.allowedDeduction.toFixed(0), carryforward: homeOffice.carryforward.toFixed(0) })),
+      form6198: [...scheduleC.filter(({ netProfit }) => netProfit.isNegative()).map(({ activity, lossLimitation }) => ({ activityId: activity.id, schedule: "C" as const, currentLoss: lossLimitation.currentLoss.toFixed(0), priorDisallowedLoss: (activity.lossLimitations?.priorDisallowedLoss ?? "0.00").replace(/\.00$/, ""), amountAtRisk: (activity.lossLimitations?.amountAtRisk ?? "0.00").replace(/\.00$/, ""), allowedLoss: lossLimitation.allowedLoss.toFixed(0), carryforward: lossLimitation.carryforward.toFixed(0) })), ...scheduleE.filter(({ part1IncomeOrLoss }) => part1IncomeOrLoss.isNegative()).map(({ activity, propertyLossLimitation }) => ({ activityId: activity.id, schedule: "E" as const, currentLoss: propertyLossLimitation.currentLoss.toFixed(0), priorDisallowedLoss: (activity.lossLimitations?.priorPassiveCarryover ?? "0.00").replace(/\.00$/, ""), amountAtRisk: (activity.lossLimitations?.atRiskLimit ?? "0.00").replace(/\.00$/, ""), allowedLoss: propertyLossLimitation.allowedLoss.toFixed(0), carryforward: propertyLossLimitation.carryforward.toFixed(0) })), ...scheduleF.filter(({ netProfit }) => netProfit.isNegative()).map(({ activity, lossLimitation }) => ({ activityId: activity.id, schedule: "F" as const, currentLoss: lossLimitation.currentLoss.toFixed(0), priorDisallowedLoss: (activity.lossLimitations?.priorDisallowedLoss ?? "0.00").replace(/\.00$/, ""), amountAtRisk: (activity.lossLimitations?.amountAtRisk ?? "0.00").replace(/\.00$/, ""), allowedLoss: lossLimitation.allowedLoss.toFixed(0), carryforward: lossLimitation.carryforward.toFixed(0) }))],
+      form8582: scheduleE.flatMap(({ activity, propertyLossLimitation, entityRows }) => [{ activityId: activity.id, activityName: activity.name, currentLoss: propertyLossLimitation.currentLoss.toFixed(0), priorCarryover: (activity.lossLimitations?.priorPassiveCarryover ?? "0.00").replace(/\.00$/, ""), allowedLoss: propertyLossLimitation.allowedLoss.toFixed(0), carryforward: propertyLossLimitation.carryforward.toFixed(0) }, ...entityRows.filter(({ row }) => row.passive !== false).map(({ row, currentLoss, allowedLoss, carryforward }) => ({ activityId: row.id, activityName: row.name, currentLoss: currentLoss.toFixed(0), priorCarryover: row.priorPassiveCarryover.replace(/\.00$/, ""), allowedLoss: allowedLoss.toFixed(0), carryforward: carryforward.toFixed(0) }))].filter((row) => Number(row.currentLoss) !== 0 || Number(row.priorCarryover) !== 0)),
       form8949: brokerTransactions.map(({ id, description, term, proceeds, costBasis, adjustmentCode, adjustment, section1202Exclusion, category, gainOrLoss, basisReportedToIrs }) => ({ transactionId: id, description, term, proceeds: proceeds.toFixed(0), costBasis: costBasis.toFixed(0), adjustmentCode, adjustment: adjustment.toFixed(0), section1202Exclusion: section1202Exclusion.toFixed(0), category, gainOrLoss: gainOrLoss.toFixed(0), basisReportedToIrs })),
       scheduleD: { shortTermCarryover: shortTermCarryover.toFixed(0), longTermCarryover: longTermCarryover.toFixed(0), shortTermGainOrLoss: shortTermGainOrLoss.toFixed(0), longTermGainOrLoss: longTermGainOrLoss.toFixed(0), netGainOrLoss: netCapitalGainOrLoss.toFixed(0), deductibleLoss: Decimal.min(0, capitalGainOrLoss).toFixed(0), nextYearShortTermCarryover: nextYearShortTermCarryover.toFixed(0), nextYearLongTermCarryover: nextYearLongTermCarryover.toFixed(0) },
       capitalGainTaxWorksheet: { required: preferentialIncome.gt(0), regularNetCapitalGain: regularNetCapitalGain.toFixed(0), collectiblesGain: collectiblesGain.toFixed(0), unrecapturedSection1250Gain: unrecapturedSection1250Gain.toFixed(0), tax: calculatedIncomeTax.toFixed(0) },
@@ -534,6 +590,7 @@ export function calculateFederalReturn2025(input: CalculationInput2025): Calcula
       form5329: { required: retirementCalculation.form5329.required, earlyDistributions: retirementCalculation.form5329.earlyDistributions.toFixed(0), exceptionAmount: retirementCalculation.form5329.exceptionAmount.toFixed(0), amountSubjectToAdditionalTax: retirementCalculation.form5329.amountSubjectToAdditionalTax.toFixed(0), additionalTax: retirementCalculation.form5329.additionalTax.toFixed(0) },
       scheduleSE,
       form8995: { qbi: qbi.toFixed(0), section199ADividends: section199ADividends.toFixed(0), incomeLimitationBase: incomeLimitationBase.toFixed(0), deduction: qbiDeduction.toFixed(0) },
+      form8995A: { required: complexQbi != null, threshold: String(constants2025.qbiSimplifiedThreshold[input.filingStatus]), phaseInRange: String(constants2025.qbiPhaseInRange[input.filingStatus]), phaseInPercentage: complexQbi?.phaseInPercentage.mul(100).toDecimalPlaces(2).toFixed(2) ?? "0.00", currentQualifiedBusinessLoss: complexQbi?.currentQualifiedBusinessLoss.toFixed(0) ?? "0", priorQualifiedBusinessLoss: qbiProfile.priorQualifiedBusinessLoss.replace(/\.00$/, ""), qualifiedBusinessLossCarryforward: complexQbi?.qualifiedBusinessLossCarryforward.toFixed(0) ?? "0", publiclyTradedPartnershipIncome: complexQbi?.ptpQualifiedIncome.toFixed(0) ?? "0", publiclyTradedPartnershipDeduction: complexQbi?.ptpDeduction.toFixed(0) ?? "0", trades: complexQbi?.rows.map((row) => ({ id: row.id, name: row.name, specifiedServiceTradeOrBusiness: row.specifiedServiceTradeOrBusiness, aggregationGroup: row.aggregationGroup, qualifiedBusinessIncome: row.qualifiedBusinessIncome.toFixed(0), w2Wages: row.w2Wages.toFixed(0), ubia: row.ubia.toFixed(0), applicablePercentage: row.applicablePercentage.mul(100).toDecimalPlaces(2).toFixed(2), wagePropertyLimit: row.wagePropertyLimit.toFixed(0), tentativeDeduction: row.tentativeDeduction.toFixed(0), patronReduction: row.patronReduction.toFixed(0), allowedDeduction: row.allowedDeduction.toFixed(0) })) ?? [], tradeDeduction: complexQbi?.tradeDeduction.toFixed(0) ?? "0", reitPtpDeduction: reitComponent.toFixed(0), incomeLimitation: incomeLimitation.toFixed(0), deduction: qbiDeduction.toFixed(0) },
       schedule1: { businessIncome: businessIncome.toFixed(0), rentalRealEstateRoyalties: rentalRealEstateRoyalties.toFixed(0), farmIncome: farmIncome.toFixed(0), unemploymentCompensation: unemploymentCompensation.toFixed(0), deductiblePartOfSelfEmploymentTax: deductibleHalf.toFixed(0), educatorExpenses: adjustmentCalculation.educatorExpenses.toFixed(0), iraDeduction: adjustmentCalculation.iraDeduction.toFixed(0), studentLoanInterestDeduction: adjustmentCalculation.studentLoanInterestDeduction.toFixed(0), hsaDeduction: adjustmentCalculation.hsaDeduction.toFixed(0), selfEmployedHealthInsuranceDeduction: adjustmentCalculation.selfEmployedHealthInsuranceDeduction.toFixed(0), retirementPlanDeduction: adjustmentCalculation.retirementPlanDeduction.toFixed(0), totalAdjustments: deductibleHalf.plus(adjustmentCalculation.totalAdjustments).toFixed(0) },
       form6251: {
         required: alternativeMinimumTax.required,

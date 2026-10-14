@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const activityFormSchemaVersion2025 = "2025.1" as const;
 export const money2025 = z.string().regex(/^\d+\.\d{2}$/, "Use a nonnegative decimal amount with exactly two places.");
+const signedMoney2025 = z.string().regex(/^-?\d+\.\d{2}$/, "Use a decimal amount with exactly two places.");
 const optionalText = z.string().trim().max(500).default("");
 const reviewedBoolean = z.boolean().nullable().default(null);
 const moneyRecord = <T extends readonly string[]>(keys: T) => z.object(Object.fromEntries(keys.map((key) => [key, money2025.default("0.00")])) as { [K in T[number]]: z.ZodDefault<typeof money2025> }).strict();
@@ -38,6 +39,12 @@ export const scheduleFAccrualKeys = [
 ] as const;
 
 const otherExpense = z.object({ id: z.string().uuid(), description: z.string().trim().min(1).max(200), amount: money2025 }).strict();
+const depreciableAsset = z.object({
+  id: z.string().uuid(), description: z.string().trim().min(1).max(200), category: z.enum(["equipment", "vehicle", "furniture", "building", "land_improvement", "other"]),
+  placedInServiceDate: z.iso.date(), basis: money2025, businessUsePercentage: z.string().regex(/^\d{1,3}\.\d{2}$/),
+  method: z.enum(["macrs_200db", "macrs_150db", "straight_line"]), recoveryPeriodYears: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10), z.literal(15), z.literal(20), z.literal(27.5), z.literal(39)]),
+  section179Election: money2025, bonusPercentage: z.string().regex(/^\d{1,3}\.\d{2}$/), priorDepreciation: money2025, listedPropertyEvidenceReviewed: z.boolean(), disposedIn2025: z.boolean(), dispositionProceeds: money2025,
+}).strict();
 
 const scheduleC = z.object({
   schemaVersion: z.literal(activityFormSchemaVersion2025), scheduleType: z.literal("schedule_c"),
@@ -46,8 +53,10 @@ const scheduleC = z.object({
   materiallyParticipated: reviewedBoolean, startedOrAcquiredIn2025: reviewedBoolean, payments1099Required: reviewedBoolean, payments1099Filed: reviewedBoolean,
   income: moneyRecord(scheduleCIncomeKeys), costOfGoodsSold: moneyRecord(scheduleCCogsKeys).extend({ method: z.enum(["cost", "lower_cost_market", "other"]).default("cost"), methodOther: optionalText, inventoryChanged: reviewedBoolean }),
   expenses: moneyRecord(scheduleCExpenseKeys), otherExpenses: z.array(otherExpense).max(100).default([]),
-  vehicle: z.object({ used: z.boolean().default(false), placedInServiceDate: z.string().default(""), businessMiles: z.number().int().min(0).default(0), commutingMiles: z.number().int().min(0).default(0), otherMiles: z.number().int().min(0).default(0), availableForPersonalUse: reviewedBoolean, anotherVehicleAvailable: reviewedBoolean, evidenceAvailable: reviewedBoolean, writtenEvidence: reviewedBoolean }).strict(),
-  homeOffice: z.object({ claimed: z.boolean().default(false), reviewedDeduction: money2025.default("0.00"), method: z.enum(["simplified", "actual", "none"]).default("none") }).strict(),
+  vehicle: z.object({ used: z.boolean().default(false), method: z.enum(["standard_mileage", "actual", "none"]).default("none"), placedInServiceDate: z.string().default(""), businessMiles: z.number().int().min(0).default(0), commutingMiles: z.number().int().min(0).default(0), otherMiles: z.number().int().min(0).default(0), actualExpenses: money2025.default("0.00"), availableForPersonalUse: reviewedBoolean, anotherVehicleAvailable: reviewedBoolean, evidenceAvailable: reviewedBoolean, writtenEvidence: reviewedBoolean }).strict(),
+  homeOffice: z.object({ claimed: z.boolean().default(false), reviewedDeduction: money2025.default("0.00"), method: z.enum(["simplified", "actual", "none"]).default("none"), officeSquareFeet: z.number().int().min(0).max(3000).default(0), homeSquareFeet: z.number().int().min(0).max(100000).default(0), directExpenses: money2025.default("0.00"), indirectExpenses: money2025.default("0.00"), priorCarryover: money2025.default("0.00"), exclusiveRegularUseReviewed: z.boolean().default(false) }).strict(),
+  assets: z.array(depreciableAsset).max(500).default([]),
+  lossLimitations: z.object({ reviewed: z.boolean().default(false), amountAtRisk: money2025.default("0.00"), excessBusinessLossLimit: money2025.default("0.00"), priorDisallowedLoss: money2025.default("0.00") }).strict().default({ reviewed: false, amountAtRisk: "0.00", excessBusinessLossLimit: "0.00", priorDisallowedLoss: "0.00" }),
   qbiEligible: reviewedBoolean, selfEmploymentTreatmentConfirmed: reviewedBoolean,
 }).strict();
 
@@ -55,13 +64,16 @@ const scheduleEProperty = z.object({
   propertyType: z.enum(["single_family", "multi_family", "vacation_short_term", "commercial", "land", "royalties", "self_rental", "other"]),
   propertyTypeOther: optionalText, address: optionalText, fairRentalDays: z.number().int().min(0).max(366).default(0), personalUseDays: z.number().int().min(0).max(366).default(0), qualifiedJointVenture: reviewedBoolean,
 }).strict();
-const supplementalActivity = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(200), ein: z.string().trim().max(20).default(""), passive: reviewedBoolean, incomeOrLoss: z.string().regex(/^-?\d+\.\d{2}$/), basisAndAtRiskReviewed: z.boolean().default(false) }).strict();
+const supplementalActivity = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(200), ein: z.string().trim().max(20).default(""), passive: reviewedBoolean, incomeOrLoss: signedMoney2025, basisAndAtRiskReviewed: z.boolean().default(false), basisLimit: money2025.default("0.00"), atRiskLimit: money2025.default("0.00"), passiveLossAllowed: money2025.default("0.00"), priorPassiveCarryover: money2025.default("0.00") }).strict();
 const remicActivity = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(200), ein: z.string().trim().max(20).default(""), excessInclusion: money2025, taxableIncomeOrLoss: z.string().regex(/^-?\d+\.\d{2}$/) }).strict();
 const scheduleE = z.object({
   schemaVersion: z.literal(activityFormSchemaVersion2025), scheduleType: z.literal("schedule_e"), property: scheduleEProperty,
   income: moneyRecord(scheduleEIncomeKeys), expenses: moneyRecord(scheduleEExpenseKeys), otherExpenses: z.array(otherExpense).max(100).default([]),
   activeRentalRealEstateParticipant: reviewedBoolean, allInvestmentAtRisk: reviewedBoolean, passiveLossRulesReviewed: reviewedBoolean,
   depreciationReviewed: reviewedBoolean, rentalQbiEligible: reviewedBoolean,
+  personalUseAllocationReviewed: reviewedBoolean,
+  lossLimitations: z.object({ reviewed: z.boolean().default(false), basisLimit: money2025.default("0.00"), atRiskLimit: money2025.default("0.00"), passiveLossAllowed: money2025.default("0.00"), priorPassiveCarryover: money2025.default("0.00") }).strict().default({ reviewed: false, basisLimit: "0.00", atRiskLimit: "0.00", passiveLossAllowed: "0.00", priorPassiveCarryover: "0.00" }),
+  assets: z.array(depreciableAsset).max(500).default([]),
   partnershipsAndSCorporations: z.array(supplementalActivity).max(100).default([]), estatesAndTrusts: z.array(supplementalActivity).max(100).default([]), remicInterests: z.array(remicActivity).max(100).default([]),
 }).strict();
 
@@ -72,6 +84,8 @@ const scheduleF = z.object({
   income: moneyRecord(scheduleFIncomeKeys), expenses: moneyRecord(scheduleFExpenseKeys), otherExpenses: z.array(otherExpense).max(100).default([]),
   accrual: moneyRecord(scheduleFAccrualKeys), inventoryMethod: z.enum(["cost", "lower_cost_market", "farm_price", "unit_livestock", "other"]).default("cost"), inventoryMethodOther: optionalText,
   qbiEligible: reviewedBoolean, selfEmploymentTreatmentConfirmed: reviewedBoolean, cropInsuranceElectionReviewed: reviewedBoolean,
+  lossLimitations: z.object({ reviewed: z.boolean().default(false), amountAtRisk: money2025.default("0.00"), excessFarmLossLimit: money2025.default("0.00"), priorDisallowedLoss: money2025.default("0.00") }).strict().default({ reviewed: false, amountAtRisk: "0.00", excessFarmLossLimit: "0.00", priorDisallowedLoss: "0.00" }),
+  assets: z.array(depreciableAsset).max(500).default([]),
 }).strict();
 
 export const activityFormDataSchema2025 = z.discriminatedUnion("scheduleType", [scheduleC, scheduleE, scheduleF]);

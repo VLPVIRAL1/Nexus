@@ -82,6 +82,25 @@ export async function generateWorkpaper(input: WorkpaperInput): Promise<Uint8Arr
   activities.getColumn("additional_receipts").numFmt = "$#,##0.00;[Red]($#,##0.00)";
   addTable(activities, "ScheduleActivitiesTable");
 
+  const calculatedForms = calculationForms(input.calculationResult);
+  const business = workbook.addWorksheet("Business Workpapers", { views: [{ state: "frozen", ySplit: 1 }] });
+  business.columns = ["Form", "Activity / asset", "Line or concept", "Amount", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Line or concept" ? 46 : header === "Calculation run" ? 38 : 26 }));
+  if (calculatedForms) {
+    for (const activity of calculatedForms.scheduleC) for (const [line, value] of [["Vehicle deduction", activity.vehicleDeduction], ["Home-office deduction", activity.homeOfficeDeduction], ["Depreciation", activity.depreciation], ["Net profit or loss", activity.netProfit], ["Allowed net profit or loss", activity.allowedNetProfit], ["Disallowed-loss carryforward", activity.disallowedLossCarryforward]]) business.addRow({ form: "Schedule C", activity_asset: activity.activityId, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const activity of calculatedForms.scheduleE) for (const [line, value] of [["Part I income or loss", activity.part1IncomeOrLoss], ["Part II income or loss", activity.part2IncomeOrLoss], ["Part III income or loss", activity.part3IncomeOrLoss], ["Part IV income or loss", activity.part4IncomeOrLoss], ["Allowed net income or loss", activity.allowedNetIncomeOrLoss], ["Disallowed-loss carryforward", activity.disallowedLossCarryforward]]) business.addRow({ form: "Schedule E", activity_asset: activity.activityId, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const activity of calculatedForms.scheduleF) for (const [line, value] of [[`${activity.accountingMethod} method gross income`, activity.grossIncome], ["Depreciation", activity.depreciation], ["Net profit or loss", activity.netProfit], ["Allowed net profit or loss", activity.allowedNetProfit], ["Disallowed-loss carryforward", activity.disallowedLossCarryforward]]) business.addRow({ form: "Schedule F", activity_asset: activity.activityId, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const asset of calculatedForms.form4562) for (const [line, value] of [["Business basis", asset.businessBasis], ["Section 179", asset.section179], ["Bonus depreciation", asset.bonusDepreciation], ["MACRS depreciation", asset.macrsDepreciation], ["Current depreciation", asset.currentDepreciation], ["Accumulated depreciation", asset.accumulatedDepreciation], ["Disposition gain or loss", asset.dispositionGainOrLoss]]) business.addRow({ form: "Form 4562", activity_asset: `${asset.activityId} / ${asset.description}`, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const office of calculatedForms.form8829) for (const [line, value] of [["Tentative deduction", office.tentativeDeduction], ["Allowed deduction", office.allowedDeduction], ["Carryforward", office.carryforward]]) business.addRow({ form: "Form 8829", activity_asset: office.activityId, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const loss of calculatedForms.form6198) for (const [line, value] of [["Current loss", loss.currentLoss], ["Allowed loss", loss.allowedLoss], ["Carryforward", loss.carryforward]]) business.addRow({ form: "Form 6198", activity_asset: `${loss.schedule} / ${loss.activityId}`, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    for (const loss of calculatedForms.form8582) for (const [line, value] of [["Current passive loss", loss.currentLoss], ["Allowed passive loss", loss.allowedLoss], ["Carryforward", loss.carryforward]]) business.addRow({ form: "Form 8582", activity_asset: `${loss.activityName} / ${loss.activityId}`, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+    if (calculatedForms.form8995A.required) {
+      for (const trade of calculatedForms.form8995A.trades) for (const [line, value] of [["Qualified business income", trade.qualifiedBusinessIncome], ["W-2 wages", trade.w2Wages], ["UBIA", trade.ubia], ["Wage/property limit", trade.wagePropertyLimit], ["Allowed QBI deduction", trade.allowedDeduction]]) business.addRow({ form: "Form 8995-A", activity_asset: `${trade.name} / ${trade.id}`, line_or_concept: line, amount: Number(value), calculation_run: input.runId });
+      business.addRow({ form: "Form 8995-A", activity_asset: "Return total", line_or_concept: "Qualified business income deduction", amount: Number(calculatedForms.form8995A.deduction), calculation_run: input.runId });
+    }
+  }
+  business.getColumn("amount").numFmt = "$#,##0;[Red]($#,##0)";
+  addTable(business, "BusinessWorkpapersTable");
+
   const formStatus = workbook.addWorksheet("Required Forms", { views: [{ state: "frozen", ySplit: 1 }] });
   formStatus.columns = ["Form", "Required", "Rendered", "Status", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Calculation run" ? 38 : 22 }));
   const requiredForms = input.requiredForms ?? [];
@@ -109,7 +128,6 @@ export async function generateWorkpaper(input: WorkpaperInput): Promise<Uint8Arr
 
   const additionalTaxes = workbook.addWorksheet("Additional Taxes", { views: [{ state: "frozen", ySplit: 1 }] });
   additionalTaxes.columns = ["Form", "Line or concept", "Source / calculation", "Amount", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Source / calculation" ? 52 : header === "Calculation run" ? 38 : 24 }));
-  const calculatedForms = calculationForms(input.calculationResult);
   if (calculatedForms) {
     const rows: Array<[string, string, string, string]> = [
       ["Form 8959", "Medicare wages and tips", "W-2 box 5", calculatedForms.form8959.medicareWagesAndTips],

@@ -256,6 +256,16 @@
         "carryoverSourceYear": null,
         "treatments": []
       },
+      "qualifiedBusinessIncome": {
+        "schemaVersion": "2025.1",
+        "enabled": false,
+        "priorQualifiedBusinessLoss": "0.00",
+        "lossesReviewed": false,
+        "aggregationReviewed": false,
+        "publiclyTradedPartnershipIncome": "0.00",
+        "publiclyTradedPartnershipLossCarryover": "0.00",
+        "trades": []
+      },
       "studentLoan": {
         "enabled": false,
         "interestPaid": "0.00",

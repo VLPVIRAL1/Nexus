@@ -80,6 +80,8 @@ No tax module may be marked complete until all applicable columns below pass. A 
 
 ## Wave 4 — QBI and business/farm/rental completion
 
+**Technical status: complete on October 14, 2026.** Manual/JSON persistence, deterministic calculation, controlled PDF pages, Excel workpapers, unit/database/browser evidence and fail-closed review diagnostics are implemented. Independent tax and official-output approval remain release gates and do not convert these drafts into filing copies.
+
 ### 4A. Complex QBI — Form 8995-A
 
 - Add trades/business grouping, specified-service classification, W-2 wages, qualified property UBIA, patron reductions, REIT/PTP components and loss carryovers.

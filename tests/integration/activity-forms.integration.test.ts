@@ -43,6 +43,9 @@ suite("Schedule C, E, and F persistence", () => {
         formData.businessName = "Synthetic Consulting";
         formData.income.otherIncome = "125.00";
         formData.expenses.advertising = "25.00";
+        formData.vehicle = { ...formData.vehicle, used: true, method: "standard_mileage", placedInServiceDate: "2025-01-02", businessMiles: 1000, evidenceAvailable: true, writtenEvidence: true };
+        formData.homeOffice = { ...formData.homeOffice, claimed: true, method: "simplified", officeSquareFeet: 200, homeSquareFeet: 1000, exclusiveRegularUseReviewed: true };
+        formData.assets = [{ id: randomUUID(), description: "Synthetic computer", category: "equipment", placedInServiceDate: "2025-02-01", basis: "1000.00", businessUsePercentage: "100.00", method: "macrs_200db", recoveryPeriodYears: 5, section179Election: "0.00", bonusPercentage: "0.00", priorDepreciation: "0.00", listedPropertyEvidenceReviewed: true, disposedIn2025: false, dispositionProceeds: "0.00" }];
         formData.qbiEligible = true;
         formData.selfEmploymentTreatmentConfirmed = true;
       } else if (activity.type === "schedule_e") {
@@ -53,6 +56,8 @@ suite("Schedule C, E, and F persistence", () => {
         formData.passiveLossRulesReviewed = true;
         formData.depreciationReviewed = true;
         formData.rentalQbiEligible = false;
+        formData.lossLimitations = { reviewed: true, basisLimit: "10000.00", atRiskLimit: "10000.00", passiveLossAllowed: "10000.00", priorPassiveCarryover: "500.00" };
+        formData.partnershipsAndSCorporations = [{ id: randomUUID(), name: "Synthetic K-1", ein: "", passive: true, incomeOrLoss: "1000.00", basisAndAtRiskReviewed: true, basisLimit: "10000.00", atRiskLimit: "10000.00", passiveLossAllowed: "10000.00", priorPassiveCarryover: "0.00" }];
       } else {
         formData.principalProduct = "Synthetic grain";
         formData.income.livestockProduceSales = "7000.00";
@@ -60,6 +65,9 @@ suite("Schedule C, E, and F persistence", () => {
         formData.qbiEligible = true;
         formData.selfEmploymentTreatmentConfirmed = true;
         formData.cropInsuranceElectionReviewed = true;
+        formData.accountingMethod = "accrual";
+        formData.accrual.livestockProduceSales = "7000.00";
+        formData.accrual.endingInventory = "1500.00";
       }
       const saved = await saveActivityForm(admin, clientId, 2025, activity.id, {
         expectedRevision: state.revision, expectedVersion: activity.version, name: activity.name, ownerRole: activity.ownerRole,
@@ -74,8 +82,11 @@ suite("Schedule C, E, and F persistence", () => {
     expect(state.activities.filter(({ active }) => active)).toHaveLength(3);
     expect(state.activities.every(({ history }) => history.length >= 2)).toBe(true);
     expect((state.activities.find(({ type }) => type === "schedule_c")?.formData as any).businessName).toBe("Synthetic Consulting");
+    expect((state.activities.find(({ type }) => type === "schedule_c")?.formData as any).assets).toHaveLength(1);
     expect((state.activities.find(({ type }) => type === "schedule_e")?.formData as any).income.rentsReceived).toBe("12000.00");
+    expect((state.activities.find(({ type }) => type === "schedule_e")?.formData as any).partnershipsAndSCorporations).toHaveLength(1);
     expect((state.activities.find(({ type }) => type === "schedule_f")?.formData as any).income.livestockProduceSales).toBe("7000.00");
+    expect((state.activities.find(({ type }) => type === "schedule_f")?.formData as any).accountingMethod).toBe("accrual");
   });
 
   it("materializes a canonical JSON activity import, preserves split mappings, assembles calculation input, and rolls back", async () => {

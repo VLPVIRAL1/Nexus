@@ -103,6 +103,10 @@ export interface ScheduleCActivityInput2025 {
   accountingMethod?: "cash" | "accrual" | "other";
   vehicleUsed?: boolean;
   homeOfficeClaimed?: boolean;
+  vehicle?: BusinessVehicleInput2025;
+  homeOffice?: HomeOfficeInput2025;
+  assets?: DepreciableAssetInput2025[];
+  lossLimitations?: BusinessLossLimitationInput2025;
   qbiEligible: boolean;
   selfEmploymentTreatmentConfirmed?: boolean;
   receiptBasis: "source_plus_additional_receipts";
@@ -113,13 +117,43 @@ export interface ScheduleEActivityInput2025 {
   expenses: Partial<Record<string, DollarInput>>; otherExpenses: DollarInput; propertyType: string; personalUseDays: number;
   qualifiedJointVenture: boolean | null; allInvestmentAtRisk: boolean | null; passiveLossRulesReviewed: boolean | null;
   depreciationReviewed: boolean | null; rentalQbiEligible: boolean | null; supplementalActivityCount: number; remicInterestCount: number;
+  personalUseAllocationReviewed?: boolean | null;
+  assets?: DepreciableAssetInput2025[];
+  lossLimitations?: RentalLossLimitationInput2025;
+  partnershipsAndSCorporations?: SupplementalEntityInput2025[];
+  estatesAndTrusts?: SupplementalEntityInput2025[];
+  remicInterests?: Array<{ id: string; name: string; ein: string; excessInclusion: DollarInput; taxableIncomeOrLoss: DollarInput }>;
 }
 
 export interface ScheduleFActivityInput2025 {
   id: string; name: string; owner: PersonRole2025; income: Partial<Record<string, DollarInput>>; expenses: Partial<Record<string, DollarInput>>;
   otherExpenses: DollarInput; accountingMethod: "cash" | "accrual"; accrualAmounts: Partial<Record<string, DollarInput>>;
   materiallyParticipated: boolean | null; qbiEligible: boolean | null; selfEmploymentTreatmentConfirmed: boolean | null; cropInsuranceElectionReviewed: boolean | null;
+  assets?: DepreciableAssetInput2025[];
+  lossLimitations?: FarmLossLimitationInput2025;
 }
+
+export interface DepreciableAssetInput2025 {
+  id: string; description: string; category: "equipment" | "vehicle" | "furniture" | "building" | "land_improvement" | "other";
+  placedInServiceDate: string; basis: DollarInput; businessUsePercentage: string; method: "macrs_200db" | "macrs_150db" | "straight_line";
+  recoveryPeriodYears: 3 | 5 | 7 | 10 | 15 | 20 | 27.5 | 39; section179Election: DollarInput; bonusPercentage: string;
+  priorDepreciation: DollarInput; listedPropertyEvidenceReviewed: boolean; disposedIn2025: boolean; dispositionProceeds: DollarInput;
+}
+
+export interface BusinessVehicleInput2025 {
+  used: boolean; method: "standard_mileage" | "actual" | "none"; placedInServiceDate: string; businessMiles: number; commutingMiles: number; otherMiles: number;
+  actualExpenses: DollarInput; availableForPersonalUse: boolean | null; anotherVehicleAvailable: boolean | null; evidenceAvailable: boolean | null; writtenEvidence: boolean | null;
+}
+
+export interface HomeOfficeInput2025 {
+  claimed: boolean; reviewedDeduction: DollarInput; method: "simplified" | "actual" | "none"; officeSquareFeet: number; homeSquareFeet: number;
+  directExpenses: DollarInput; indirectExpenses: DollarInput; priorCarryover: DollarInput; exclusiveRegularUseReviewed: boolean;
+}
+
+export interface BusinessLossLimitationInput2025 { reviewed: boolean; amountAtRisk: DollarInput; excessBusinessLossLimit: DollarInput; priorDisallowedLoss: DollarInput }
+export interface FarmLossLimitationInput2025 { reviewed: boolean; amountAtRisk: DollarInput; excessFarmLossLimit: DollarInput; priorDisallowedLoss: DollarInput }
+export interface RentalLossLimitationInput2025 { reviewed: boolean; basisLimit: DollarInput; atRiskLimit: DollarInput; passiveLossAllowed: DollarInput; priorPassiveCarryover: DollarInput }
+export interface SupplementalEntityInput2025 { id: string; name: string; ein: string; passive: boolean | null; incomeOrLoss: DollarInput; basisAndAtRiskReviewed: boolean; basisLimit: DollarInput; atRiskLimit: DollarInput; passiveLossAllowed: DollarInput; priorPassiveCarryover: DollarInput }
 
 export interface BusinessWithholdingInput2025 {
   sourceId: string;
@@ -319,9 +353,13 @@ export interface CalculationOutput2025 {
       additionalChildTaxCredit: string;
     };
     scheduleB: { required: boolean; taxableInterest: string; ordinaryDividends: string };
-    scheduleC: Array<{ activityId: string; grossReceipts: string; returnsAndAllowances: string; costOfGoodsSold: string; grossIncome: string; expenses: string; netProfit: string }>;
-    scheduleE: Array<{ activityId: string; rents: string; royalties: string; expenses: string; netIncomeOrLoss: string }>;
-    scheduleF: Array<{ activityId: string; grossIncome: string; expenses: string; netProfit: string }>;
+    scheduleC: Array<{ activityId: string; grossReceipts: string; returnsAndAllowances: string; costOfGoodsSold: string; grossIncome: string; expenses: string; vehicleDeduction: string; homeOfficeDeduction: string; depreciation: string; netProfit: string; allowedNetProfit: string; disallowedLossCarryforward: string }>;
+    scheduleE: Array<{ activityId: string; rents: string; royalties: string; expenses: string; depreciation: string; part1IncomeOrLoss: string; part2IncomeOrLoss: string; part3IncomeOrLoss: string; part4IncomeOrLoss: string; netIncomeOrLoss: string; allowedNetIncomeOrLoss: string; disallowedLossCarryforward: string }>;
+    scheduleF: Array<{ activityId: string; accountingMethod: "cash" | "accrual"; grossIncome: string; expenses: string; depreciation: string; netProfit: string; allowedNetProfit: string; disallowedLossCarryforward: string }>;
+    form4562: Array<{ activityId: string; assetId: string; description: string; basis: string; businessBasis: string; section179: string; bonusDepreciation: string; macrsDepreciation: string; currentDepreciation: string; accumulatedDepreciation: string; dispositionGainOrLoss: string }>;
+    form8829: Array<{ activityId: string; method: "simplified" | "actual"; areaPercentage: string; tentativeDeduction: string; allowedDeduction: string; carryforward: string }>;
+    form6198: Array<{ activityId: string; schedule: "C" | "E" | "F"; currentLoss: string; priorDisallowedLoss: string; amountAtRisk: string; allowedLoss: string; carryforward: string }>;
+    form8582: Array<{ activityId: string; activityName: string; currentLoss: string; priorCarryover: string; allowedLoss: string; carryforward: string }>;
     form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustmentCode: string; adjustment: string; section1202Exclusion: string; category: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
     scheduleD: { shortTermCarryover: string; longTermCarryover: string; shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string; nextYearShortTermCarryover: string; nextYearLongTermCarryover: string };
     capitalGainTaxWorksheet: { required: boolean; regularNetCapitalGain: string; collectiblesGain: string; unrecapturedSection1250Gain: string; tax: string };
@@ -335,6 +373,7 @@ export interface CalculationOutput2025 {
     form8960: { required: boolean; taxableInterest: string; ordinaryDividends: string; annuities: string; rentalAndPassiveIncome: string; capitalGain: string; otherInvestmentIncome: string; investmentIncomeAdjustments: string; investmentExpenses: string; netInvestmentIncome: string; modifiedAdjustedGrossIncome: string; threshold: string; excessMagi: string; netInvestmentIncomeTax: string };
     scheduleSE: ScheduleSEOutput2025[];
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
+    form8995A: { required: boolean; threshold: string; phaseInRange: string; phaseInPercentage: string; currentQualifiedBusinessLoss: string; priorQualifiedBusinessLoss: string; qualifiedBusinessLossCarryforward: string; publiclyTradedPartnershipIncome: string; publiclyTradedPartnershipDeduction: string; trades: Array<{ id: string; name: string; specifiedServiceTradeOrBusiness: boolean; aggregationGroup: string; qualifiedBusinessIncome: string; w2Wages: string; ubia: string; applicablePercentage: string; wagePropertyLimit: string; tentativeDeduction: string; patronReduction: string; allowedDeduction: string }>; tradeDeduction: string; reitPtpDeduction: string; incomeLimitation: string; deduction: string };
     schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string; educatorExpenses: string; iraDeduction: string; studentLoanInterestDeduction: string; hsaDeduction: string; selfEmployedHealthInsuranceDeduction: string; retirementPlanDeduction: string; totalAdjustments: string };
     schedule2: { alternativeMinimumTax: string; selfEmploymentTax: string; additionalMedicareTax: string; netInvestmentIncomeTax: string; additionalRetirementTax: string; additionalHsaTax: string; excessAdvancePtcRepayment: string; part1AdditionalTax: string; part2OtherTaxes: string; totalAdditionalTaxes: string };
     scheduleEic: { required: boolean; qualifyingChildren: Array<{ dependentId: string }>; earnedIncome: string; adjustedGrossIncome: string; investmentIncome: string; credit: string };

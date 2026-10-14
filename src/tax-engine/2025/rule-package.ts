@@ -61,6 +61,7 @@ export const constants2025 = {
   scheduleBThreshold: 1500,
   socialSecurityWageBase: 176100,
   qbiSimplifiedThreshold: { single: 197300, married_filing_jointly: 394600, married_filing_separately: 197300, head_of_household: 197300, qualifying_surviving_spouse: 197300 },
+  qbiPhaseInRange: { single: 50000, married_filing_jointly: 100000, married_filing_separately: 50000, head_of_household: 50000, qualifying_surviving_spouse: 100000 },
   qualifiedDividendZeroRateCeiling: { single: 48350, married_filing_jointly: 96700, married_filing_separately: 48350, head_of_household: 64750, qualifying_surviving_spouse: 96700 },
   qualifiedDividendFifteenRateCeiling: { single: 533400, married_filing_jointly: 600050, married_filing_separately: 300000, head_of_household: 566700, qualifying_surviving_spouse: 600050 },
   additionalMedicareThreshold: { single: 200000, married_filing_jointly: 250000, married_filing_separately: 125000, head_of_household: 200000, qualifying_surviving_spouse: 200000 },

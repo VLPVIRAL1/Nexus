@@ -132,6 +132,18 @@ test("advanced federal workflow exposes editable Forms 8959 and 8960 interviews"
   await expect(page.getByRole("heading", { name: "Capital gains · Form 8949 / Schedule D" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Capital-loss carryovers reviewed" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Source-linked capital treatments JSON" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Qualified business income · Form 8995-A" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Complex QBI enabled" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Source-linked QBI trades JSON" })).toBeVisible();
+});
+
+test("Schedule C exposes vehicle, home-office, depreciation and loss workpapers", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/activities");
+  await expect(page.getByRole("heading", { name: "Part IV · Vehicle deduction" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Deduction method" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Form 8829 · Home office" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Schedule C assets" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Loss limitations reviewed" })).toBeVisible();
 });
 
 test("premium tax credit workflow exposes exception and monthly reconciliation inputs", async ({ page }) => {

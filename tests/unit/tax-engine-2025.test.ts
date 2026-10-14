@@ -513,14 +513,40 @@ describe("2025 supported return graph", () => {
     expect(result.trace.map(({ nodeId }) => nodeId)).toEqual(expect.arrayContaining(["schedule-c.net-profit", "schedule-e.net-income-loss", "schedule-f.net-profit"]));
   });
 
-  it("preserves complex Schedule E and F facts but blocks unsupported linked calculations", () => {
+  it("blocks complex Schedule E and F facts only when required treatment reviews are incomplete", () => {
     const result = calculateFederalReturn2025(supportedInput({
       scheduleEActivities: [{ id: "e-block", name: "Pass-through", owner: "taxpayer", rentsReceived: "0.00", royaltiesReceived: "0.00", expenses: {}, otherExpenses: "0.00", propertyType: "single_family", personalUseDays: 1, qualifiedJointVenture: false, allInvestmentAtRisk: false, passiveLossRulesReviewed: false, depreciationReviewed: false, rentalQbiEligible: null, supplementalActivityCount: 1, remicInterestCount: 0 }],
       scheduleFActivities: [{ id: "f-block", name: "Accrual farm", owner: "taxpayer", income: {}, expenses: {}, otherExpenses: "0.00", accountingMethod: "accrual", accrualAmounts: { endingInventory: "1000.00" }, materiallyParticipated: null, qbiEligible: null, selfEmploymentTreatmentConfirmed: null, cropInsuranceElectionReviewed: null }],
     }));
     expect(result.status).toBe("blocked");
     expect(result.forms).toBeNull();
-    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["SCHEDULE_E_PERSONAL_USE_ALLOCATION_REQUIRED", "SCHEDULE_E_PARTS_II_IV_UNSUPPORTED", "SCHEDULE_E_LIMITATION_REVIEW_REQUIRED", "SCHEDULE_F_ACCRUAL_METHOD_UNSUPPORTED", "SCHEDULE_F_QBI_TREATMENT_REQUIRED"]));
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["SCHEDULE_E_PERSONAL_USE_ALLOCATION_REQUIRED", "SCHEDULE_E_QBI_TREATMENT_REQUIRED", "SCHEDULE_F_MATERIAL_PARTICIPATION_REQUIRED", "SCHEDULE_F_QBI_TREATMENT_REQUIRED", "SCHEDULE_F_SE_TREATMENT_REQUIRED"]));
+  });
+
+  it("calculates vehicle, home office, depreciation, Schedule E entities, passive limits, and accrual farm income end to end", () => {
+    const asset = { id: "asset-1", description: "Computer", category: "equipment" as const, placedInServiceDate: "2025-03-01", basis: "10000.00", businessUsePercentage: "100.00", method: "macrs_200db" as const, recoveryPeriodYears: 5 as const, section179Election: "2000.00", bonusPercentage: "0.00", priorDepreciation: "0.00", listedPropertyEvidenceReviewed: true, disposedIn2025: false, dispositionProceeds: "0.00" };
+    const result = calculateFederalReturn2025(supportedInput({
+      scheduleCActivities: [{ id: "c-complex", name: "Consulting", owner: "taxpayer", grossReceipts: "30000.00", expenses: { advertising: "1000.00", carAndTruck: "0.00", depreciationAndSection179: "0.00" }, otherExpenses: "0.00", accountingMethod: "cash", vehicle: { used: true, method: "standard_mileage", placedInServiceDate: "2025-01-01", businessMiles: 1000, commutingMiles: 0, otherMiles: 0, actualExpenses: "0.00", availableForPersonalUse: false, anotherVehicleAvailable: true, evidenceAvailable: true, writtenEvidence: true }, homeOffice: { claimed: true, reviewedDeduction: "0.00", method: "simplified", officeSquareFeet: 200, homeSquareFeet: 1000, directExpenses: "0.00", indirectExpenses: "0.00", priorCarryover: "0.00", exclusiveRegularUseReviewed: true }, assets: [asset], lossLimitations: { reviewed: false, amountAtRisk: "0.00", excessBusinessLossLimit: "0.00", priorDisallowedLoss: "0.00" }, qbiEligible: true, selfEmploymentTreatmentConfirmed: true, receiptBasis: "source_plus_additional_receipts" }],
+      scheduleEActivities: [{ id: "e-complex", name: "Rental and K-1", owner: "taxpayer", rentsReceived: "10000.00", royaltiesReceived: "0.00", expenses: { repairs: "2000.00" }, otherExpenses: "0.00", propertyType: "self_rental", personalUseDays: 0, qualifiedJointVenture: false, allInvestmentAtRisk: false, passiveLossRulesReviewed: true, depreciationReviewed: true, rentalQbiEligible: true, supplementalActivityCount: 1, remicInterestCount: 1, personalUseAllocationReviewed: true, assets: [], lossLimitations: { reviewed: true, basisLimit: "20000.00", atRiskLimit: "20000.00", passiveLossAllowed: "20000.00", priorPassiveCarryover: "0.00" }, partnershipsAndSCorporations: [{ id: "k1-1", name: "Partner LLC", ein: "", passive: true, incomeOrLoss: "-5000.00", basisAndAtRiskReviewed: true, basisLimit: "10000.00", atRiskLimit: "6000.00", passiveLossAllowed: "4000.00", priorPassiveCarryover: "1000.00" }], estatesAndTrusts: [], remicInterests: [{ id: "remic-1", name: "REMIC", ein: "", excessInclusion: "200.00", taxableIncomeOrLoss: "300.00" }] }],
+      scheduleFActivities: [{ id: "f-accrual", name: "Farm", owner: "taxpayer", income: {}, expenses: { feed: "2000.00" }, otherExpenses: "0.00", accountingMethod: "accrual", accrualAmounts: { livestockProduceSales: "20000.00", beginningInventory: "3000.00", purchases: "4000.00", costOfItemsWithdrawn: "0.00", endingInventory: "5000.00", otherAccrualIncome: "1000.00" }, materiallyParticipated: true, qbiEligible: true, selfEmploymentTreatmentConfirmed: true, cropInsuranceElectionReviewed: true, assets: [], lossLimitations: { reviewed: false, amountAtRisk: "0.00", excessFarmLossLimit: "0.00", priorDisallowedLoss: "0.00" } }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleC[0]).toMatchObject({ vehicleDeduction: "700", homeOfficeDeduction: "1000", depreciation: "3600", netProfit: "23700", allowedNetProfit: "23700" });
+    expect(result.forms?.scheduleE[0]).toMatchObject({ part1IncomeOrLoss: "8000", part2IncomeOrLoss: "-4000", part4IncomeOrLoss: "500", netIncomeOrLoss: "3500", allowedNetIncomeOrLoss: "4500" });
+    expect(result.forms?.scheduleF[0]).toMatchObject({ accountingMethod: "accrual", grossIncome: "19000", expenses: "2000", netProfit: "17000", allowedNetProfit: "17000" });
+    expect(result.forms?.form4562[0]).toMatchObject({ section179: "2000", macrsDepreciation: "1600", currentDepreciation: "3600" });
+    expect(result.forms?.form8829[0]).toMatchObject({ method: "simplified", allowedDeduction: "1000" });
+    expect(result.forms?.form8582).toEqual(expect.arrayContaining([expect.objectContaining({ activityId: "k1-1", allowedLoss: "4000", carryforward: "2000" })]));
+    expect(result.forms?.schedule1).toMatchObject({ businessIncome: "23700", rentalRealEstateRoyalties: "4500", farmIncome: "17000" });
+  });
+
+  it("releases a reviewed prior passive-loss carryover against current rental income", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      scheduleEActivities: [{ id: "e-carryover", name: "Rental", owner: "taxpayer", rentsReceived: "10000.00", royaltiesReceived: "0.00", expenses: {}, otherExpenses: "0.00", propertyType: "single_family", personalUseDays: 0, qualifiedJointVenture: false, allInvestmentAtRisk: true, passiveLossRulesReviewed: true, depreciationReviewed: true, rentalQbiEligible: false, supplementalActivityCount: 0, remicInterestCount: 0, personalUseAllocationReviewed: true, assets: [], lossLimitations: { reviewed: true, basisLimit: "10000.00", atRiskLimit: "10000.00", passiveLossAllowed: "3000.00", priorPassiveCarryover: "3000.00" }, partnershipsAndSCorporations: [], estatesAndTrusts: [], remicInterests: [] }],
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.scheduleE[0]).toMatchObject({ part1IncomeOrLoss: "10000", allowedNetIncomeOrLoss: "7000", disallowedLossCarryforward: "0" });
+    expect(result.forms?.form8582).toEqual([expect.objectContaining({ activityId: "e-carryover", priorCarryover: "3000", allowedLoss: "3000", carryforward: "0" })]);
   });
 
   it("includes eligible Section 199A dividends in the simplified Form 8995 limitation", () => {
@@ -647,15 +673,34 @@ describe("2025 supported return graph", () => {
     expect(result.diagnostics.some(({ code }) => code === "SPOUSE_DATA_INVALID_FOR_STATUS")).toBe(true);
   });
 
-  it("blocks Form 8995-A cases instead of applying a blanket 20 percent deduction", () => {
+  it("requires a Form 8995-A trade profile above the simplified threshold", () => {
     const result = calculateFederalReturn2025(supportedInput({
       wages: [{ id: "w2-1", owner: "taxpayer", wages: "300000.00", federalWithholding: "0.00", socialSecurityWages: "176100.00" }],
       scheduleCActivities: [{ id: "c-1", name: "Consulting", owner: "taxpayer", grossReceipts: "10000.00", expenses: {}, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
     }));
     expect(result.status).toBe("blocked");
     expect(result.forms).toBeNull();
-    expect(result.diagnostics.some(({ code }) => code === "FORM_8995_A_REQUIRED")).toBe(true);
+    expect(result.diagnostics.some(({ code }) => code === "FORM_8995_A_PROFILE_REQUIRED")).toBe(true);
     expect(result.diagnostics.some(({ code }) => code === "ADDITIONAL_MEDICARE_PROFILE_REQUIRED")).toBe(true);
+  });
+
+  it("calculates Form 8995-A wage and property limitations above the threshold", () => {
+    const eligibility = structuredClone(supportedInput().eligibility);
+    eligibility.treatmentScreens.additionalMedicareTax = "applies";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.additionalMedicareTax = { ...adjustments.additionalMedicareTax, enabled: true, applicabilityReviewed: true, withholdingReconciled: true };
+    adjustments.qualifiedBusinessIncome = { schemaVersion: "2025.1", enabled: true, priorQualifiedBusinessLoss: "0.00", lossesReviewed: true, aggregationReviewed: true, publiclyTradedPartnershipIncome: "0.00", publiclyTradedPartnershipLossCarryover: "0.00", trades: [{ id: "10000000-0000-4000-8000-000000000801", activityId: "10000000-0000-4000-8000-000000000802", name: "Manufacturing", specifiedServiceTradeOrBusiness: false, w2Wages: "50000.00", unadjustedBasisImmediatelyAfterAcquisition: "0.00", qualifiedIncomeAdjustment: "0.00", patronReduction: "0.00", aggregationGroup: "", classificationReviewed: true }] };
+    const result = calculateFederalReturn2025(supportedInput({
+      eligibility,
+      wages: [{ id: "w2-1", owner: "taxpayer", wages: "210000.00", federalWithholding: "30000.00", socialSecurityWages: "176100.00", medicareWagesAndTips: "210000.00", medicareTaxWithheld: "3045.00" }],
+      scheduleCActivities: [{ id: "10000000-0000-4000-8000-000000000802", name: "Manufacturing", owner: "taxpayer", grossReceipts: "100000.00", expenses: {}, qbiEligible: true, selfEmploymentTreatmentConfirmed: true, receiptBasis: "source_plus_additional_receipts" }],
+      advancedFederal: advancedProfile({ adjustments }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8995A.required).toBe(true);
+    expect(result.forms?.form8995A.trades[0]).toMatchObject({ name: "Manufacturing", specifiedServiceTradeOrBusiness: false, w2Wages: "50000", wagePropertyLimit: "25000" });
+    expect(Number(result.forms?.form8995A.deduction)).toBeGreaterThan(0);
+    expect(result.trace.find(({ nodeId }) => nodeId === "form-8995.deduction")?.ruleId).toBe("FORM-8995-A-WAGE-PROPERTY-LIMIT");
   });
 
   it("calculates Forms 8959 and 8960 with Schedule 2 and withholding integration", () => {
