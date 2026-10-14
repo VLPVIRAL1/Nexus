@@ -47,6 +47,7 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
       money("23", "Other taxes from Schedule 2", forms.schedule2.part2OtherTaxes, "schedule-2.total-additional-taxes"),
       money("24", "Total tax", forms.form1040.totalTax, "form-1040.total-tax"),
       money("25d", "Federal income tax withheld", forms.form1040.federalWithholding, "form-1040.payments"),
+      money("25c", "Additional Medicare tax withholding", forms.form1040.additionalMedicareWithholding, "form-8959.additional-withholding"),
       money("28", "Additional child tax credit", forms.form1040.additionalChildTaxCredit, "schedule-8812.additional-child-tax-credit"),
       money("27a", "Earned income credit", forms.form1040.earnedIncomeCredit, "schedule-eic.credit"),
       money("29", "Refundable American Opportunity Credit", forms.form1040.refundableAmericanOpportunityCredit, "form-8863.credit"),
@@ -124,6 +125,9 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
   if (forms.form8962.required) pages.push(page("Form 8962", "Premium Tax Credit — annual marketplace reconciliation", [
     money("2a", "Household income", forms.form8962.householdIncome, "form-8962.credit"),
     text("5", "Household income as percentage of FPL", forms.form8962.householdIncomePercentFpl, "form-8962.credit"),
+    text("Exception", "Below-poverty exception applied", forms.form8962.belowPovertyExceptionApplied ? "Yes" : "No", "form-8962.credit"),
+    text("Exception", "MFS exception applied", forms.form8962.mfsExceptionApplied ? "Yes" : "No", "form-8962.credit"),
+    text("Part V", "Alternative marriage-year calculation applied", forms.form8962.alternativeMarriageYearApplied ? "Yes" : "No", "form-8962.credit"),
     text("7", "Applicable percentage", forms.form8962.applicablePercentage, "form-8962.credit"),
     money("8a", "Annual contribution amount", forms.form8962.annualContribution, "form-8962.credit"),
     money("11a", "Annual enrollment premiums", forms.form8962.totalPremium, "form-8962.credit"),
@@ -132,6 +136,13 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("26", "Net premium tax credit", forms.form8962.premiumTaxCredit, "form-8962.credit"),
     money("29", "Excess advance PTC repayment", forms.form8962.excessAdvancePtcRepayment, "form-8962.credit"),
   ]));
+  if (forms.form8962.required) pages.push(page("Form 8962 Monthly Reconciliation", "Policy-month aggregation and household contribution", forms.form8962.months.flatMap((month) => [
+    money(`${month.month}a`, `Month ${month.month} enrollment premium`, month.premium, "form-8962.credit"),
+    money(`${month.month}b`, `Month ${month.month} SLCSP`, month.slcsp, "form-8962.credit"),
+    money(`${month.month}c`, `Month ${month.month} household contribution`, month.contribution, "form-8962.credit"),
+    money(`${month.month}f`, `Month ${month.month} allowed PTC`, month.allowedPtc, "form-8962.credit"),
+    money(`${month.month}g`, `Month ${month.month} advance PTC`, month.advancePtc, "form-8962.credit"),
+  ])));
 
   if (Number(forms.schedule3.totalNonrefundableCredits) !== 0 || Number(forms.schedule3.premiumTaxCredit) !== 0 || Number(forms.schedule3.totalOtherPayments) !== 0) pages.push(page("Schedule 3", "Additional Credits and Payments — supported lines", [
     money("2", "Child and dependent care credit", forms.schedule3.dependentCareCredit, "form-2441.credit"),
@@ -174,17 +185,29 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
   forms.form8949.forEach((transaction, index) => pages.push(page("Form 8949", "Sales and Other Dispositions of Capital Assets — simple review profile", [
       money("1d", "Proceeds", transaction.proceeds, "form-8949.proceeds"),
       money("1e", "Cost or other basis", transaction.costBasis, "form-8949.cost-basis"),
+      text("1f", "Adjustment code", transaction.adjustmentCode || "—", "form-8949.adjustment"),
       money("1g", "Adjustment", transaction.adjustment, "form-8949.adjustment"),
+      money("1202", "Section 1202 exclusion", transaction.section1202Exclusion, "form-8949.adjustment"),
       money("1h", "Gain or loss", transaction.gainOrLoss, "schedule-d.net-gain-loss"),
-    ], `${transaction.term === "short" ? "Short" : "Long"}-term ${index + 1}: ${transaction.description}`)));
+    ], `${transaction.term === "short" ? "Short" : "Long"}-term ${index + 1}: ${transaction.description} · ${transaction.category.replaceAll("_", " ")}`)));
   if (forms.form8949.length || Number(forms.scheduleD.netGainOrLoss) !== 0) {
     pages.push(page("Schedule D", "Capital Gains and Losses — supported transaction summary", [
+      money("6", "Short-term capital loss carryover", forms.scheduleD.shortTermCarryover, "schedule-d.net-gain-loss"),
       money("7", "Net short-term gain or loss", forms.scheduleD.shortTermGainOrLoss, "schedule-d.net-gain-loss"),
+      money("14", "Long-term capital loss carryover", forms.scheduleD.longTermCarryover, "schedule-d.net-gain-loss"),
       money("15", "Net long-term gain or loss", forms.scheduleD.longTermGainOrLoss, "schedule-d.net-gain-loss"),
       money("16", "Combined net gain or loss", forms.scheduleD.netGainOrLoss, "schedule-d.net-gain-loss"),
       money("21", "Deductible loss", forms.scheduleD.deductibleLoss, "schedule-d.net-gain-loss"),
+      money("Carryover ST", "Short-term loss carried to 2026", forms.scheduleD.nextYearShortTermCarryover, "schedule-d.next-year-carryover"),
+      money("Carryover LT", "Long-term loss carried to 2026", forms.scheduleD.nextYearLongTermCarryover, "schedule-d.next-year-carryover"),
     ]));
   }
+  if (forms.capitalGainTaxWorksheet.required) pages.push(page("Schedule D Tax Worksheet", "Qualified-dividend and special-rate capital-gain tax", [
+    money("Regular", "Regular net capital gain", forms.capitalGainTaxWorksheet.regularNetCapitalGain, "form-1040.income-tax"),
+    money("25%", "Unrecaptured Section 1250 gain", forms.capitalGainTaxWorksheet.unrecapturedSection1250Gain, "form-1040.income-tax"),
+    money("28%", "Collectibles gain", forms.capitalGainTaxWorksheet.collectiblesGain, "form-1040.income-tax"),
+    money("Tax", "Income tax", forms.capitalGainTaxWorksheet.tax, "form-1040.income-tax"),
+  ]));
 
   forms.form8889.forEach((distribution, index) => pages.push(page("Form 8889", "Health Savings Accounts — distribution review", [
     money("14a", "Total distributions", distribution.grossDistribution, "form-8889.distributions"),
@@ -196,6 +219,36 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("13", "HSA deduction", forms.form8889Summary.deductibleContribution, "schedule-1.adjustments"),
     money("16", "Taxable HSA distribution", forms.form8889Summary.taxableDistribution, "form-8889.distributions"),
     money("17b", "Additional HSA tax", forms.form8889Summary.additionalTax, "form-8889.distributions"),
+  ]));
+
+  forms.form8606.forEach((basis, index) => pages.push(page("Form 8606", "Nondeductible IRAs — owner-specific basis computation", [
+    money("1", "Nondeductible contributions for 2025", basis.currentYearNondeductibleContributions, `form-8606.${basis.owner}`),
+    money("2", "Traditional IRA basis before 2025", basis.priorYearBasis, `form-8606.${basis.owner}`),
+    money("3", "Total basis", basis.totalBasis, `form-8606.${basis.owner}`),
+    money("6", "Year-end traditional IRA value", basis.yearEndTraditionalIraValue, `form-8606.${basis.owner}`),
+    money("7", "Traditional IRA distributions", basis.traditionalIraDistributions, `form-8606.${basis.owner}`),
+    money("8", "Amounts converted to Roth IRA", basis.rothConversions, `form-8606.${basis.owner}`),
+    money("13", "Nontaxable amount", basis.nontaxableAmount, `form-8606.${basis.owner}`),
+    money("15c/18", "Taxable amount", basis.taxableAmount, `form-8606.${basis.owner}`),
+    money("14", "Basis carried to 2026", basis.basisCarryforward, `form-8606.${basis.owner}`),
+  ], `Owner ${index + 1}: ${basis.owner}`)));
+
+  forms.retirementWorksheets.forEach((distribution, index) => pages.push(page("Retirement Distribution Worksheet", "Source-linked Form 1099-R treatment", [
+    text("Treatment", "Reviewed treatment", distribution.treatment.replaceAll("_", " "), "retirement-worksheets"),
+    money("1", "Gross distribution", distribution.grossDistribution, "retirement-worksheets"),
+    money("2", "Taxable amount", distribution.taxableAmount, "retirement-worksheets"),
+    money("Rollover", "Rollover amount", distribution.rolloverAmount, "retirement-worksheets"),
+    money("QCD", "Qualified charitable distribution", distribution.qcdAmount, "retirement-worksheets"),
+    money("Exclusion", "Simplified-method annuity exclusion", distribution.annuityExclusion, "retirement-worksheets"),
+    money("5329 exception", "Exception amount", distribution.exceptionAmount, "form-5329.additional-tax"),
+    money("5329 tax", "Additional tax", distribution.additionalTax, "form-5329.additional-tax"),
+  ], `Distribution ${index + 1}: ${distribution.distributionId}`)));
+
+  if (forms.form5329.required) pages.push(page("Form 5329", "Additional Taxes on Qualified Plans — early-distribution summary", [
+    money("1", "Early distributions included in income", forms.form5329.earlyDistributions, "form-5329.additional-tax"),
+    money("2", "Exception amount", forms.form5329.exceptionAmount, "form-5329.additional-tax"),
+    money("3", "Amount subject to additional tax", forms.form5329.amountSubjectToAdditionalTax, "form-5329.additional-tax"),
+    money("4", "Additional tax", forms.form5329.additionalTax, "form-5329.additional-tax"),
   ]));
 
   forms.scheduleSE.forEach((owner, index) => pages.push(page("Schedule SE", "Self-Employment Tax — supported regular method", [
@@ -225,10 +278,13 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     ]));
   }
 
-  if (forms.scheduleSE.length || Number(forms.schedule2.alternativeMinimumTax) !== 0 || Number(forms.schedule2.additionalHsaTax) !== 0 || Number(forms.schedule2.excessAdvancePtcRepayment) !== 0) pages.push(page("Schedule 2", "Additional Taxes — supported lines", [
+  if (forms.scheduleSE.length || Number(forms.schedule2.alternativeMinimumTax) !== 0 || Number(forms.schedule2.additionalMedicareTax) !== 0 || Number(forms.schedule2.netInvestmentIncomeTax) !== 0 || Number(forms.schedule2.additionalRetirementTax) !== 0 || Number(forms.schedule2.additionalHsaTax) !== 0 || Number(forms.schedule2.excessAdvancePtcRepayment) !== 0) pages.push(page("Schedule 2", "Additional Taxes — supported lines", [
     money("1", "Alternative minimum tax", forms.schedule2.alternativeMinimumTax, "form-6251.alternative-minimum-tax"),
     money("2", "Excess advance premium tax credit repayment", forms.schedule2.excessAdvancePtcRepayment, "form-8962.credit"),
     money("4", "Self-employment tax", forms.schedule2.selfEmploymentTax, "schedule-se.tax"),
+    money("11", "Additional Medicare Tax", forms.schedule2.additionalMedicareTax, "form-8959.additional-medicare-tax"),
+    money("12", "Net Investment Income Tax", forms.schedule2.netInvestmentIncomeTax, "form-8960.net-investment-income-tax"),
+    money("8", "Additional tax on IRAs or other qualified retirement plans", forms.schedule2.additionalRetirementTax, "form-5329.additional-tax"),
     money("17c", "Additional tax on HSAs", forms.schedule2.additionalHsaTax, "form-8889.distributions"),
     money("21", "Total additional taxes", forms.schedule2.totalAdditionalTaxes, "schedule-2.total-additional-taxes"),
   ]));
@@ -243,6 +299,33 @@ export function buildFormRenderingPlan2025(result: CalculationOutput2025 | Recor
     money("9", "Tentative minimum tax", forms.form6251.tentativeMinimumTax, "form-6251.alternative-minimum-tax"),
     money("10", "Regular tax", forms.form6251.regularTax, "form-6251.alternative-minimum-tax"),
     money("11", "Alternative minimum tax", forms.form6251.alternativeMinimumTax, "form-6251.alternative-minimum-tax"),
+  ]));
+
+  if (forms.form8959.required) pages.push(page("Form 8959", "Additional Medicare Tax", [
+    money("1", "Medicare wages and tips", forms.form8959.medicareWagesAndTips, "form-8959.additional-medicare-tax"),
+    money("3", "Unreported tips", forms.form8959.unreportedTips, "form-8959.additional-medicare-tax"),
+    money("8", "Self-employment wages", forms.form8959.selfEmploymentWages, "form-8959.additional-medicare-tax"),
+    money("13", "Railroad retirement compensation", forms.form8959.railroadRetirementCompensation, "form-8959.additional-medicare-tax"),
+    money("Threshold", "Filing-status threshold", forms.form8959.threshold, "form-8959.additional-medicare-tax"),
+    money("18", "Compensation above threshold", forms.form8959.excessWages, "form-8959.additional-medicare-tax"),
+    money("18", "Additional Medicare Tax", forms.form8959.additionalMedicareTax, "form-8959.additional-medicare-tax"),
+    money("24", "Additional Medicare withholding", forms.form8959.additionalMedicareWithholding, "form-8959.additional-withholding"),
+  ]));
+
+  if (forms.form8960.required) pages.push(page("Form 8960", "Net Investment Income Tax — Individuals, Estates, and Trusts", [
+    money("1", "Taxable interest", forms.form8960.taxableInterest, "form-8960.net-investment-income-tax"),
+    money("2", "Ordinary dividends", forms.form8960.ordinaryDividends, "form-8960.net-investment-income-tax"),
+    money("3", "Annuities", forms.form8960.annuities, "form-8960.net-investment-income-tax"),
+    money("4", "Rental, royalty, partnership and trust income", forms.form8960.rentalAndPassiveIncome, "form-8960.net-investment-income-tax"),
+    money("5", "Net gain attributable to property dispositions", forms.form8960.capitalGain, "form-8960.net-investment-income-tax"),
+    money("7", "Other investment income", forms.form8960.otherInvestmentIncome, "form-8960.net-investment-income-tax"),
+    money("7 adjustments", "Investment-income exclusions and adjustments", forms.form8960.investmentIncomeAdjustments, "form-8960.net-investment-income-tax"),
+    money("12", "Properly allocable deductions", forms.form8960.investmentExpenses, "form-8960.net-investment-income-tax"),
+    money("12", "Net investment income", forms.form8960.netInvestmentIncome, "form-8960.net-investment-income-tax"),
+    money("13", "Modified adjusted gross income", forms.form8960.modifiedAdjustedGrossIncome, "form-8960.net-investment-income-tax"),
+    money("14", "Filing-status threshold", forms.form8960.threshold, "form-8960.net-investment-income-tax"),
+    money("15", "MAGI above threshold", forms.form8960.excessMagi, "form-8960.net-investment-income-tax"),
+    money("17", "Net Investment Income Tax", forms.form8960.netInvestmentIncomeTax, "form-8960.net-investment-income-tax"),
   ]));
 
   if (Number(forms.form8995.deduction) > 0) pages.push(page("Form 8995", "Qualified Business Income Deduction — simplified supported lines", [
@@ -283,8 +366,10 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (forms.form2441.required) required.push("Form 2441");
   if (forms.form8863.required) required.push("Form 8863");
   if (forms.form8867.required) required.push("Form 8867");
-  if (forms.form8962.required) required.push("Form 8962");
+  if (forms.form8962.required) required.push("Form 8962", "Form 8962 Monthly Reconciliation");
   if (forms.form6251.required) required.push("Form 6251", "Schedule 2");
+  if (forms.form8959.required) required.push("Form 8959", "Schedule 2");
+  if (forms.form8960.required) required.push("Form 8960", "Schedule 2");
   if (Number(forms.schedule3.totalNonrefundableCredits) !== 0 || Number(forms.schedule3.premiumTaxCredit) !== 0 || Number(forms.schedule3.totalOtherPayments) !== 0) required.push("Schedule 3");
   if (forms.scheduleB.required) required.push("Schedule B");
   if (forms.scheduleC.length) required.push("Schedule C");
@@ -292,10 +377,14 @@ export function requiredFormsForCalculation2025(result: CalculationOutput2025 | 
   if (forms.scheduleF.length) required.push("Schedule F");
   if (forms.form8949.length) required.push("Form 8949");
   if (forms.form8949.length || Number(forms.scheduleD.netGainOrLoss) !== 0) required.push("Schedule D");
+  if (forms.capitalGainTaxWorksheet.required) required.push("Schedule D Tax Worksheet");
   if (forms.form8889.length || forms.form8889Summary.required) required.push("Form 8889");
+  if (forms.form8606.length) required.push("Form 8606");
+  if (forms.retirementWorksheets.length) required.push("Retirement Distribution Worksheet");
+  if (forms.form5329.required) required.push("Form 5329", "Schedule 2");
   if (forms.scheduleSE.length) required.push("Schedule SE", "Schedule 1", "Schedule 2");
   else if (forms.scheduleE.length || forms.scheduleF.length || Object.entries(forms.schedule1).some(([key,value]) => key !== "totalAdjustments" && Number(value) !== 0)) required.push("Schedule 1");
-  if (!forms.scheduleSE.length && (Number(forms.schedule2.alternativeMinimumTax) !== 0 || Number(forms.schedule2.additionalHsaTax) !== 0 || Number(forms.schedule2.excessAdvancePtcRepayment) !== 0)) required.push("Schedule 2");
+  if (!forms.scheduleSE.length && (Number(forms.schedule2.alternativeMinimumTax) !== 0 || Number(forms.schedule2.additionalMedicareTax) !== 0 || Number(forms.schedule2.netInvestmentIncomeTax) !== 0 || Number(forms.schedule2.additionalRetirementTax) !== 0 || Number(forms.schedule2.additionalHsaTax) !== 0 || Number(forms.schedule2.excessAdvancePtcRepayment) !== 0)) required.push("Schedule 2");
   if (Number(forms.form8995.deduction) > 0) required.push("Form 8995");
   const incomeTaxTrace = output.trace.find(({ nodeId }) => nodeId === "form-1040.income-tax");
   if (incomeTaxTrace?.ruleId === "QD-CAPITAL-GAIN-WORKSHEET") required.push("Qualified Dividends Tax Worksheet");

@@ -25,7 +25,7 @@ export const sourceFormCatalog2025: SourceFormCatalogEntry[] = [
   ["1099-INT", "supported_capture", "Typed capture; unsupported boxes block approval"],
   ["1099-DIV", "supported_capture", "Typed capture; unsupported boxes block approval"],
   ["1099-A", "document_only_blocking", "Acquisition or abandonment treatment is not implemented"],
-  ["1099-B", "supported_capture", "Typed capture; simple basis-known sales flow through Form 8949 and Schedule D; adjustments and large loss carryovers block"],
+  ["1099-B", "supported_capture", "Typed capture; reviewed adjustments, special-rate classifications and loss carryovers flow through Form 8949, Schedule D and the capital-gain tax worksheet"],
   ["1099-C", "document_only_blocking", "Cancellation-of-debt treatment is not implemented"],
   ["1099-CAP", "document_only_blocking", "Corporate control/capital structure treatment is not implemented"],
   ["1099-DA", "document_only_blocking", "Digital-asset disposition treatment is not implemented"],

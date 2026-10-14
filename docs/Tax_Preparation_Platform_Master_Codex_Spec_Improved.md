@@ -18,17 +18,17 @@ The binding execution sequence and twelve-part completion gate for all remaining
 - [x] Implement person-specific age-65/blindness additional standard deductions, including the MFS spouse eligibility condition, manual/import parity, calculated line trace and controlled output detail.
 - [x] Implement typed SSA-1099/RRB-1099 manual and JSON capture, intake/source reconciliation, the 2025 Social Security Benefits Worksheet, Form 1040 lines 6a/6b, withholding, immutable traces, controlled output and explicit blockers for unsupported elections/interactions.
 - [x] Implement AMT and Form 6251 through the versioned advanced-federal profile, including manual/JSON parity, 2025 exemption and phaseout rules, 26/28-percent rates, standard/itemized tax addbacks, enumerated preferences, AMT QBI and preferential-income treatment, Schedule 2/Form 1040 integration, traceable draft output and explicit dependent-child/Form 8801/unrepresented-adjustment blockers.
-- [ ] Implement Additional Medicare Tax and Form 8959.
-- [ ] Implement Net Investment Income Tax and Form 8960.
-- [ ] Implement nondeductible IRA basis, conversions and distributions through Form 8606.
+- [x] Implement Additional Medicare Tax and Form 8959 through W-2 Box 5/6 and self-employment ingestion, reviewed manual/JSON facts, filing-status thresholds, additional withholding, Schedule 2/Form 1040 integration, calculation traces, controlled draft PDF pages, a dedicated Excel reconciliation, and focused unit/database/browser evidence.
+- [x] Implement Net Investment Income Tax and Form 8960 through reviewed investment-income classifications and deductions, MAGI thresholds, Schedule 2/Form 1040 integration, calculation traces, controlled draft PDF pages, a dedicated Excel reconciliation, and focused unit/database/browser evidence.
+- [x] Implement nondeductible IRA basis, conversions and distributions through Form 8606.
 - [ ] Implement complex QBI and Form 8995-A.
 - [ ] Implement Schedule C losses, vehicle methods, home office, asset ledgers and calculated Form 4562 depreciation.
 - [ ] Implement Schedule E K-1s, Parts II–IV, complex rentals and basis/at-risk/passive loss ledgers.
 - [ ] Implement Schedule F accrual accounting and farm-loss limitations.
-- [ ] Implement capital-loss carryovers and adjusted Form 8949 transactions.
-- [ ] Implement complex retirement-distribution codes, rollovers, QCDs, annuity worksheets and applicable Form 5329 treatments.
-- [ ] Implement Form 8962 below-poverty, qualifying MFS, alternative-marriage-year and shared-policy exceptions.
-- [ ] Implement SIMPLE and qualified-plan-specific self-employed retirement contribution calculations.
+- [x] Implement capital-loss carryovers and adjusted Form 8949 transactions.
+- [x] Implement complex retirement-distribution codes, rollovers, QCDs, annuity worksheets and applicable Form 5329 treatments.
+- [x] Implement Form 8962 below-poverty, qualifying MFS, alternative-marriage-year and shared-policy exceptions.
+- [x] Implement SIMPLE and qualified-plan-specific self-employed retirement contribution calculations.
 - [ ] Implement a jurisdiction-versioned state/local engine followed by independently tested jurisdiction releases.
 - [ ] Implement live CCH and Drake synchronization only through vendor-approved interfaces, sandbox evidence and explicit production authorization.
 

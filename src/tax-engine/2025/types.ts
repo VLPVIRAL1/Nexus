@@ -29,6 +29,7 @@ export interface WageInput2025 {
   wages: DollarInput;
   federalWithholding: DollarInput;
   socialSecurityWages: DollarInput;
+  medicareWagesAndTips?: DollarInput;
   socialSecurityTaxWithheld?: DollarInput;
   medicareTaxWithheld?: DollarInput;
 }
@@ -82,6 +83,9 @@ export interface DividendInput2025 {
   exemptInterestDividends: DollarInput;
   section199ADividends: DollarInput;
   capitalGainDistributions?: DollarInput;
+  unrecaptured1250Gain?: DollarInput;
+  section1202Gain?: DollarInput;
+  collectiblesGain?: DollarInput;
   federalWithholding: DollarInput;
 }
 
@@ -133,6 +137,10 @@ export interface BrokerTransactionInput2025 {
   basisReportedToIrs: boolean;
   adjustmentAmount: DollarInput;
   adjustmentCode: string;
+  accruedMarketDiscount?: DollarInput;
+  washSaleLossDisallowed?: DollarInput;
+  collectiblesOrQof?: boolean;
+  lossNotAllowed?: boolean;
 }
 
 export interface RetirementDistributionInput2025 {
@@ -144,6 +152,8 @@ export interface RetirementDistributionInput2025 {
   distributionCode: string;
   iraSepSimple: boolean;
   taxableAmountNotDetermined: boolean;
+  employeeContributions?: DollarInput;
+  totalEmployeeContributions?: DollarInput;
 }
 
 export interface GovernmentPaymentInput2025 {
@@ -312,20 +322,26 @@ export interface CalculationOutput2025 {
     scheduleC: Array<{ activityId: string; grossReceipts: string; returnsAndAllowances: string; costOfGoodsSold: string; grossIncome: string; expenses: string; netProfit: string }>;
     scheduleE: Array<{ activityId: string; rents: string; royalties: string; expenses: string; netIncomeOrLoss: string }>;
     scheduleF: Array<{ activityId: string; grossIncome: string; expenses: string; netProfit: string }>;
-    form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustment: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
-    scheduleD: { shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string };
+    form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustmentCode: string; adjustment: string; section1202Exclusion: string; category: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
+    scheduleD: { shortTermCarryover: string; longTermCarryover: string; shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string; nextYearShortTermCarryover: string; nextYearLongTermCarryover: string };
+    capitalGainTaxWorksheet: { required: boolean; regularNetCapitalGain: string; collectiblesGain: string; unrecapturedSection1250Gain: string; tax: string };
     form8889: Array<{ owner: PersonRole2025; grossDistribution: string; qualifiedMedicalExpenses: string; taxableDistribution: string }>;
     form8889Summary: { required: boolean; contributionLimit: string; deductibleContribution: string; taxableDistribution: string; additionalTax: string };
+    form8606: Array<{ owner: PersonRole2025; priorYearBasis: string; currentYearNondeductibleContributions: string; totalBasis: string; traditionalIraDistributions: string; rothConversions: string; yearEndTraditionalIraValue: string; nontaxableAmount: string; taxableAmount: string; basisCarryforward: string }>;
+    retirementWorksheets: Array<{ distributionId: string; owner: PersonRole2025; treatment: string; grossDistribution: string; taxableAmount: string; rolloverAmount: string; qcdAmount: string; annuityExclusion: string; exceptionAmount: string; additionalTax: string }>;
+    form5329: { required: boolean; earlyDistributions: string; exceptionAmount: string; amountSubjectToAdditionalTax: string; additionalTax: string };
     form6251: { required: boolean; taxableIncomeBeforeQbi: string; standardOrItemizedTaxAddback: string; preferenceAdjustments: string; alternativeMinimumTaxableIncome: string; exemption: string; taxableExcess: string; tentativeMinimumTax: string; regularTax: string; alternativeMinimumTax: string };
+    form8959: { required: boolean; medicareWagesAndTips: string; unreportedTips: string; selfEmploymentWages: string; railroadRetirementCompensation: string; threshold: string; excessWages: string; additionalMedicareTax: string; additionalMedicareWithholding: string };
+    form8960: { required: boolean; taxableInterest: string; ordinaryDividends: string; annuities: string; rentalAndPassiveIncome: string; capitalGain: string; otherInvestmentIncome: string; investmentIncomeAdjustments: string; investmentExpenses: string; netInvestmentIncome: string; modifiedAdjustedGrossIncome: string; threshold: string; excessMagi: string; netInvestmentIncomeTax: string };
     scheduleSE: ScheduleSEOutput2025[];
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
     schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string; educatorExpenses: string; iraDeduction: string; studentLoanInterestDeduction: string; hsaDeduction: string; selfEmployedHealthInsuranceDeduction: string; retirementPlanDeduction: string; totalAdjustments: string };
-    schedule2: { alternativeMinimumTax: string; selfEmploymentTax: string; additionalHsaTax: string; excessAdvancePtcRepayment: string; part1AdditionalTax: string; part2OtherTaxes: string; totalAdditionalTaxes: string };
+    schedule2: { alternativeMinimumTax: string; selfEmploymentTax: string; additionalMedicareTax: string; netInvestmentIncomeTax: string; additionalRetirementTax: string; additionalHsaTax: string; excessAdvancePtcRepayment: string; part1AdditionalTax: string; part2OtherTaxes: string; totalAdditionalTaxes: string };
     scheduleEic: { required: boolean; qualifyingChildren: Array<{ dependentId: string }>; earnedIncome: string; adjustedGrossIncome: string; investmentIncome: string; credit: string };
     form2441: { required: boolean; providerCount: number; qualifyingPersonCount: number; qualifiedExpenses: string; earnedIncomeLimit: string; applicablePercentage: string; credit: string; employerBenefits: string };
     form8863: { required: boolean; students: Array<{ studentId: string; creditType: "aotc" | "llc"; adjustedExpenses: string; tentativeCredit: string }>; tentativeAmericanOpportunityCredit: string; tentativeLifetimeLearningCredit: string; phaseoutFactor: string; nonrefundableCredit: string; refundableAmericanOpportunityCredit: string };
     form8867: { required: boolean; signedForCurrentRevision: boolean };
-    form8962: { required: boolean; householdIncome: string; householdIncomePercentFpl: string; applicablePercentage: string; annualContribution: string; totalPremium: string; totalSlcsp: string; totalAdvancePtc: string; premiumTaxCredit: string; excessAdvancePtcRepayment: string };
+    form8962: { required: boolean; householdIncome: string; householdIncomePercentFpl: string; applicablePercentage: string; annualContribution: string; belowPovertyExceptionApplied: boolean; mfsExceptionApplied: boolean; alternativeMarriageYearApplied: boolean; months: Array<{ month: number; premium: string; slcsp: string; advancePtc: string; contribution: string; allowedPtc: string }>; totalPremium: string; totalSlcsp: string; totalAdvancePtc: string; premiumTaxCredit: string; excessAdvancePtcRepayment: string };
     schedule3: { dependentCareCredit: string; educationCredit: string; premiumTaxCredit: string; extensionPayment: string; excessSocialSecurity: string; totalNonrefundableCredits: string; totalOtherPayments: string };
     form1040: {
       wages: string;
@@ -359,6 +375,7 @@ export interface CalculationOutput2025 {
       selfEmploymentTax: string;
       totalTax: string;
       federalWithholding: string;
+      additionalMedicareWithholding: string;
       estimatedTaxPayments: string;
       extensionPayment: string;
       priorYearAndOtherPayments: string;

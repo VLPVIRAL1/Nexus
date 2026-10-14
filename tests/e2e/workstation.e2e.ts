@@ -115,6 +115,36 @@ test("return profile exposes filing statuses, standard-deduction facts, dependen
   await expect(page.getByRole("textbox", { name: "Medical and dental expenses" })).toBeEnabled();
 });
 
+test("advanced federal workflow exposes editable Forms 8959 and 8960 interviews", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/advanced");
+  await page.getByRole("button", { name: "Schedule 1, 6251 & 8889" }).click();
+  await expect(page.getByRole("heading", { name: "Additional Medicare Tax · Form 8959" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Form 8959 enabled" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Unreported tips" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Net Investment Income Tax · Form 8960" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Form 8960 enabled" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Investment interest expense" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nondeductible IRA basis · Form 8606" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Owner-specific IRA basis ledgers JSON" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Retirement distributions · Form 1099-R / Form 5329" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Complex retirement treatments enabled" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Employee deferrals · taxpayer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Capital gains · Form 8949 / Schedule D" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Capital-loss carryovers reviewed" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Source-linked capital treatments JSON" })).toBeVisible();
+});
+
+test("premium tax credit workflow exposes exception and monthly reconciliation inputs", async ({ page }) => {
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/advanced");
+  await page.getByRole("button", { name: "Premium Tax Credit" }).click();
+  await expect(page.getByRole("heading", { name: "Form 1095-A and Form 8962" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Below-poverty exception" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "MFS exception" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Household-member MAGI ledger JSON" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Alternative marriage-year households JSON" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Marketplace policies and monthly columns JSON" })).toBeVisible();
+});
+
 test("imported taxpayer and spouse profiles expose guarded manual editing", async ({ page }) => {
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile");
   await expect(page.getByRole("heading", { name: "Return identity and address" })).toBeVisible();

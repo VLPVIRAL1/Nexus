@@ -110,3 +110,26 @@ export function qualifiedDividendTax2025(
     twentyRateAmount: line20,
   };
 }
+
+export function scheduleDCapitalGainTax2025(args: {
+  taxableIncome: Decimal.Value;
+  qualifiedDividends: Decimal.Value;
+  regularNetCapitalGain: Decimal.Value;
+  collectiblesGain: Decimal.Value;
+  unrecapturedSection1250Gain: Decimal.Value;
+  filingStatus: FilingStatus2025;
+}): QualifiedDividendTaxResult & { collectiblesTax: Decimal; unrecapturedSection1250Tax: Decimal } {
+  const taxableIncome = whole(args.taxableIncome);
+  const collectibles = Decimal.min(taxableIncome, Decimal.max(0, whole(args.collectiblesGain)));
+  const section1250 = Decimal.min(taxableIncome.minus(collectibles), Decimal.max(0, whole(args.unrecapturedSection1250Gain)));
+  const baseTaxableIncome = Decimal.max(0, taxableIncome.minus(collectibles).minus(section1250));
+  const base = qualifiedDividendTax2025(baseTaxableIncome, whole(amount(args.qualifiedDividends).plus(args.regularNetCapitalGain)), args.filingStatus);
+  const collectiblesTax = whole(collectibles.mul("0.28"));
+  const unrecapturedSection1250Tax = whole(section1250.mul("0.25"));
+  return {
+    ...base,
+    tax: Decimal.min(ordinaryIncomeTax2025(taxableIncome, args.filingStatus), base.tax.plus(collectiblesTax).plus(unrecapturedSection1250Tax)),
+    collectiblesTax,
+    unrecapturedSection1250Tax,
+  };
+}

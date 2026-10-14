@@ -21,6 +21,8 @@ export interface AdvancedFederalState {
     sourceDocuments: Array<{ id: string; label: string }>;
     form1095ARecords: Array<{ id: string; label: string }>;
     form1098ERecords: Array<{ id: string; label: string }>;
+    form1099BRecords: Array<{ id: string; label: string }>;
+    form1099RRecords: Array<{ id: string; label: string }>;
     activities: Array<{ id: string; label: string }>;
   };
 }
@@ -38,7 +40,7 @@ export async function getAdvancedFederalState(context: AuthorizationContext, cli
       client.query<{ id: string; tax_year_revision: number; profile_version: number; certification: string; signed_at: Date; invalidated_at: Date | null; invalidation_reason: string | null }>("SELECT id,tax_year_revision,profile_version,certification,signed_at,invalidated_at,invalidation_reason FROM due_diligence_signatures WHERE tax_year_id=$1 ORDER BY signed_at DESC,id DESC", [scope.taxYearId]),
       client.query<{ id: string; legal_name: string; role: string }>("SELECT id,legal_name,role FROM people WHERE tax_year_id=$1 ORDER BY role,id", [scope.taxYearId]),
       client.query<{ id: string; file_name: string }>("SELECT id,file_name FROM source_documents WHERE tax_year_id=$1 AND disposed_at IS NULL ORDER BY uploaded_at,id", [scope.taxYearId]),
-      client.query<{ id: string; form_type: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND form_type IN ('1095-A','1098-E') AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY form_type,created_at,id", [scope.taxYearId]),
+      client.query<{ id: string; form_type: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND form_type IN ('1095-A','1098-E','1099-B','1099-R') AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY form_type,created_at,id", [scope.taxYearId]),
       client.query<{ id: string; name: string; activity_type: string }>("SELECT id,name,activity_type FROM activities WHERE tax_year_id=$1 AND active ORDER BY activity_type,name,id", [scope.taxYearId]),
     ]);
     const profile = parseAdvancedFederalProfile2025({
@@ -63,6 +65,8 @@ export async function getAdvancedFederalState(context: AuthorizationContext, cli
         sourceDocuments: documents.rows.map((row) => ({ id: row.id, label: row.file_name })),
         form1095ARecords: sources.rows.filter((row) => row.form_type === "1095-A").map((row) => ({ id: row.id, label: labelForSource(row) })),
         form1098ERecords: sources.rows.filter((row) => row.form_type === "1098-E").map((row) => ({ id: row.id, label: labelForSource(row) })),
+        form1099BRecords: sources.rows.filter((row) => row.form_type === "1099-B").map((row) => ({ id: row.id, label: labelForSource(row) })),
+        form1099RRecords: sources.rows.filter((row) => row.form_type === "1099-R").map((row) => ({ id: row.id, label: labelForSource(row) })),
         activities: activities.rows.map((row) => ({ id: row.id, label: `${row.activity_type.replace("schedule_", "Schedule ").toUpperCase()} · ${row.name}` })),
       },
     };
@@ -143,7 +147,10 @@ async function validateReferences(client: pg.PoolClient, taxYearId: string, prof
     if (policy.form1095ARecordId && sourceTypes.get(policy.form1095ARecordId) !== "1095-A") throw new WorkflowError("invalid", "A marketplace policy must reference an effective Form 1095-A record.");
     if (policy.coveredPersonIds.some((id) => !personIds.has(id))) throw new WorkflowError("invalid", "Every marketplace covered person must belong to this return.");
   }
+  for (const member of profile.premiumTaxCredit.householdMembers) if (member.personId && !personIds.has(member.personId)) throw new WorkflowError("invalid", "Every Premium Tax Credit household member must reference a person on this return.");
   if (profile.adjustments.studentLoan.form1098ERecordId && sourceTypes.get(profile.adjustments.studentLoan.form1098ERecordId) !== "1098-E") throw new WorkflowError("invalid", "Student-loan interest must reference an effective Form 1098-E record.");
+  for (const treatment of profile.adjustments.retirementDistributions.treatments) if (sourceTypes.get(treatment.sourceRecordId) !== "1099-R") throw new WorkflowError("invalid", "Every retirement treatment must reference an effective Form 1099-R record.");
+  for (const treatment of profile.adjustments.capitalGains.treatments) if (sourceTypes.get(treatment.sourceRecordId) !== "1099-B") throw new WorkflowError("invalid", "Every capital transaction treatment must reference an effective Form 1099-B record.");
   for (const id of [profile.adjustments.selfEmployedHealthInsurance.activityId, profile.adjustments.retirementPlan.activityId]) if (id && !activityIds.has(id)) throw new WorkflowError("invalid", "The selected self-employed activity is not active on this return.");
   for (const payment of profile.payments.payments) if (payment.sourceDocumentId && !documentIds.has(payment.sourceDocumentId)) throw new WorkflowError("invalid", "Payment evidence must reference an active source document on this return.");
 }

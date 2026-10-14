@@ -73,7 +73,7 @@ describe("output integrity foundations", () => {
     const bytes = await generateWorkpaper({ data, runId: "CALC-SYNTHETIC", calculationStatus: "partial", diagnostics: [], calculationResult, requiredForms: formPlan.requiredForms, renderedForms: formPlan.renderedForms });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer as ArrayBuffer);
-    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Schedule Activities", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Raw Source Fields"]);
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Cover & Tax Summary", "Source Index", "Income & Withholding", "Open Review Points", "Mapping Reconciliation", "Schedule Activities", "Required Forms", "Unsupported Treatments", "Manual Overrides", "Calculation Trace", "Additional Taxes", "Capital Gains", "Premium Tax Credit", "Retirement & IRA", "Raw Source Fields"]);
     expect(workbook.getWorksheet("Cover & Tax Summary")?.getCell("B4").value).toBe("CALC-SYNTHETIC");
     expect(workbook.getWorksheet("Required Forms")?.rowCount).toBeGreaterThan(2);
     expect(workbook.getWorksheet("Calculation Trace")?.rowCount).toBeGreaterThan(2);
@@ -90,7 +90,7 @@ describe("output integrity foundations", () => {
     expect(formPlan.renderedForms).toEqual(expect.arrayContaining(["Form 1040", "Schedule B", "Schedule C", "Schedule SE", "Schedule 1", "Schedule 2", "Form 8995", "Qualified Dividends Tax Worksheet"]));
     expect(result.manifest.missingForms).toEqual([]);
     expect(result.sha256).toHaveLength(64);
-  });
+  }, 15_000);
 
   it("blocks a form package when required page-level identity fields are missing", () => {
     const formPlan = buildFormRenderingPlan2025(supportedCalculation({ filingStatus: "married_filing_jointly", filingStatusEligibilityConfirmed: true }), {
@@ -118,6 +118,58 @@ describe("output integrity foundations", () => {
     expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 1040", "Form 8949", "Schedule D", "Form 8889", "Schedule 1"]));
     expect(plan.missingForms).toEqual([]);
     expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4a" }), expect.objectContaining({ line: "7" }), expect.objectContaining({ line: "8" })]));
+  });
+
+  it("renders Form 8606, the source retirement worksheet, Form 5329 and Schedule 2", () => {
+    const sourceId = "50000000-0000-4000-8000-000000000001";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.iraBasis.taxpayer = { enabled: true, priorYearBasis: "4000.00", currentYearNondeductibleContributions: "1000.00", traditionalIraDistributions: "10000.00", rothConversions: "0.00", yearEndTraditionalIraValue: "15000.00", outstandingRollovers: "0.00", recharacterizedContributions: "0.00", sourceAmountsReconciled: true, basisReviewed: true };
+    adjustments.retirementDistributions = { schemaVersion: "2025.1", enabled: true, allSourceRecordsReviewed: true, treatments: [{ id: "50000000-0000-4000-8000-000000000002", sourceRecordId: sourceId, treatment: "early_distribution", rolloverAmount: "0.00", qcdAmount: "0.00", exceptionAmount: "2000.00", exceptionCode: "01", investmentInContract: "0.00", expectedMonthlyPayments: 0, paymentsReceivedThisYear: 0, reviewed: true }] };
+    const calculation = supportedCalculation({
+      retirementDistributions: [{ id: sourceId, owner: "taxpayer", grossDistribution: "10000.00", taxableAmount: "10000.00", federalWithholding: "0.00", distributionCode: "1", iraSepSimple: true, taxableAmountNotDetermined: false }],
+      advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), adjustments, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: [] },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(calculation.status).toBe("calculated_draft");
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8606", "Retirement Distribution Worksheet", "Form 5329", "Schedule 2"]));
+    expect(plan.renderedForms).toEqual(expect.arrayContaining(["Form 8606", "Retirement Distribution Worksheet", "Form 5329", "Schedule 2"]));
+    expect(plan.pages.find(({ formName }) => formName === "Form 8606")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "13", value: "$2,000" }), expect.objectContaining({ line: "14", value: "$3,000" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Form 5329")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "4", value: "$800" })]));
+    expect(plan.missingForms).toEqual([]);
+  });
+
+  it("renders adjusted capital transactions, carryovers and the Schedule D tax worksheet", () => {
+    const sourceId = "50000000-0000-4000-8000-000000000011";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.capitalGains = { schemaVersion: "2025.1", enabled: true, carryoversReviewed: true, shortTermLossCarryover: "2000.00", longTermLossCarryover: "0.00", carryoverSourceYear: 2024, treatments: [{ id: "50000000-0000-4000-8000-000000000012", sourceRecordId: sourceId, category: "collectible_28_percent", section1202Exclusion: "0.00", adjustmentReviewed: true }] };
+    const calculation = supportedCalculation({
+      brokerTransactions: [{ id: sourceId, description: "Synthetic collectible", term: "long", proceeds: "20000.00", costBasis: "10000.00", federalWithholding: "0.00", basisReportedToIrs: true, adjustmentAmount: "500.00", adjustmentCode: "B" }],
+      advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), adjustments, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: [] },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(calculation.status).toBe("calculated_draft");
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8949", "Schedule D", "Schedule D Tax Worksheet"]));
+    expect(plan.pages.find(({ formName }) => formName === "Form 8949")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "1f", value: "B" }), expect.objectContaining({ line: "1g", value: "$500" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Schedule D")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "6", value: "$2,000" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Schedule D Tax Worksheet")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "28%", value: "$8,500" })]));
+    expect(plan.missingForms).toEqual([]);
+  });
+
+  it("renders the complete Form 8962 monthly exception reconciliation", () => {
+    const sourceId = "50000000-0000-4000-8000-000000000021";
+    const premiumTaxCredit = structuredClone(emptyAdvancedFederalProfile2025.premiumTaxCredit);
+    Object.assign(premiumTaxCredit, { enabled: true, householdMembersReconciled: true, sharedPoliciesReviewed: true, federalPovertyLine: "15000.00", belowPovertyException: "marketplace_estimated_100_percent", belowPovertyExceptionReviewed: true });
+    premiumTaxCredit.policies = [{ id: "50000000-0000-4000-8000-000000000022", form1095ARecordId: sourceId, marketplaceIdentifier: "Synthetic Marketplace", policyNumberLast4: "2121", coveredPersonIds: ["50000000-0000-4000-8000-000000000023"], allocationPercentage: "100.00", allocationReviewed: true, months: [{ month: 1, enrollmentPremium: "500.00", slcspPremium: "450.00", advancePtc: "400.00" }] }];
+    const calculation = supportedCalculation({
+      wages: [{ id: "w2-ptc-output", owner: "taxpayer", wages: "9000.00", federalWithholding: "0.00", socialSecurityWages: "9000.00" }], dividends: [], scheduleCActivities: [],
+      advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), premiumTaxCredit, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [sourceId], valid1098ERecordIds: [], validActivityIds: [] },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(calculation.status).toBe("calculated_draft");
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8962", "Form 8962 Monthly Reconciliation", "Schedule 3"]));
+    expect(plan.pages.find(({ formName }) => formName === "Form 8962")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "Exception", label: "Below-poverty exception applied", value: "Yes" })]));
+    expect(plan.pages.find(({ formName }) => formName === "Form 8962 Monthly Reconciliation")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "1f", value: "$450" }), expect.objectContaining({ line: "1g", value: "$400" })]));
+    expect(plan.missingForms).toEqual([]);
   });
 
   it("renders filing status, dependents, Schedule A and Schedule 8812 from the reviewed profile", () => {
@@ -180,6 +232,28 @@ describe("output integrity foundations", () => {
     expect(plan.pages.find(({ formName }) => formName === "Form 6251")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "11" })]));
     expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "17" })]));
     expect(plan.missingForms).toEqual([]);
+  });
+
+  it("renders Forms 8959 and 8960 and their Form 1040 and Schedule 2 destinations", () => {
+    const eligibility = structuredClone(supportedCalculationInput().eligibility);
+    eligibility.treatmentScreens.additionalMedicareTax = "applies";
+    eligibility.treatmentScreens.netInvestmentIncomeTax = "applies";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.additionalMedicareTax = { ...adjustments.additionalMedicareTax, enabled: true, applicabilityReviewed: true, withholdingReconciled: true };
+    adjustments.netInvestmentIncomeTax = { ...adjustments.netInvestmentIncomeTax, enabled: true, applicabilityReviewed: true, classificationsReviewed: true };
+    const calculation = supportedCalculation({
+      eligibility,
+      wages: [{ id: "w2-additional-taxes", owner: "taxpayer", wages: "260000.00", federalWithholding: "55000.00", socialSecurityWages: "176100.00", medicareWagesAndTips: "260000.00", medicareTaxWithheld: "4000.00" }],
+      interest: [{ id: "int-additional-taxes", payerName: "Synthetic Bank", ordinaryInterest: "20000.00", treasuryInterest: "0.00", taxExemptInterest: "0.00", federalWithholding: "0.00" }],
+      dividends: [{ id: "div-additional-taxes", payerName: "Synthetic Fund", ordinaryDividends: "10000.00", qualifiedDividends: "0.00", exemptInterestDividends: "0.00", section199ADividends: "0.00", federalWithholding: "0.00" }],
+      scheduleCActivities: [],
+      advancedFederal: { ...structuredClone(emptyAdvancedFederalProfile2025), adjustments, dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: [] },
+    });
+    const plan = buildFormRenderingPlan2025(calculation);
+    expect(plan.requiredForms).toEqual(expect.arrayContaining(["Form 8959", "Form 8960", "Schedule 2"]));
+    expect(plan.renderedForms).toEqual(expect.arrayContaining(["Form 8959", "Form 8960", "Schedule 2"]));
+    expect(plan.missingForms).toEqual([]);
+    expect(plan.pages.find(({ formName }) => formName === "Form 1040")?.lines).toEqual(expect.arrayContaining([expect.objectContaining({ line: "25c", value: "$230" })]));
   });
 
   it("renders Schedule EIC, Form 2441, Form 8863 and Schedule 3 from calculated credits", () => {

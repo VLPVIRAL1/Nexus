@@ -107,6 +107,76 @@ export async function generateWorkpaper(input: WorkpaperInput): Promise<Uint8Arr
   trace.getColumn("result").numFmt = "$#,##0;[Red]($#,##0)";
   addTable(trace, "CalculationTraceTable");
 
+  const additionalTaxes = workbook.addWorksheet("Additional Taxes", { views: [{ state: "frozen", ySplit: 1 }] });
+  additionalTaxes.columns = ["Form", "Line or concept", "Source / calculation", "Amount", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Source / calculation" ? 52 : header === "Calculation run" ? 38 : 24 }));
+  const calculatedForms = calculationForms(input.calculationResult);
+  if (calculatedForms) {
+    const rows: Array<[string, string, string, string]> = [
+      ["Form 8959", "Medicare wages and tips", "W-2 box 5", calculatedForms.form8959.medicareWagesAndTips],
+      ["Form 8959", "Self-employment wages", "Schedule SE net earnings", calculatedForms.form8959.selfEmploymentWages],
+      ["Form 8959", "Filing-status threshold", "2025 rule package", calculatedForms.form8959.threshold],
+      ["Form 8959", "Additional Medicare Tax", "0.9% of compensation above threshold", calculatedForms.form8959.additionalMedicareTax],
+      ["Form 8959", "Additional Medicare withholding", "W-2 box 6 less regular 1.45% component", calculatedForms.form8959.additionalMedicareWithholding],
+      ["Form 8960", "Gross investment income", "Interest, dividends, annuities, passive income, dispositions and other investment income", String(Number(calculatedForms.form8960.netInvestmentIncome) + Number(calculatedForms.form8960.investmentIncomeAdjustments) + Number(calculatedForms.form8960.investmentExpenses))],
+      ["Form 8960", "Investment income adjustments", "Reviewed exclusions and disposition adjustments", calculatedForms.form8960.investmentIncomeAdjustments],
+      ["Form 8960", "Properly allocable deductions", "Reviewed investment and passive deductions", calculatedForms.form8960.investmentExpenses],
+      ["Form 8960", "Net investment income", "Gross income less adjustments and deductions", calculatedForms.form8960.netInvestmentIncome],
+      ["Form 8960", "MAGI above threshold", "Modified AGI less filing-status threshold", calculatedForms.form8960.excessMagi],
+      ["Form 8960", "Net Investment Income Tax", "3.8% of the lesser of net investment income or excess MAGI", calculatedForms.form8960.netInvestmentIncomeTax],
+    ];
+    for (const [form, line, source, value] of rows) additionalTaxes.addRow({ form, line_or_concept: line, source_calculation: source, amount: Number(value), calculation_run: input.runId });
+  }
+  additionalTaxes.getColumn("amount").numFmt = "$#,##0;[Red]($#,##0)";
+  addTable(additionalTaxes, "AdditionalTaxesTable");
+
+  const capital = workbook.addWorksheet("Capital Gains", { views: [{ state: "frozen", ySplit: 1 }] });
+  capital.columns = ["Source / line", "Term", "Category", "Adjustment code", "Proceeds", "Basis", "Adjustment", "Gain or loss", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Source / line" ? 32 : header === "Calculation run" ? 38 : 20 }));
+  if (calculatedForms) {
+    for (const transaction of calculatedForms.form8949) capital.addRow({ source_line: transaction.transactionId, term: transaction.term, category: transaction.category, adjustment_code: transaction.adjustmentCode, proceeds: Number(transaction.proceeds), basis: Number(transaction.costBasis), adjustment: Number(transaction.adjustment) - Number(transaction.section1202Exclusion), gain_or_loss: Number(transaction.gainOrLoss), calculation_run: input.runId });
+    capital.addRow({ source_line: "Schedule D carryover into 2025", term: "short", category: "carryover", gain_or_loss: -Number(calculatedForms.scheduleD.shortTermCarryover), calculation_run: input.runId });
+    capital.addRow({ source_line: "Schedule D carryover into 2025", term: "long", category: "carryover", gain_or_loss: -Number(calculatedForms.scheduleD.longTermCarryover), calculation_run: input.runId });
+    capital.addRow({ source_line: "2026 carryover", term: "short", category: "carryover", gain_or_loss: -Number(calculatedForms.scheduleD.nextYearShortTermCarryover), calculation_run: input.runId });
+    capital.addRow({ source_line: "2026 carryover", term: "long", category: "carryover", gain_or_loss: -Number(calculatedForms.scheduleD.nextYearLongTermCarryover), calculation_run: input.runId });
+  }
+  for (const column of ["proceeds", "basis", "adjustment", "gain_or_loss"]) capital.getColumn(column).numFmt = "$#,##0;[Red]($#,##0)";
+  addTable(capital, "CapitalGainsTable");
+
+  const premiumTaxCredit = workbook.addWorksheet("Premium Tax Credit", { views: [{ state: "frozen", ySplit: 1 }] });
+  premiumTaxCredit.columns = ["Month", "Enrollment premium", "SLCSP", "Household contribution", "Allowed PTC", "Advance PTC", "Difference", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Calculation run" ? 38 : 24 }));
+  if (calculatedForms) for (const month of calculatedForms.form8962.months) premiumTaxCredit.addRow({ month: month.month, enrollment_premium: Number(month.premium), slcsp: Number(month.slcsp), household_contribution: Number(month.contribution), allowed_ptc: Number(month.allowedPtc), advance_ptc: Number(month.advancePtc), difference: Number(month.allowedPtc) - Number(month.advancePtc), calculation_run: input.runId });
+  for (const column of ["enrollment_premium", "slcsp", "household_contribution", "allowed_ptc", "advance_ptc", "difference"]) premiumTaxCredit.getColumn(column).numFmt = "$#,##0;[Red]($#,##0)";
+  addTable(premiumTaxCredit, "PremiumTaxCreditTable");
+
+  const retirement = workbook.addWorksheet("Retirement & IRA", { views: [{ state: "frozen", ySplit: 1 }] });
+  retirement.columns = ["Form", "Owner / source", "Line or concept", "Treatment", "Amount", "Calculation run"].map((header) => ({ header, key: key(header), width: header === "Line or concept" ? 42 : header === "Calculation run" ? 38 : 24 }));
+  if (calculatedForms) {
+    for (const basis of calculatedForms.form8606) {
+      const rows: Array<[string, string]> = [
+        ["Prior-year basis", basis.priorYearBasis],
+        ["Current nondeductible contributions", basis.currentYearNondeductibleContributions],
+        ["Total basis", basis.totalBasis],
+        ["Distributions", basis.traditionalIraDistributions],
+        ["Roth conversions", basis.rothConversions],
+        ["Year-end IRA value", basis.yearEndTraditionalIraValue],
+        ["Nontaxable amount", basis.nontaxableAmount],
+        ["Taxable amount", basis.taxableAmount],
+        ["Basis carryforward", basis.basisCarryforward],
+      ];
+      for (const [line, value] of rows) retirement.addRow({ form: "Form 8606", owner_source: basis.owner, line_or_concept: line, treatment: "Pro-rata basis", amount: Number(value), calculation_run: input.runId });
+    }
+    for (const distribution of calculatedForms.retirementWorksheets) {
+      retirement.addRow({ form: "1099-R worksheet", owner_source: distribution.distributionId, line_or_concept: "Taxable distribution", treatment: distribution.treatment.replaceAll("_", " "), amount: Number(distribution.taxableAmount), calculation_run: input.runId });
+      if (Number(distribution.rolloverAmount)) retirement.addRow({ form: "1099-R worksheet", owner_source: distribution.distributionId, line_or_concept: "Rollover", treatment: distribution.treatment.replaceAll("_", " "), amount: Number(distribution.rolloverAmount), calculation_run: input.runId });
+      if (Number(distribution.qcdAmount)) retirement.addRow({ form: "1099-R worksheet", owner_source: distribution.distributionId, line_or_concept: "Qualified charitable distribution", treatment: distribution.treatment.replaceAll("_", " "), amount: Number(distribution.qcdAmount), calculation_run: input.runId });
+      if (Number(distribution.additionalTax)) retirement.addRow({ form: "Form 5329", owner_source: distribution.distributionId, line_or_concept: "Additional tax", treatment: distribution.treatment.replaceAll("_", " "), amount: Number(distribution.additionalTax), calculation_run: input.runId });
+    }
+    retirement.addRow({ form: "Form 5329", owner_source: "Return total", line_or_concept: "Amount subject to additional tax", treatment: "Early distributions less reviewed exceptions", amount: Number(calculatedForms.form5329.amountSubjectToAdditionalTax), calculation_run: input.runId });
+    retirement.addRow({ form: "Form 5329", owner_source: "Return total", line_or_concept: "Additional tax", treatment: "10%", amount: Number(calculatedForms.form5329.additionalTax), calculation_run: input.runId });
+    retirement.addRow({ form: "Schedule 1", owner_source: "Return total", line_or_concept: "Self-employed retirement-plan deduction", treatment: "Reviewed plan limits", amount: Number(calculatedForms.schedule1.retirementPlanDeduction), calculation_run: input.runId });
+  }
+  retirement.getColumn("amount").numFmt = "$#,##0;[Red]($#,##0)";
+  addTable(retirement, "RetirementIraTable");
+
   const rawFields = workbook.addWorksheet("Raw Source Fields", { views: [{ state: "frozen", ySplit: 1 }] });
   rawFields.columns = ["Source record", "Form", "Field kind", "Label", "Code", "Value", "Page", "Reason"].map((header) => ({ header, key: key(header), width: header === "Value" || header === "Reason" ? 40 : 20 }));
   for (const source of input.data.sourceForms) {
@@ -170,6 +240,11 @@ function sourceSummary(source: Record<string, unknown>) {
 function calculationTrace(result: WorkpaperInput["calculationResult"]): Array<{ nodeId: string; formLine: string; ruleId: string; operands: Record<string, string>; result: string; rounding: string }> {
   if (!result || typeof result !== "object" || !("trace" in result) || !Array.isArray(result.trace)) return [];
   return result.trace as Array<{ nodeId: string; formLine: string; ruleId: string; operands: Record<string, string>; result: string; rounding: string }>;
+}
+
+function calculationForms(result: WorkpaperInput["calculationResult"]): CalculationOutput2025["forms"] {
+  if (!result || typeof result !== "object" || !("status" in result) || result.status !== "calculated_draft" || !("forms" in result)) return null;
+  return (result as CalculationOutput2025).forms;
 }
 
 function isUnsupported(issue: Diagnostic): boolean {

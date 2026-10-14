@@ -46,7 +46,6 @@ export function calculateAdjustments2025(args: {
 
   const positiveBusinessIncome = nonnegative(businessIncome.plus(farmIncome));
   const netSelfEmploymentCompensation = nonnegative(positiveBusinessIncome.minus(deductibleHalfSelfEmploymentTax));
-  if (values.selfEmployedHealthInsurance.enabled && values.retirementPlan.enabled) block("SE_DEDUCTION_INTERACTION_REVIEW_REQUIRED", "Simultaneous self-employed health-insurance and retirement-plan deductions require an owner-specific interaction worksheet outside this supported profile.", "advancedFederal.adjustments");
   if (values.selfEmployedHealthInsurance.enabled) {
     if (!values.selfEmployedHealthInsurance.eligibilityReviewed) block("SE_HEALTH_REVIEW_REQUIRED", "Complete the self-employed health-insurance eligibility review.", "advancedFederal.adjustments.selfEmployedHealthInsurance");
     if (!values.selfEmployedHealthInsurance.activityId || !validActivityIds.includes(values.selfEmployedHealthInsurance.activityId)) block("SE_HEALTH_ACTIVITY_REQUIRED", "Link self-employed health insurance to an effective Schedule C or F activity.", "advancedFederal.adjustments.selfEmployedHealthInsurance.activityId");
@@ -57,18 +56,42 @@ export function calculateAdjustments2025(args: {
   if (values.retirementPlan.enabled) {
     if (!values.retirementPlan.limitReviewed) block("SE_RETIREMENT_LIMIT_REVIEW_REQUIRED", "Confirm the self-employed retirement-plan contribution limit.", "advancedFederal.adjustments.retirementPlan.limitReviewed");
     if (!values.retirementPlan.activityId || !validActivityIds.includes(values.retirementPlan.activityId)) block("SE_RETIREMENT_ACTIVITY_REQUIRED", "Link the retirement plan to an effective Schedule C or F activity.", "advancedFederal.adjustments.retirementPlan.activityId");
-    if (values.retirementPlan.planType !== "sep") block("SE_RETIREMENT_PLAN_TYPE_UNSUPPORTED", "SIMPLE and qualified self-employed plan computations require plan-specific contribution facts outside this supported profile.", "advancedFederal.adjustments.retirementPlan.planType");
     const entered = sum([read(values.retirementPlan.contributions.taxpayer, "advancedFederal.adjustments.retirementPlan.contributions.taxpayer", block), read(values.retirementPlan.contributions.spouse, "advancedFederal.adjustments.retirementPlan.contributions.spouse", block)]);
-    retirementPlanDeduction = values.retirementPlan.planType === "sep" ? whole(Decimal.min(entered, netSelfEmploymentCompensation.mul("0.20"), 70000)) : new Decimal(0);
+    const deferrals = sum([read(values.retirementPlan.employeeDeferrals.taxpayer, "advancedFederal.adjustments.retirementPlan.employeeDeferrals.taxpayer", block), read(values.retirementPlan.employeeDeferrals.spouse, "advancedFederal.adjustments.retirementPlan.employeeDeferrals.spouse", block)]);
+    const employer = sum([read(values.retirementPlan.employerContributions.taxpayer, "advancedFederal.adjustments.retirementPlan.employerContributions.taxpayer", block), read(values.retirementPlan.employerContributions.spouse, "advancedFederal.adjustments.retirementPlan.employerContributions.spouse", block)]);
+    if (deferrals.plus(employer).gt(0) && !entered.eq(deferrals.plus(employer))) block("SE_RETIREMENT_CONTRIBUTION_RECONCILIATION_REQUIRED", "Total retirement-plan contributions must equal employee deferrals plus employer contributions.", "advancedFederal.adjustments.retirementPlan.contributions");
+    const ownerCount = filingStatus === "married_filing_jointly" && hasSpouse ? 2 : 1;
+    const catchUpCount = Number(values.retirementPlan.catchUpEligible.taxpayer) + Number(ownerCount === 2 && values.retirementPlan.catchUpEligible.spouse);
+    if (values.retirementPlan.planType === "sep") {
+      if (deferrals.gt(0)) block("SEP_ELECTIVE_DEFERRAL_INVALID", "A SEP deduction cannot include elective employee deferrals.", "advancedFederal.adjustments.retirementPlan.employeeDeferrals");
+      retirementPlanDeduction = whole(Decimal.min(entered, netSelfEmploymentCompensation.mul("0.20"), amount(70000).mul(ownerCount)));
+    } else if (values.retirementPlan.planType === "simple") {
+      const deferralLimit = amount(16500 * ownerCount + 3500 * catchUpCount);
+      const employerRate = values.retirementPlan.simpleEmployerContributionType === "nonelective_2_percent" ? "0.02" : "0.03";
+      const employerLimit = whole(netSelfEmploymentCompensation.mul(employerRate));
+      if (deferrals.gt(deferralLimit)) block("SIMPLE_DEFERRAL_LIMIT_EXCEEDED", "SIMPLE elective deferrals exceed the 2025 owner/catch-up limit.", "advancedFederal.adjustments.retirementPlan.employeeDeferrals");
+      if (employer.gt(employerLimit) && values.retirementPlan.simpleEmployerContributionType !== "manual_reviewed") block("SIMPLE_EMPLOYER_LIMIT_EXCEEDED", "SIMPLE employer contributions exceed the selected 2% or 3% calculation.", "advancedFederal.adjustments.retirementPlan.employerContributions");
+      retirementPlanDeduction = whole(Decimal.min(entered, deferralLimit.plus(values.retirementPlan.simpleEmployerContributionType === "manual_reviewed" ? employer : employerLimit), netSelfEmploymentCompensation));
+    } else {
+      const deferralLimit = amount(23500 * ownerCount + 7500 * catchUpCount);
+      const employerLimit = whole(netSelfEmploymentCompensation.mul("0.20"));
+      const combinedLimit = amount(70000 * ownerCount + 7500 * catchUpCount);
+      if (deferrals.gt(deferralLimit)) block("QUALIFIED_PLAN_DEFERRAL_LIMIT_EXCEEDED", "Qualified-plan elective deferrals exceed the 2025 owner/catch-up limit.", "advancedFederal.adjustments.retirementPlan.employeeDeferrals");
+      if (employer.gt(employerLimit)) block("QUALIFIED_PLAN_EMPLOYER_LIMIT_EXCEEDED", "Qualified-plan employer contributions exceed the self-employed compensation limit.", "advancedFederal.adjustments.retirementPlan.employerContributions");
+      retirementPlanDeduction = whole(Decimal.min(entered, combinedLimit, netSelfEmploymentCompensation));
+    }
   }
 
   const agiBeforeIraAndStudentLoan = whole(preliminaryAgi.minus(educatorExpenses).minus(hsaDeduction).minus(selfEmployedHealthInsuranceDeduction).minus(retirementPlanDeduction));
   if (values.ira.enabled) {
     if (!values.ira.eligibilityReviewed) block("IRA_DEDUCTION_REVIEW_REQUIRED", "Complete the IRA deduction eligibility and workplace-plan review.", "advancedFederal.adjustments.ira");
-    if (values.ira.nondeductibleBasisApplies) block("FORM_8606_REQUIRED", "Nondeductible IRA basis requires Form 8606 treatment outside this supported profile.", "advancedFederal.adjustments.ira.nondeductibleBasisApplies");
+    if (values.ira.nondeductibleBasisApplies && !values.iraBasis.taxpayer.enabled && !values.iraBasis.spouse.enabled) block("FORM_8606_PROFILE_REQUIRED", "Enable the applicable owner Form 8606 basis ledger for nondeductible IRA contributions.", "advancedFederal.adjustments.iraBasis");
     const roles: PersonRole2025[] = filingStatus === "married_filing_jointly" && hasSpouse ? ["taxpayer", "spouse"] : ["taxpayer"];
     iraDeduction = whole(sum(roles.map((role) => {
-      const contribution = Decimal.min(read(values.ira.contributions[role], `advancedFederal.adjustments.ira.contributions.${role}`, block), values.ira.age50OrOlder[role] ? 8000 : 7000);
+      const enteredContribution = Decimal.min(read(values.ira.contributions[role], `advancedFederal.adjustments.ira.contributions.${role}`, block), values.ira.age50OrOlder[role] ? 8000 : 7000);
+      const nondeductibleContribution = values.iraBasis[role].enabled ? read(values.iraBasis[role].currentYearNondeductibleContributions, `advancedFederal.adjustments.iraBasis.${role}.currentYearNondeductibleContributions`, block) : new Decimal(0);
+      if (nondeductibleContribution.gt(enteredContribution)) block("FORM_8606_CONTRIBUTION_EXCEEDS_IRA_CONTRIBUTION", "Nondeductible IRA contributions cannot exceed total traditional IRA contributions for the owner.", `advancedFederal.adjustments.iraBasis.${role}.currentYearNondeductibleContributions`);
+      const contribution = nonnegative(enteredContribution.minus(nondeductibleContribution));
       if (!values.ira.workplacePlanCovered[role]) {
         const otherRole: PersonRole2025 = role === "taxpayer" ? "spouse" : "taxpayer";
         if (filingStatus !== "married_filing_jointly" || !values.ira.workplacePlanCovered[otherRole]) return contribution;
@@ -96,18 +119,41 @@ export function calculatePremiumTaxCredit2025(args: { profile: AdvancedFederalPr
   const { profile, modifiedAgi, filingStatus, valid1095ARecordIds, block } = args;
   const value = profile.premiumTaxCredit;
   let premiumTaxCredit = new Decimal(0); let excessAdvancePtcRepayment = new Decimal(0); let totalPremium = new Decimal(0); let totalSlcsp = new Decimal(0); let totalAdvancePtc = new Decimal(0);
-  if (!value.enabled) return { required: false, householdIncome: modifiedAgi.toFixed(0), householdIncomePercentFpl: "0.00", applicablePercentage: "0.0000", annualContribution: "0", totalPremium: "0", totalSlcsp: "0", totalAdvancePtc: "0", premiumTaxCredit, excessAdvancePtcRepayment };
-  if (filingStatus === "married_filing_separately") block("FORM_8962_MFS_UNSUPPORTED", "Premium Tax Credit generally requires a filing status other than Married Filing Separately; reviewed exceptions are outside this profile.", "advancedFederal.premiumTaxCredit");
+  const empty = { required: false, householdIncome: modifiedAgi.toFixed(0), householdIncomePercentFpl: "0.00", applicablePercentage: "0.0000", annualContribution: "0", belowPovertyExceptionApplied: false, mfsExceptionApplied: false, alternativeMarriageYearApplied: false, months: [] as Array<{ month: number; premium: string; slcsp: string; advancePtc: string; contribution: string; allowedPtc: string }>, totalPremium: "0", totalSlcsp: "0", totalAdvancePtc: "0", premiumTaxCredit, excessAdvancePtcRepayment };
+  if (!value.enabled) return empty;
+  const mfsExceptionApplied = filingStatus === "married_filing_separately" && value.mfsException !== "none" && value.mfsExceptionReviewed;
+  if (filingStatus === "married_filing_separately" && !mfsExceptionApplied) block("FORM_8962_MFS_EXCEPTION_REQUIRED", "Married Filing Separately requires a reviewed domestic-abuse or spousal-abandonment Premium Tax Credit exception.", "advancedFederal.premiumTaxCredit.mfsException");
   if (!value.householdMembersReconciled) block("FORM_8962_HOUSEHOLD_REVIEW_REQUIRED", "Reconcile every member of the Form 8962 tax family.", "advancedFederal.premiumTaxCredit.householdMembersReconciled");
   if (!value.policies.length) block("FORM_1095_A_REQUIRED", "Add at least one Form 1095-A policy.", "advancedFederal.premiumTaxCredit.policies");
   const otherMagi = read(value.householdModifiedAgiOther, "advancedFederal.premiumTaxCredit.householdModifiedAgiOther", block);
+  if (value.householdMembers.length) {
+    if (value.householdMembers.some(({ reviewed }) => !reviewed)) block("FORM_8962_HOUSEHOLD_MEMBER_REVIEW_REQUIRED", "Review every household member MAGI entry.", "advancedFederal.premiumTaxCredit.householdMembers");
+    const memberMagi = whole(sum(value.householdMembers.filter(({ includedInTaxFamily }) => includedInTaxFamily).map((member) => read(member.modifiedAgi, "advancedFederal.premiumTaxCredit.householdMembers.modifiedAgi", block))));
+    if (!memberMagi.eq(whole(otherMagi))) block("FORM_8962_HOUSEHOLD_MAGI_MISMATCH", "Included household-member MAGI must reconcile to other household modified AGI.", "advancedFederal.premiumTaxCredit.householdModifiedAgiOther");
+  }
   const householdIncome = whole(modifiedAgi.plus(otherMagi));
   const povertyLine = read(value.federalPovertyLine, "advancedFederal.premiumTaxCredit.federalPovertyLine", block);
   if (povertyLine.lte(0)) block("FORM_8962_FPL_REQUIRED", "Enter the reviewed federal poverty-line amount for the household size and state.", "advancedFederal.premiumTaxCredit.federalPovertyLine");
   const percentFpl = povertyLine.gt(0) ? householdIncome.div(povertyLine).mul(100) : new Decimal(0);
-  if (povertyLine.gt(0) && percentFpl.lt(100)) block("FORM_8962_BELOW_FPL_EXCEPTION_UNSUPPORTED", "Household income below 100% of the federal poverty line requires reviewed eligibility exceptions outside this supported profile.", "advancedFederal.premiumTaxCredit");
-  const applicablePercentage = ptcApplicablePercentage(percentFpl);
+  const belowPovertyExceptionApplied = povertyLine.gt(0) && percentFpl.lt(100) && value.belowPovertyException === "marketplace_estimated_100_percent" && value.belowPovertyExceptionReviewed;
+  if (povertyLine.gt(0) && percentFpl.lt(100) && !belowPovertyExceptionApplied) block("FORM_8962_BELOW_FPL_EXCEPTION_REQUIRED", "Income below 100% FPL requires the reviewed marketplace-estimate eligibility exception.", "advancedFederal.premiumTaxCredit.belowPovertyException");
+  const contributionPercentFpl = belowPovertyExceptionApplied ? new Decimal(100) : percentFpl;
+  const applicablePercentage = ptcApplicablePercentage(contributionPercentFpl);
   const annualContribution = whole(householdIncome.mul(applicablePercentage));
+  const alternativeMarriageYearApplied = value.marriageAlternativeApplies && value.marriageAlternativeReviewed;
+  if (value.marriageAlternativeApplies && (!value.marriageAlternativeReviewed || filingStatus !== "married_filing_jointly" || value.marriageMonth == null)) block("FORM_8962_MARRIAGE_ALTERNATIVE_FACTS_REQUIRED", "The alternative marriage-year calculation requires joint filing, the marriage month, and reviewed alternative households.", "advancedFederal.premiumTaxCredit.marriageAlternativeApplies");
+  let alternativeMonthlyContribution = new Decimal(0);
+  if (alternativeMarriageYearApplied) {
+    for (const role of ["taxpayer", "spouse"] as const) {
+      const household = value.alternativeMarriageHouseholds[role];
+      const income = read(household.modifiedAgi, `advancedFederal.premiumTaxCredit.alternativeMarriageHouseholds.${role}.modifiedAgi`, block);
+      const fpl = read(household.federalPovertyLine, `advancedFederal.premiumTaxCredit.alternativeMarriageHouseholds.${role}.federalPovertyLine`, block);
+      if (fpl.lte(0)) block("FORM_8962_ALTERNATIVE_FPL_REQUIRED", "Each alternative pre-marriage household requires its reviewed federal poverty line.", `advancedFederal.premiumTaxCredit.alternativeMarriageHouseholds.${role}.federalPovertyLine`);
+      const percentage = fpl.gt(0) ? income.div(fpl).mul(100) : new Decimal(0);
+      alternativeMonthlyContribution = alternativeMonthlyContribution.plus(income.mul(ptcApplicablePercentage(percentage)).div(12));
+    }
+  }
+  const monthTotals = new Map<number, { premium: Decimal; slcsp: Decimal; advance: Decimal }>();
   for (const [policyIndex, policy] of value.policies.entries()) {
     if (!policy.form1095ARecordId || !valid1095ARecordIds.includes(policy.form1095ARecordId)) block("FORM_1095_A_LINK_INVALID", "Each marketplace policy must link to an effective Form 1095-A.", `advancedFederal.premiumTaxCredit.policies.${policyIndex}.form1095ARecordId`);
     const allocation = readPercentage(policy.allocationPercentage, `advancedFederal.premiumTaxCredit.policies.${policyIndex}.allocationPercentage`, block);
@@ -119,19 +165,24 @@ export function calculatePremiumTaxCredit2025(args: { profile: AdvancedFederalPr
       const slcsp = read(month.slcspPremium, `advancedFederal.premiumTaxCredit.policies.${policyIndex}.months.${monthIndex}.slcspPremium`, block).mul(allocation);
       const advance = read(month.advancePtc, `advancedFederal.premiumTaxCredit.policies.${policyIndex}.months.${monthIndex}.advancePtc`, block).mul(allocation);
       if (premium.gt(0) && slcsp.lte(0)) block("FORM_8962_SLCSP_REQUIRED", "Every enrolled month requires a reviewed second-lowest-cost silver-plan premium.", `advancedFederal.premiumTaxCredit.policies.${policyIndex}.months.${monthIndex}.slcspPremium`);
-      totalPremium = totalPremium.plus(premium); totalSlcsp = totalSlcsp.plus(slcsp); totalAdvancePtc = totalAdvancePtc.plus(advance);
-      premiumTaxCredit = premiumTaxCredit.plus(Decimal.min(premium, Decimal.max(0, slcsp.minus(annualContribution.div(12)))));
+      const existing = monthTotals.get(month.month) ?? { premium: new Decimal(0), slcsp: new Decimal(0), advance: new Decimal(0) };
+      monthTotals.set(month.month, { premium: existing.premium.plus(premium), slcsp: existing.slcsp.plus(slcsp), advance: existing.advance.plus(advance) });
     }
   }
+  const months = [...monthTotals.entries()].sort(([a], [b]) => a - b).map(([month, values]) => {
+    const contribution = alternativeMarriageYearApplied && value.marriageMonth != null && month < value.marriageMonth ? whole(alternativeMonthlyContribution) : whole(annualContribution.div(12));
+    const allowedPtc = whole(Decimal.min(values.premium, Decimal.max(0, values.slcsp.minus(contribution))));
+    totalPremium = totalPremium.plus(values.premium); totalSlcsp = totalSlcsp.plus(values.slcsp); totalAdvancePtc = totalAdvancePtc.plus(values.advance); premiumTaxCredit = premiumTaxCredit.plus(allowedPtc);
+    return { month, premium: whole(values.premium).toFixed(0), slcsp: whole(values.slcsp).toFixed(0), advancePtc: whole(values.advance).toFixed(0), contribution: contribution.toFixed(0), allowedPtc: allowedPtc.toFixed(0) };
+  });
   premiumTaxCredit = whole(premiumTaxCredit);
   const net = premiumTaxCredit.minus(whole(totalAdvancePtc));
   if (net.gte(0)) premiumTaxCredit = whole(net); else {
     const rawRepayment = whole(net.abs());
-    excessAdvancePtcRepayment = Decimal.min(rawRepayment, ptcRepaymentLimit(percentFpl, filingStatus));
+    excessAdvancePtcRepayment = Decimal.min(rawRepayment, ptcRepaymentLimit(contributionPercentFpl, filingStatus));
     premiumTaxCredit = new Decimal(0);
   }
-  if (value.marriageAlternativeApplies && !value.marriageAlternativeReviewed) block("FORM_8962_MARRIAGE_ALTERNATIVE_REVIEW_REQUIRED", "Complete the alternative marriage-year Form 8962 allocation.", "advancedFederal.premiumTaxCredit.marriageAlternativeReviewed");
-  return { required: true, householdIncome: householdIncome.toFixed(0), householdIncomePercentFpl: percentFpl.toFixed(2), applicablePercentage: applicablePercentage.toFixed(4), annualContribution: annualContribution.toFixed(0), totalPremium: whole(totalPremium).toFixed(0), totalSlcsp: whole(totalSlcsp).toFixed(0), totalAdvancePtc: whole(totalAdvancePtc).toFixed(0), premiumTaxCredit, excessAdvancePtcRepayment };
+  return { required: true, householdIncome: householdIncome.toFixed(0), householdIncomePercentFpl: percentFpl.toFixed(2), applicablePercentage: applicablePercentage.toFixed(4), annualContribution: annualContribution.toFixed(0), belowPovertyExceptionApplied, mfsExceptionApplied, alternativeMarriageYearApplied, months, totalPremium: whole(totalPremium).toFixed(0), totalSlcsp: whole(totalSlcsp).toFixed(0), totalAdvancePtc: whole(totalAdvancePtc).toFixed(0), premiumTaxCredit, excessAdvancePtcRepayment };
 }
 
 export function calculatePayments2025(args: { profile: AdvancedFederalProfile2025; wages: WageInput2025[]; filingStatus: FilingStatus2025; block: Block }) {
