@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { activityFormSchemas2025 } from "@/domain/activity-forms-2025";
 import { federalCreditProfileSchema2025 } from "@/domain/federal-credits-2025";
+import { advancedFederalProfileSchema2025 } from "@/domain/advanced-federal-2025";
 
 const decimalString = z.string().regex(/^-?\d+\.\d{2}$/, "Use a decimal string with exactly two places");
 const nonnegativeDecimalString = decimalString.refine((value) => !value.startsWith("-"), "Use a nonnegative decimal string");
@@ -26,6 +27,11 @@ const scheduleA = z.object({
   home_mortgage_interest_and_points: decimalString, investment_interest: decimalString, cash_charitable_contributions: decimalString,
   noncash_charitable_contributions: decimalString, casualty_and_theft_losses: decimalString, other_itemized_deductions: decimalString,
   salt_eligibility_confirmed: z.boolean(), mortgage_limits_applied: z.boolean(), charity_limits_applied: z.boolean(), casualty_limits_applied: z.boolean(),
+}).strict();
+const standardDeductionFacts = z.object({
+  schema_version: z.literal("2025.1"), taxpayer_claimable_as_dependent: z.boolean(), form_8615_applicability_reviewed: z.boolean(), form_8615_required: z.boolean(),
+  taxpayer_age_65_or_older: z.boolean(), taxpayer_blind: z.boolean(), spouse_age_65_or_older: z.boolean(), spouse_blind: z.boolean(),
+  age_blindness_facts_reviewed: z.boolean(), mfs_spouse_additional_deduction_eligible: z.boolean(),
 }).strict();
 const activityBase = { id: z.uuid(), name: z.string().trim().min(1).max(200), owner_role: z.enum(["taxpayer", "spouse"]), implementation_status: z.enum(["supported", "mapping_only"]), additional_receipts: nonnegativeDecimalString, receipt_note: z.string().trim().max(2000).nullable(), active: z.boolean(), version: z.int().positive() };
 const scheduleCActivity = z.object({ ...activityBase, form_data: activityFormSchemas2025.schedule_c }).strict();
@@ -60,18 +66,18 @@ const sourceMapping = z.object({
 });
 
 export const canonicalTaxReturnSchema = z.object({
-  schema_version: z.enum(["1.0.0", "1.1.0"]), tax_year: z.literal(2025), return_type: z.literal("1040"),
+  schema_version: z.enum(["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"]), tax_year: z.literal(2025), return_type: z.literal("1040"),
   _instructions: z.record(z.string(), z.unknown()).optional(), client: z.record(z.string(), z.unknown()),
-  filing_profile: z.object({ status: filingStatus, eligibility_confirmed: z.boolean() }).strict(),
+  filing_profile: z.object({ status: filingStatus, eligibility_confirmed: z.boolean() }).strict(), standard_deduction_facts: standardDeductionFacts.optional(),
   taxpayer: personProfile, spouse: personProfile.nullable().optional(),
-  dependents: z.array(dependent), schedule_a: scheduleA, credits: federalCreditProfileSchema2025.optional(), source_documents: z.array(z.record(z.string(), z.unknown())),
+  dependents: z.array(dependent), schedule_a: scheduleA, credits: federalCreditProfileSchema2025.optional(), advanced_federal: advancedFederalProfileSchema2025.optional(), source_documents: z.array(z.record(z.string(), z.unknown())),
   forms: z.object({
-    w2: z.array(sourceRecord.passthrough()), form_1099_nec: z.array(sourceRecord.passthrough()),
+    w2: z.array(sourceRecord.passthrough()), form_1095_a: z.array(sourceRecord.passthrough()).optional(), form_1098_e: z.array(sourceRecord.passthrough()).optional(), form_5498: z.array(sourceRecord.passthrough()).optional(), form_5498_sa: z.array(sourceRecord.passthrough()).optional(), form_1099_nec: z.array(sourceRecord.passthrough()),
     form_1099_misc: z.array(sourceRecord.passthrough()), form_1099_int: z.array(sourceRecord.passthrough()),
     form_1099_div: z.array(sourceRecord.passthrough()),
     form_1099_b: z.array(sourceRecord.passthrough()), form_1099_g: z.array(sourceRecord.passthrough()),
     form_1099_k: z.array(sourceRecord.passthrough()), form_1099_r: z.array(sourceRecord.passthrough()),
-    form_1099_sa: z.array(sourceRecord.passthrough()), form_1098_t: z.array(sourceRecord.passthrough()).optional(),
+    form_1099_sa: z.array(sourceRecord.passthrough()), form_ssa_1099: z.array(sourceRecord.passthrough()).optional(), form_rrb_1099: z.array(sourceRecord.passthrough()).optional(), form_1098_t: z.array(sourceRecord.passthrough()).optional(),
   }),
   activities: z.object({ schedule_c: z.array(scheduleCActivity), schedule_e: z.array(scheduleEActivity), schedule_f: z.array(scheduleFActivity), other_income: z.array(otherIncomeActivity) }).strict(), mappings: z.array(sourceMapping),
   payments: z.record(z.string(), z.unknown()), review_points: z.array(z.record(z.string(), z.unknown())), metadata: z.record(z.string(), z.unknown()),

@@ -24,6 +24,9 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
   const [evidenceDocumentId, setEvidenceDocumentId] = useState("");
   const [evidenceNote, setEvidenceNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [creatingType, setCreatingType] = useState("W2");
+  const [creatingOwner, setCreatingOwner] = useState("taxpayer");
+  const [creatingEvidence, setCreatingEvidence] = useState("");
   const [error, setError] = useState<string | null>(null);
   const evidenceDocuments = selected ? eligibleEvidenceDocuments(initial.documents, selected) : [];
   const evidenceComplete = evidenceMode === "attached_document" ? Boolean(evidenceDocumentId) : Boolean(evidenceNote.trim());
@@ -84,9 +87,18 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
     router.refresh();
   }
 
+  async function createRecord() {
+    setSaving(true); setError(null);
+    const response = await fetch(`/api/clients/${clientId}/years/${year}/source-records`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision: initial.revision, formType: creatingType, ownerRole: creatingOwner, sourceDocumentId: null, evidenceNote: creatingEvidence, normalizedData: {} }) });
+    const body = await response.json(); setSaving(false);
+    if (!response.ok) { setError(body.message ?? body.error ?? "Source record creation failed."); return; }
+    setSelectedId(body.id); setCreatingEvidence(""); router.refresh();
+  }
+
   return <div className="return-page registry-entry-page">
     <div className="return-page-top"><Link href={`/clients/${clientId}/years/${year}`}><ArrowLeft size={14}/> {clientName} · {year}</Link><span>Revision {initial.revision}</span><b>2025 registry {registry?.registry_version ?? "year-pinned"}</b></div>
     <header><div><p>SOURCE ENTRY · YEAR-VERSIONED REGISTRY</p><h1>W-2 and information-return fields</h1><span>All registered fields are captured even when calculation treatment is conditional or future. Saving creates an immutable corrected version tied to explicit evidence.</span></div><button className="button primary" disabled={!selected || saving || !reason.trim() || !evidenceComplete} onClick={save}><Save size={13}/>{saving ? "Saving…" : "Save correction"}</button></header>
+    <section className="panel registry-create" aria-labelledby="manual-source-heading"><div><b id="manual-source-heading">Create a source form manually</b><small>Creates a blank versioned record; select it below to enter every registered field.</small></div><select aria-label="Source form type" value={creatingType} onChange={(event) => setCreatingType(event.target.value)}>{Object.keys(formRegistries2025).sort().map((form) => <option key={form}>{form}</option>)}</select><select aria-label="Source owner" value={creatingOwner} onChange={(event) => setCreatingOwner(event.target.value)}><option value="taxpayer">Taxpayer</option><option value="spouse">Spouse</option><option value="joint">Joint</option><option value="dependent">Dependent</option><option value="unknown">Unknown</option></select><input aria-label="Manual source evidence note" value={creatingEvidence} onChange={(event) => setCreatingEvidence(event.target.value)} placeholder="Evidence note (minimum 10 characters)" maxLength={2000}/><button className="button secondary" disabled={saving || creatingEvidence.trim().length < 10} onClick={createRecord}><Plus size={13}/> Create record</button></section>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <div className="registry-entry-layout">
       <aside className="panel registry-record-list"><div className="panel-heading"><div><h2>Effective records</h2><p>{records.length} supported source forms</p></div></div>{records.map((record) => <button className={record.id === selected?.id ? "active" : ""} key={record.id} onClick={() => select(record)}><Database size={14}/><span><b>{record.formType} · {issuer(record)}</b><small>{record.ownerRole} · v{record.version} · {record.sourceFileName ?? "no attached original"}</small></span>{record.unmappedFieldCount ? <AlertCircle size={13}/> : <CheckCircle2 size={13}/>}</button>)}</aside>

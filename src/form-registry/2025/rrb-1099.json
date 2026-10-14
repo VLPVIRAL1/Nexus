@@ -1,0 +1,21 @@
+{
+  "form": "RRB-1099",
+  "tax_year": 2025,
+  "revision": "2025",
+  "registry_version": "2025.1.0-review",
+  "source_url": "https://www.rrb.gov/Benefits/IncomeTax/TXB-25",
+  "source_revision": "2025 Railroad Retirement Board tax statement",
+  "fields": [
+    { "key": "benefitsPaid", "label": "3 Gross social security equivalent benefit", "type": "money", "calculation": "supported" },
+    { "key": "benefitsRepaid", "label": "4 Social security equivalent benefit repayment", "type": "money", "calculation": "supported" },
+    { "key": "netBenefits", "label": "5 Net social security equivalent benefit", "type": "money", "calculation": "supported" },
+    { "key": "workersCompensationOffset", "label": "6 Workers' compensation offset", "type": "money", "calculation": "blocking_when_nonzero" },
+    { "key": "federalWithholding", "label": "7 Federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "medicarePartBPremiums", "label": "8 Medicare Part B premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "medicarePartCPremiums", "label": "9 Medicare Advantage premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "medicarePartDPremiums", "label": "10 Medicare Part D premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "lumpSumElectionApplies", "label": "Reviewed treatment — prior-year lump-sum election applies", "type": "boolean", "calculation": "blocking_when_true" }
+  ],
+  "pdf_output": "form_1040_social_security_review",
+  "integration": "social_security_benefits_worksheet"
+}

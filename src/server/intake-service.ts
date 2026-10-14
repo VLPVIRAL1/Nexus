@@ -1,7 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type pg from "pg";
-import { phase1IntakeQuestions } from "@/domain/intake";
+import { evaluateIntakeSupport2025, phase1IntakeQuestions } from "@/domain/intake";
+import { emptyStandardDeductionFacts2025, parseStandardDeductionFacts2025 } from "@/domain/standard-deduction-2025";
 import { expectedDocumentRegistry2025, expectedDocumentRegistryForAnswers } from "@/domain/expected-documents";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { databasePool } from "./database";
@@ -121,17 +122,41 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
   );
   const answerByQuestion = new Map(answerResult.rows.map((answer) => [answer.question_id, answer]));
   const missingQuestionIds = phase1IntakeQuestions.filter(({ required, id }) => required && (!answerByQuestion.has(id) || answerByQuestion.get(id)?.answer === "unknown")).map(({ id }) => id);
-  const blockingQuestionIds = phase1IntakeQuestions.filter((question) => {
-    const answer = answerByQuestion.get(question.id)?.answer;
-    return answer === "yes" ? !question.supportedWhenYes : answer === "no" ? !(question.supportedWhenNo ?? !question.supportedWhenYes) : false;
-  }).map(({ id }) => id);
-  const documents = await client.query<{ id: string; registry_id: string | null; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
-    "SELECT id,registry_id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],
+  const [documents, sourceDocuments, attestation, premiumTaxCredit, federalPayments, supportedActivities, socialSecurityBenefits, adjustmentProfile, returnProfile] = await Promise.all([
+    client.query<{ id: string; registry_id: string | null; document_key: string; label: string; status: ExpectedDocumentInput["status"]; evidence: string | null; source_document_id: string | null; version: number }>(
+      "SELECT id,registry_id,document_key,label,status,evidence,source_document_id,version FROM expected_documents WHERE tax_year_id=$1 ORDER BY label", [taxYearId],
+    ),
+    client.query<{ id: string; file_name: string; document_type: string }>(
+      "SELECT id,file_name,document_type FROM source_documents WHERE tax_year_id=$1 AND scan_state='clean' ORDER BY uploaded_at DESC,id DESC", [taxYearId],
+    ),
+    client.query<{ id: string; tax_year_revision: number }>("SELECT id,tax_year_revision FROM completeness_attestations WHERE tax_year_id=$1 ORDER BY tax_year_revision DESC LIMIT 1", [taxYearId]),
+    client.query<{ enabled: boolean }>("SELECT COALESCE((profile->>'enabled')::boolean,false) AS enabled FROM premium_tax_credit_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query("SELECT 1 FROM federal_payment_profiles, jsonb_array_elements(profile->'payments') payment WHERE tax_year_id=$1 AND payment->>'status'='current' LIMIT 1", [taxYearId]),
+    client.query("SELECT 1 FROM activities WHERE tax_year_id=$1 AND active AND implementation_status='supported' AND activity_type IN ('schedule_e','schedule_f') LIMIT 1", [taxYearId]),
+    client.query("SELECT 1 FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') AND form_type IN ('SSA-1099','RRB-1099') LIMIT 1", [taxYearId]),
+    client.query<{ enabled: boolean; reviewed: boolean }>("SELECT COALESCE((profile->'alternativeMinimumTax'->>'enabled')::boolean,false) enabled,COALESCE((profile->'alternativeMinimumTax'->>'applicabilityReviewed')::boolean,false) reviewed FROM adjustment_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ standard_deduction_facts: unknown }>("SELECT standard_deduction_facts FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
+  ]);
+  const standardFacts = returnProfile.rows[0]
+    ? parseStandardDeductionFacts2025(returnProfile.rows[0].standard_deduction_facts)
+    : emptyStandardDeductionFacts2025;
+  const ageBlindnessPresent = standardFacts.taxpayerAge65OrOlder || standardFacts.taxpayerBlind || standardFacts.spouseAge65OrOlder || standardFacts.spouseBlind;
+  const supportIssues = evaluateIntakeSupport2025(
+    new Map(answerResult.rows.map((answer) => [answer.question_id, answer.answer])),
+    {
+      premiumTaxCreditEnabled: premiumTaxCredit.rows[0]?.enabled ?? false,
+      currentFederalPaymentPresent: Boolean(federalPayments.rowCount),
+      supportedScheduleEOrFActivityPresent: Boolean(supportedActivities.rowCount),
+      claimableTaxpayerTreatmentPresent: standardFacts.taxpayerClaimableAsDependent,
+      claimableTaxpayerTreatmentComplete: standardFacts.form8615ApplicabilityReviewed,
+      ageBlindnessTreatmentPresent: ageBlindnessPresent,
+      ageBlindnessTreatmentComplete: standardFacts.ageBlindnessFactsReviewed,
+      socialSecurityBenefitPresent: Boolean(socialSecurityBenefits.rowCount),
+      alternativeMinimumTaxEnabled: adjustmentProfile.rows[0]?.enabled ?? false,
+      alternativeMinimumTaxComplete: adjustmentProfile.rows[0]?.reviewed ?? false,
+    },
   );
-  const sourceDocuments = await client.query<{ id: string; file_name: string; document_type: string }>(
-    "SELECT id,file_name,document_type FROM source_documents WHERE tax_year_id=$1 AND scan_state='clean' ORDER BY uploaded_at DESC,id DESC", [taxYearId],
-  );
-  const attestation = await client.query<{ id: string; tax_year_revision: number }>("SELECT id,tax_year_revision FROM completeness_attestations WHERE tax_year_id=$1 ORDER BY tax_year_revision DESC LIMIT 1", [taxYearId]);
+  const blockingQuestionIds = supportIssues.map(({ questionId }) => questionId);
   return {
     revision,
     questions: phase1IntakeQuestions.map((question) => ({ ...question, answer: answerByQuestion.get(question.id) ?? null })),
@@ -157,7 +182,7 @@ async function refreshIntakeDiagnostics(client: pg.PoolClient, taxYearId: string
     const question = phase1IntakeQuestions.find(({ id }) => id === questionId);
     await client.query(
       "INSERT INTO validation_issues(tax_year_id,code,severity,category,field_path,message,resolution_action,creation_revision) VALUES($1,'INTAKE_TREATMENT_UNSUPPORTED','blocking','intake',$2,$3,'Implement the required treatment or keep the return partial.',$4)",
-      [taxYearId, questionId, `${question?.affirmativeTreatment ?? questionId} is outside the supported calculation profile.`, revision],
+      [taxYearId, questionId, `${question?.affirmativeTreatment ?? questionId} is incomplete, inconsistent, or outside the supported calculation profile.`, revision],
     );
   }
   return state.missingQuestionIds.length + state.blockingQuestionIds.length;

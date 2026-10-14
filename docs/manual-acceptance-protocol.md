@@ -30,7 +30,7 @@ Using one supported synthetic return and one intentionally blocked complex retur
 
 1. establish client/year/people and identify current preparation status;
 2. complete intake and document evidence;
-3. upload and view a clean source, stage the ten-family import and resolve changes;
+3. upload and view a clean source, stage the seventeen-family import and resolve changes;
 4. correct one record, exclude one duplicate and explain effective lineage;
 5. map split business receipts and reconcile the residual;
 6. resolve and reopen review points after a changed fact;

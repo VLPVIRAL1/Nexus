@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
-import { validateRegisteredSourceData } from "@/form-registry/2025";
+import { formRegistries2025, validateRegisteredSourceData } from "@/form-registry/2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { maskTin } from "@/services/redaction";
 import { WorkflowError } from "./client-workflow-service";
@@ -10,6 +10,37 @@ import { refreshMappingDiagnosticsForTaxYear } from "./mapping-persistence-servi
 
 export type SourceRecordAction = "correct" | "void" | "exclude_duplicate";
 export type CorrectionEvidenceMode = "attached_document" | "manual_attestation";
+
+export async function createManualSourceRecord(context: AuthorizationContext, clientId: string, year: number, input: { expectedRevision: number; formType: string; ownerRole: "taxpayer" | "spouse" | "joint" | "dependent" | "unknown"; sourceDocumentId: string | null; evidenceNote: string; normalizedData: Record<string, unknown> }) {
+  if (!formRegistries2025[input.formType]) throw new WorkflowError("invalid", "Select a registered 2025 source form.");
+  assertSafeJson(input.normalizedData);
+  try { validateRegisteredSourceData(input.formType, input.normalizedData); } catch (error) { throw new WorkflowError("invalid", error instanceof Error ? error.message : "Registered source fields are invalid."); }
+  const evidenceNote = input.evidenceNote.trim();
+  if (!input.sourceDocumentId && evidenceNote.length < 10) throw new WorkflowError("invalid", "Manual source entry without an attached original requires an evidence note of at least 10 characters.");
+  return inTransaction(async (client) => {
+    const scope = await authorizedTaxYear(client, context, clientId, year, "source.modify", true);
+    assertRevision(scope.revision, input.expectedRevision);
+    let ownerPersonId: string | null = null;
+    if (input.ownerRole === "taxpayer" || input.ownerRole === "spouse") {
+      const person = await client.query<{ id: string }>("SELECT id FROM people WHERE tax_year_id=$1 AND role=$2", [scope.taxYearId, input.ownerRole]);
+      if (!person.rows[0]) throw new WorkflowError("invalid", `No ${input.ownerRole} person record exists for this tax year.`);
+      ownerPersonId = person.rows[0].id;
+    }
+    if (input.sourceDocumentId) {
+      const document = await client.query<{ document_type: string }>("SELECT document_type FROM source_documents WHERE id=$1 AND tax_year_id=$2 AND scan_state='clean' AND disposition IN ('original','corrected')", [input.sourceDocumentId, scope.taxYearId]);
+      if (!document.rows[0]) throw new WorkflowError("invalid", "The selected source document is unavailable or has not passed scanning.");
+      if (document.rows[0].document_type !== input.formType) throw new WorkflowError("invalid", "The selected source document type does not match this record.");
+    }
+    const inserted = await client.query<{ id: string }>(`INSERT INTO source_form_records(tax_year_id,source_document_id,form_type,form_year,external_source_id,owner_role,owner_person_id,normalized_data,raw_fields,unmapped_fields,corrected,void,effective,version,record_disposition,change_reason,created_by_id,correction_evidence_mode,correction_evidence_note) VALUES($1,$2,$3,2025,$4,$5,$6,$7::jsonb,'[]'::jsonb,'[]'::jsonb,false,false,true,1,'original',$8,$9,$10,$11) RETURNING id`, [scope.taxYearId, input.sourceDocumentId, input.formType, `manual:${randomUUID()}`, input.ownerRole, ownerPersonId, JSON.stringify(input.normalizedData), "Initial manual source entry", context.userId, input.sourceDocumentId ? "attached_document" : "manual_attestation", input.sourceDocumentId ? null : evidenceNote]);
+    const id = inserted.rows[0]?.id;
+    if (!id) throw new Error("Manual source record insert failed.");
+    const revision = scope.revision + 1;
+    await invalidateTaxYear(client, scope.taxYearId, revision);
+    await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, revision);
+    await appendAuditEvent(client, context, scope.taxYearId, "source_record.created", "source_form_record", id, { revision, formType: input.formType, ownerRole: input.ownerRole, sourceDocumentId: input.sourceDocumentId, evidenceMode: input.sourceDocumentId ? "attached_document" : "manual_attestation" });
+    return { id, revision, version: 1, disposition: "original" as const };
+  });
+}
 
 export async function getSourceRecordState(context: AuthorizationContext, clientId: string, year: number) {
   const client = await databasePool().connect();

@@ -3,16 +3,18 @@ import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 import { addMoney, asDecimalString, money } from "@/domain/money";
 import { parseActivityForm2025, type ScheduleCFormData2025, type ScheduleEFormData2025, type ScheduleFFormData2025 } from "@/domain/activity-forms-2025";
-import { phase1IntakeQuestions } from "@/domain/intake";
+import { evaluateIntakeSupport2025, phase1IntakeQuestions } from "@/domain/intake";
 import { emptyFederalCreditProfile2025, parseFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
+import { emptyAdvancedFederalProfile2025, parseAdvancedFederalProfile2025 } from "@/domain/advanced-federal-2025";
+import { emptyStandardDeductionFacts2025, parseStandardDeductionFacts2025 } from "@/domain/standard-deduction-2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { calculateFederalReturn2025, rulePackage2025, type CalculationInput2025, type FilingStatus2025, type PersonRole2025, type ScheduleAInput2025 } from "@/tax-engine/2025";
 import { emptyScheduleA2025 } from "./return-profile-service";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
 
-const engineVersion = "nexus-federal-2025-v4-federal-credits-review";
-const formRegistryVersion = "2025-supported-forms-v4-1098t-credits-review";
+const engineVersion = "nexus-federal-2025-v8-amt-review";
+const formRegistryVersion = "2025-supported-forms-v8-amt-review";
 
 export async function runPersistedCalculation(context: AuthorizationContext, clientId: string, year: number, expectedRevision: number) {
   if (year !== 2025) throw new WorkflowError("invalid", "Only the 2025 federal calculation package is available.");
@@ -55,13 +57,19 @@ export async function getCalculationState(context: AuthorizationContext, clientI
 }
 
 async function assembleInput(client: pg.PoolClient, taxYearId: string, revision: number, calculationId: string): Promise<CalculationInput2025> {
-  const [people, answersResult, attestation, dependents, profileResult, creditProfileResult, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
+  const [people, answersResult, attestation, dependents, profileResult, creditProfileResult, dueProfileResult, ptcProfileResult, adjustmentProfileResult, paymentProfileResult, packageProfileResult, dueSignatureResult, sources, activities, mappings, externalBlockers, overrides] = await Promise.all([
     client.query<{ role: string }>("SELECT role FROM people WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ question_id: string; answer: "yes" | "no" | "unknown" }>("SELECT DISTINCT ON (question_id) question_id,answer FROM intake_answers WHERE tax_year_id=$1 ORDER BY question_id,answer_revision DESC", [taxYearId]),
     client.query("SELECT 1 FROM completeness_attestations WHERE tax_year_id=$1 AND tax_year_revision=$2", [taxYearId, revision]),
     client.query<{ id: string; legal_name: string; facts: Record<string, unknown> }>("SELECT id,legal_name,facts FROM dependents WHERE tax_year_id=$1 ORDER BY legal_name,id", [taxYearId]),
-    client.query<{ filing_status: FilingStatus2025; filing_status_eligibility_confirmed: boolean; schedule_a: ScheduleAInput2025 }>("SELECT filing_status,filing_status_eligibility_confirmed,schedule_a FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ filing_status: FilingStatus2025; filing_status_eligibility_confirmed: boolean; schedule_a: ScheduleAInput2025; standard_deduction_facts: unknown }>("SELECT filing_status,filing_status_eligibility_confirmed,schedule_a,standard_deduction_facts FROM return_profiles WHERE tax_year_id=$1", [taxYearId]),
     client.query<{ profile: unknown }>("SELECT profile FROM federal_credit_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ profile: unknown; version: number }>("SELECT profile,version FROM due_diligence_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ profile: unknown }>("SELECT profile FROM premium_tax_credit_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ profile: unknown }>("SELECT profile FROM adjustment_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ profile: unknown }>("SELECT profile FROM federal_payment_profiles WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ preferences: unknown }>("SELECT preferences FROM output_package_preferences WHERE tax_year_id=$1", [taxYearId]),
+    client.query<{ tax_year_revision: number; profile_version: number }>("SELECT tax_year_revision,profile_version FROM due_diligence_signatures WHERE tax_year_id=$1 AND invalidated_at IS NULL ORDER BY signed_at DESC,id DESC LIMIT 1", [taxYearId]),
     client.query<{ id: string; form_type: string; owner_role: string; normalized_data: Record<string, unknown> }>("SELECT id,form_type,owner_role,normalized_data FROM source_form_records WHERE tax_year_id=$1 AND effective AND NOT void AND record_disposition NOT IN ('void','duplicate_excluded') ORDER BY created_at,id", [taxYearId]),
     client.query<{ id: string; activity_type: "schedule_c"|"schedule_e"|"schedule_f"; name: string; owner_role: string; receipt_basis: string | null; additional_receipts: string; details: Record<string, unknown> }>("SELECT id,activity_type,name,owner_role,receipt_basis,additional_receipts::text,details FROM activities WHERE tax_year_id=$1 AND active AND activity_type IN ('schedule_c','schedule_e','schedule_f') AND implementation_status='supported' ORDER BY activity_type,name,id", [taxYearId]),
     client.query<{ source_record_id: string; source_field: string; target_type: "schedule_c"|"schedule_e"|"schedule_f"; target_activity_id: string; allocated_amount: string }>(`SELECT sm.source_record_id,sm.source_field,sm.target_type,sm.target_activity_id,sm.allocated_amount::text FROM source_mappings sm JOIN source_form_records sfr ON sfr.id=sm.source_record_id WHERE sm.tax_year_id=$1 AND sm.effective AND sm.mapping_status IN ('accepted','reviewed') AND sm.target_type IN ('schedule_c','schedule_e','schedule_f') AND sfr.effective AND NOT sfr.void AND sfr.record_disposition NOT IN ('void','duplicate_excluded')`, [taxYearId]),
@@ -70,14 +78,37 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
   ]);
   const answers = new Map(answersResult.rows.map(({ question_id, answer }) => [question_id, answer]));
   const answer = (id: string) => answers.get(id) ?? "unknown";
-  const unsupportedApplicableTopics = phase1IntakeQuestions.filter((question) => {
-    const value = answer(question.id);
-    return value === "yes" ? !question.supportedWhenYes : value === "no" ? !(question.supportedWhenNo ?? !question.supportedWhenYes) : false;
-  }).map(({ affirmativeTreatment }) => affirmativeTreatment);
-  unsupportedApplicableTopics.push(...externalBlockers.rows.map(({ code, message }) => `${code}: ${message}`));
+  const unsupportedApplicableTopics: string[] = [];
   const roles = new Set(people.rows.map(({ role }) => role));
   const profile = profileResult.rows[0];
   const creditProfile = creditProfileResult.rows[0] ? parseFederalCreditProfile2025(creditProfileResult.rows[0].profile) : emptyFederalCreditProfile2025;
+  const storedOr = <T>(stored: unknown, fallback: T): T => withDefaults(fallback, stored);
+  const advancedProfile = parseAdvancedFederalProfile2025({
+    schemaVersion: "2025.1",
+    dueDiligence: storedOr(dueProfileResult.rows[0]?.profile, emptyAdvancedFederalProfile2025.dueDiligence),
+    premiumTaxCredit: storedOr(ptcProfileResult.rows[0]?.profile, emptyAdvancedFederalProfile2025.premiumTaxCredit),
+    adjustments: storedOr(adjustmentProfileResult.rows[0]?.profile, emptyAdvancedFederalProfile2025.adjustments),
+    payments: storedOr(paymentProfileResult.rows[0]?.profile, emptyAdvancedFederalProfile2025.payments),
+    formPackage: storedOr(packageProfileResult.rows[0]?.preferences, emptyAdvancedFederalProfile2025.formPackage),
+  });
+  const standardFacts = profile?.standard_deduction_facts
+    ? parseStandardDeductionFacts2025(profile.standard_deduction_facts)
+    : emptyStandardDeductionFacts2025;
+  const ageBlindnessPresent = standardFacts.taxpayerAge65OrOlder || standardFacts.taxpayerBlind || standardFacts.spouseAge65OrOlder || standardFacts.spouseBlind;
+  const intakeSupportIssues = evaluateIntakeSupport2025(answers, {
+    premiumTaxCreditEnabled: advancedProfile.premiumTaxCredit.enabled,
+    currentFederalPaymentPresent: advancedProfile.payments.payments.some(({ status }) => status === "current"),
+    supportedScheduleEOrFActivityPresent: activities.rows.some(({ activity_type }) => activity_type === "schedule_e" || activity_type === "schedule_f"),
+    claimableTaxpayerTreatmentPresent: standardFacts.taxpayerClaimableAsDependent,
+    claimableTaxpayerTreatmentComplete: standardFacts.form8615ApplicabilityReviewed,
+    ageBlindnessTreatmentPresent: ageBlindnessPresent,
+    ageBlindnessTreatmentComplete: standardFacts.ageBlindnessFactsReviewed,
+    socialSecurityBenefitPresent: sources.rows.some(({ form_type }) => form_type === "SSA-1099" || form_type === "RRB-1099"),
+    alternativeMinimumTaxEnabled: advancedProfile.adjustments.alternativeMinimumTax.enabled,
+    alternativeMinimumTaxComplete: advancedProfile.adjustments.alternativeMinimumTax.applicabilityReviewed,
+  });
+  unsupportedApplicableTopics.push(...intakeSupportIssues.map(({ message }) => message));
+  unsupportedApplicableTopics.push(...externalBlockers.rows.map(({ code, message }) => `${code}: ${message}`));
   if (answer("credits.eitc") === "yes" && !creditProfile.eitc.enabled) unsupportedApplicableTopics.push("EITC intake applies, but the EITC credit interview has not been enabled and completed.");
   if (answer("credits.dependent_care") === "yes" && !creditProfile.dependentCare.enabled) unsupportedApplicableTopics.push("Dependent-care intake applies, but the Form 2441 profile has not been enabled and completed.");
   if (answer("credits.education") === "yes" && !creditProfile.education.enabled) unsupportedApplicableTopics.push("Education-credit intake applies, but the Form 8863 profile has not been enabled and completed.");
@@ -107,6 +138,17 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     taxableAmountNotDetermined: booleanAt(source.normalized_data, "boxes.taxableAmountNotDetermined"),
   }));
   const governmentPayments = (sourcesByType.get("1099-G") ?? []).map((source) => ({ id: source.id, unemploymentCompensation: amountAt(source.normalized_data, ["boxes.unemploymentCompensation"]), federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]) }));
+  const socialSecurityBenefits = [...(sourcesByType.get("SSA-1099") ?? []), ...(sourcesByType.get("RRB-1099") ?? [])].map((source) => ({
+    id: source.id,
+    owner: owner(source.owner_role),
+    sourceType: source.form_type as "SSA-1099" | "RRB-1099",
+    benefitsPaid: amountAt(source.normalized_data, ["boxes.benefitsPaid"]),
+    benefitsRepaid: amountAt(source.normalized_data, ["boxes.benefitsRepaid"]),
+    netBenefits: amountAt(source.normalized_data, ["boxes.netBenefits"]),
+    federalWithholding: amountAt(source.normalized_data, ["boxes.federalWithholding"]),
+    workersCompensationOffset: amountAt(source.normalized_data, ["boxes.workersCompensationOffset"]),
+    lumpSumElectionApplies: booleanAt(source.normalized_data, "boxes.lumpSumElectionApplies"),
+  }));
   const mappedByActivity = new Map<string, Array<{amount:string;sourceField:string;targetType:string}>>();
   const mappedBySource = new Map<string, string[]>();
   for (const mapping of mappings.rows) {
@@ -139,17 +181,25 @@ async function assembleInput(client: pg.PoolClient, taxYearId: string, revision:
     dependents: dependents.rows.map((row) => ({ id: row.id, legalName: row.legal_name, dateOfBirth: String(row.facts.dateOfBirth ?? ""), relationship: String(row.facts.relationship ?? ""), monthsLivedWithTaxpayer: Number(row.facts.monthsLivedWithTaxpayer ?? 0), qualifiesAsDependent: row.facts.qualifiesAsDependent === true, qualifiesForChildTaxCredit: row.facts.qualifiesForChildTaxCredit === true, hasValidSsnForChildTaxCredit: row.facts.hasValidSsnForChildTaxCredit === true, qualifiesForOtherDependentCredit: row.facts.qualifiesForOtherDependentCredit === true, eligibilityReviewed: row.facts.eligibilityReviewed === true })),
     scheduleA,
     eligibility: {
-      fullYearUsResident: answer("identity.full_year_resident") === "yes", claimableAsDependent: answer("identity.claimable_dependent") !== "no", hasDependents: Boolean(dependents.rowCount), taxpayerAge65OrOlder: answer("identity.age_or_blindness") !== "no", taxpayerBlind: answer("identity.age_or_blindness") !== "no", spouseAge65OrOlder: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", spouseBlind: roles.has("spouse") && answer("identity.age_or_blindness") !== "no", usesItemizedDeductions: scheduleA.enabled || answer("deductions.itemize") === "yes", allRequiredIntakeAnswered: phase1IntakeQuestions.every(({ id }) => answers.has(id) && answer(id) !== "unknown"), documentsCompleteAttested: Boolean(attestation.rowCount), unsupportedApplicableTopics,
+      fullYearUsResident: answer("identity.full_year_resident") === "yes", claimableAsDependent: standardFacts.taxpayerClaimableAsDependent, form8615ApplicabilityReviewed: standardFacts.form8615ApplicabilityReviewed, form8615Required: standardFacts.form8615Required, hasDependents: Boolean(dependents.rowCount), taxpayerAge65OrOlder: standardFacts.taxpayerAge65OrOlder, taxpayerBlind: standardFacts.taxpayerBlind, spouseAge65OrOlder: standardFacts.spouseAge65OrOlder, spouseBlind: standardFacts.spouseBlind, ageBlindnessFactsReviewed: standardFacts.ageBlindnessFactsReviewed, mfsSpouseAdditionalDeductionEligible: standardFacts.mfsSpouseAdditionalDeductionEligible, usesItemizedDeductions: scheduleA.enabled || answer("deductions.itemize") === "yes", allRequiredIntakeAnswered: phase1IntakeQuestions.every(({ id }) => answers.has(id) && answer(id) !== "unknown"), documentsCompleteAttested: Boolean(attestation.rowCount), unsupportedApplicableTopics,
       treatmentScreens: { earnedIncomeCredit: "ruled_out", otherCredits: screen(answer("deductions.credits")), alternativeMinimumTax: screen(answer("taxes.alternative_minimum")), netInvestmentIncomeTax: screen(answer("taxes.net_investment_income")), additionalMedicareTax: screen(answer("taxes.additional_medicare")), schedule1AAdditionalDeductions: screen(answer("deductions.schedule1a")), estimatedOrExtensionPayments: screen(answer("payments.other")), specialFilingElection: screen(answer("identity.special_election")) },
     },
     scheduleBScreening: { foreignAccount: answer("schedule_b.foreign_account"), foreignTrust: answer("schedule_b.foreign_trust"), otherScheduleBTrigger: answer("schedule_b.other_trigger") },
-    wages, interest, dividends, scheduleCActivities, scheduleEActivities, scheduleFActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, paymentCardReceipts, hsaDistributions,
+    wages, interest, dividends, scheduleCActivities, scheduleEActivities, scheduleFActivities, businessWithholding, brokerTransactions, retirementDistributions, governmentPayments, socialSecurityBenefits, paymentCardReceipts, hsaDistributions,
     federalCredits: { ...creditProfile, employerDependentCareBenefits, valid1098TRecordIds: (sourcesByType.get("1098-T") ?? []).map(({ id }) => id) },
+    advancedFederal: {
+      ...advancedProfile,
+      dueDiligenceSignatureCurrent: dueSignatureResult.rows.some((row) => row.tax_year_revision === revision && row.profile_version === (dueProfileResult.rows[0]?.version ?? 1)),
+      valid1095ARecordIds: (sourcesByType.get("1095-A") ?? []).map(({ id }) => id),
+      valid1098ERecordIds: (sourcesByType.get("1098-E") ?? []).map(({ id }) => id),
+      validActivityIds: activities.rows.map(({ id }) => id),
+    },
     ...(override ? { approvedOverrides: { form1040IncomeTax: override.override_value } } : {}),
   };
 }
 
 function screen(value: "yes" | "no" | "unknown") { return value === "yes" ? "applies" as const : value === "no" ? "ruled_out" as const : "unknown" as const; }
+function withDefaults<T>(fallback:T,value:unknown):T{if(Array.isArray(fallback))return(Array.isArray(value)?value:fallback)as T;if(fallback&&typeof fallback==="object"){const supplied=value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:{};return Object.fromEntries(Object.entries(fallback as Record<string,unknown>).map(([key,child])=>[key,withDefaults(child,supplied[key])]))as T;}return(value===undefined?fallback:value)as T;}
 function objectAtPath(value: Record<string, unknown>, path: string): unknown { return path.split(".").reduce<unknown>((current, segment) => current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>)[segment] : undefined, value); }
 function stringAt(value: Record<string, unknown>, paths: string[]) { for (const path of paths) { const found=objectAtPath(value,path); if(typeof found==="string"&&found.trim()) return found.trim(); } return null; }
 function booleanAt(value: Record<string, unknown>, path: string) { return objectAtPath(value, path) === true; }

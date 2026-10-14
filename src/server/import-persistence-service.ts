@@ -2,6 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { emptyFederalCreditProfile2025, parseFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
+import { emptyAdvancedFederalProfile2025, parseAdvancedFederalProfile2025 } from "@/domain/advanced-federal-2025";
+import { emptyStandardDeductionFacts2025, parseStandardDeductionFacts2025 } from "@/domain/standard-deduction-2025";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import {
   commitImport,
@@ -63,8 +65,8 @@ export async function stageCanonicalImportWithClient(
 
   const inserted = await client.query<{ id: string }>(
     `INSERT INTO import_batches(tax_year_id,file_name,schema_version,batch_hash,base_revision,import_status,raw_payload,parsed_payload,preview_id,summary)
-     VALUES($1,$2,'1.0.0',$3,$4,'preview',$5,$6::jsonb,$7,$8::jsonb) RETURNING id`,
-    [scope.taxYearId, fileName, preview.batchHash, preview.baseRevision, Buffer.from(rawBytes), JSON.stringify(preview.parsed), preview.previewId, JSON.stringify({ warnings: preview.warnings, changeCount: preview.changes.length })],
+     VALUES($1,$2,$3,$4,$5,'preview',$6,$7::jsonb,$8,$9::jsonb) RETURNING id`,
+    [scope.taxYearId, fileName, String(preview.parsed.schema_version ?? "1.0.0"), preview.batchHash, preview.baseRevision, Buffer.from(rawBytes), JSON.stringify(preview.parsed), preview.previewId, JSON.stringify({ warnings: preview.warnings, changeCount: preview.changes.length })],
   );
   const batchId = inserted.rows[0]?.id;
   if (!batchId) throw new Error("Import batch insert failed.");
@@ -122,6 +124,7 @@ export async function commitPersistedImport(
     const materializedRecords = await synchronizeSourceFormLineage(client, scope.taxYearId, row.id, context.userId, committed.result);
     const profileMaterialized = await synchronizeReturnProfile(client, scope.taxYearId, committed.result);
     const creditsMaterialized = await synchronizeFederalCredits(client, scope.taxYearId, context.userId, committed.result, "import");
+    const advancedFederalMaterialized = await synchronizeAdvancedFederal(client, scope.taxYearId, context.userId, committed.result, "import");
     const materializedActivities = await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, committed.result);
     const materializedMappings = await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, committed.result);
     const mappingBlockers = await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
@@ -131,7 +134,7 @@ export async function commitPersistedImport(
       [batchId, nextRevision, JSON.stringify(effectiveSnapshot), JSON.stringify(committed.result), context.userId],
     );
     await recordAttempt(client, scope.taxYearId, row.id, row.batch_hash, context.userId, "committed");
-    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedPeople, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, creditsMaterialized, mappingBlockers });
+    await appendAuditEvent(client, context, scope.taxYearId, "import.committed", "import_batch", row.id, { batchHash: row.batch_hash, baseRevision: scope.revision, resultRevision: nextRevision, acceptedChanges: committed.changeCount, materializedPeople, materializedRecords, materializedActivities, materializedMappings, profileMaterialized, creditsMaterialized, advancedFederalMaterialized, mappingBlockers });
     return { batchId: row.id, committedRevision: nextRevision, replayed: false, result: committed.result };
   });
   if (result instanceof WorkflowError) throw result;
@@ -163,6 +166,7 @@ export async function rollbackPersistedImport(context: AuthorizationContext, cli
     await synchronizePeople(client, scope.taxYearId, row.previous_snapshot);
     await synchronizeReturnProfile(client, scope.taxYearId, row.previous_snapshot, true);
     await synchronizeFederalCredits(client, scope.taxYearId, context.userId, row.previous_snapshot, "rollback", true);
+    await synchronizeAdvancedFederal(client, scope.taxYearId, context.userId, row.previous_snapshot, "rollback", true);
     await synchronizeActivities(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await synchronizeActivityMappings(client, scope.taxYearId, row.id, context.userId, row.previous_snapshot, true);
     await refreshMappingDiagnosticsForTaxYear(client, scope.taxYearId, nextRevision);
@@ -244,7 +248,11 @@ function jsonValue(value: unknown): string {
 
 const formTypes = {
   w2: "W2",
+  form_1095_a: "1095-A",
+  form_1098_e: "1098-E",
   form_1098_t: "1098-T",
+  form_5498: "5498",
+  form_5498_sa: "5498-SA",
   form_1099_nec: "1099-NEC",
   form_1099_misc: "1099-MISC",
   form_1099_int: "1099-INT",
@@ -254,6 +262,8 @@ const formTypes = {
   form_1099_k: "1099-K",
   form_1099_r: "1099-R",
   form_1099_sa: "1099-SA",
+  form_ssa_1099: "SSA-1099",
+  form_rrb_1099: "RRB-1099",
 } as const;
 
 async function synchronizePeople(client: pg.PoolClient, taxYearId: string, snapshot: Record<string, unknown>): Promise<number> {
@@ -499,7 +509,21 @@ async function synchronizeReturnProfile(client: pg.PoolClient, taxYearId: string
   const filing = record(snapshot.filing_profile);
   const status = typeof filing.status === "string" ? filing.status : null;
   const schedule = record(snapshot.schedule_a);
-  if (!status && !Array.isArray(snapshot.dependents) && !Object.keys(schedule).length && !resetMissing) return false;
+  const importedStandardFacts = record(snapshot.standard_deduction_facts);
+  if (!status && !Array.isArray(snapshot.dependents) && !Object.keys(schedule).length && !Object.keys(importedStandardFacts).length && !resetMissing) return false;
+  const storedStandardFacts = await client.query<{ standard_deduction_facts: unknown }>("SELECT standard_deduction_facts FROM return_profiles WHERE tax_year_id=$1", [taxYearId]);
+  const standardFacts = Object.keys(importedStandardFacts).length ? parseStandardDeductionFacts2025({
+    schemaVersion: importedStandardFacts.schema_version,
+    taxpayerClaimableAsDependent: importedStandardFacts.taxpayer_claimable_as_dependent,
+    form8615ApplicabilityReviewed: importedStandardFacts.form_8615_applicability_reviewed,
+    form8615Required: importedStandardFacts.form_8615_required,
+    taxpayerAge65OrOlder: importedStandardFacts.taxpayer_age_65_or_older,
+    taxpayerBlind: importedStandardFacts.taxpayer_blind,
+    spouseAge65OrOlder: importedStandardFacts.spouse_age_65_or_older,
+    spouseBlind: importedStandardFacts.spouse_blind,
+    ageBlindnessFactsReviewed: importedStandardFacts.age_blindness_facts_reviewed,
+    mfsSpouseAdditionalDeductionEligible: importedStandardFacts.mfs_spouse_additional_deduction_eligible,
+  }) : resetMissing ? emptyStandardDeductionFacts2025 : storedStandardFacts.rows[0] ? parseStandardDeductionFacts2025(storedStandardFacts.rows[0].standard_deduction_facts) : emptyStandardDeductionFacts2025;
   const allowedStatuses = new Set(["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"]);
   if (status && allowedStatuses.has(status)) {
     const mappedSchedule = {
@@ -513,10 +537,10 @@ async function synchronizeReturnProfile(client: pg.PoolClient, taxYearId: string
       saltEligibilityConfirmed: schedule.salt_eligibility_confirmed === true, mortgageLimitsApplied: schedule.mortgage_limits_applied === true,
       charityLimitsApplied: schedule.charity_limits_applied === true, casualtyLimitsApplied: schedule.casualty_limits_applied === true,
     };
-    await client.query(`INSERT INTO return_profiles(tax_year_id,filing_status,filing_status_eligibility_confirmed,schedule_a) VALUES($1,$2,$3,$4::jsonb)
-      ON CONFLICT(tax_year_id) DO UPDATE SET filing_status=EXCLUDED.filing_status,filing_status_eligibility_confirmed=EXCLUDED.filing_status_eligibility_confirmed,schedule_a=EXCLUDED.schedule_a,version=return_profiles.version+1`, [taxYearId, status, filing.eligibility_confirmed === true, JSON.stringify(mappedSchedule)]);
+    await client.query(`INSERT INTO return_profiles(tax_year_id,filing_status,filing_status_eligibility_confirmed,standard_deduction_facts,schedule_a) VALUES($1,$2,$3,$4::jsonb,$5::jsonb)
+      ON CONFLICT(tax_year_id) DO UPDATE SET filing_status=EXCLUDED.filing_status,filing_status_eligibility_confirmed=EXCLUDED.filing_status_eligibility_confirmed,standard_deduction_facts=EXCLUDED.standard_deduction_facts,schedule_a=EXCLUDED.schedule_a,version=return_profiles.version+1`, [taxYearId, status, filing.eligibility_confirmed === true, JSON.stringify(standardFacts), JSON.stringify(mappedSchedule)]);
   } else if (resetMissing) {
-    await client.query(`INSERT INTO return_profiles(tax_year_id) VALUES($1) ON CONFLICT(tax_year_id) DO UPDATE SET filing_status='single',filing_status_eligibility_confirmed=false,schedule_a='{"enabled":false,"marriedFilingSeparatelySpouseItemizes":null,"medicalAndDentalExpenses":"0.00","stateLocalIncomeOrSalesTaxes":"0.00","realEstateTaxes":"0.00","personalPropertyTaxes":"0.00","otherTaxes":"0.00","homeMortgageInterestAndPoints":"0.00","investmentInterest":"0.00","cashCharitableContributions":"0.00","noncashCharitableContributions":"0.00","casualtyAndTheftLosses":"0.00","otherItemizedDeductions":"0.00","saltEligibilityConfirmed":false,"mortgageLimitsApplied":false,"charityLimitsApplied":false,"casualtyLimitsApplied":false}'::jsonb,version=return_profiles.version+1`, [taxYearId]);
+    await client.query(`INSERT INTO return_profiles(tax_year_id) VALUES($1) ON CONFLICT(tax_year_id) DO UPDATE SET filing_status='single',filing_status_eligibility_confirmed=false,standard_deduction_facts=$2::jsonb,schedule_a='{"enabled":false,"marriedFilingSeparatelySpouseItemizes":null,"medicalAndDentalExpenses":"0.00","stateLocalIncomeOrSalesTaxes":"0.00","realEstateTaxes":"0.00","personalPropertyTaxes":"0.00","otherTaxes":"0.00","homeMortgageInterestAndPoints":"0.00","investmentInterest":"0.00","cashCharitableContributions":"0.00","noncashCharitableContributions":"0.00","casualtyAndTheftLosses":"0.00","otherItemizedDeductions":"0.00","saltEligibilityConfirmed":false,"mortgageLimitsApplied":false,"charityLimitsApplied":false,"casualtyLimitsApplied":false}'::jsonb,version=return_profiles.version+1`, [taxYearId, JSON.stringify(emptyStandardDeductionFacts2025)]);
   }
   if (Array.isArray(snapshot.dependents)) {
     await client.query("DELETE FROM dependents WHERE tax_year_id=$1", [taxYearId]);
@@ -549,5 +573,34 @@ async function synchronizeFederalCredits(client: pg.PoolClient, taxYearId: strin
   return true;
 }
 
+async function synchronizeAdvancedFederal(client: pg.PoolClient, taxYearId: string, changedById: string, snapshot: Record<string, unknown>, changeSource: "import" | "rollback", resetMissing = false): Promise<boolean> {
+  if (!Object.hasOwn(snapshot, "advanced_federal") && !resetMissing) return false;
+  const value = Object.hasOwn(snapshot, "advanced_federal") ? snapshot.advanced_federal : emptyAdvancedFederalProfile2025;
+  const profile = parseAdvancedFederalProfile2025(withDefaults(emptyAdvancedFederalProfile2025, value));
+  const sections = [
+    ["due_diligence_profiles", "profile", "due_diligence_profile_revisions", profile.dueDiligence],
+    ["premium_tax_credit_profiles", "profile", "premium_tax_credit_profile_revisions", profile.premiumTaxCredit],
+    ["adjustment_profiles", "profile", "adjustment_profile_revisions", profile.adjustments],
+    ["federal_payment_profiles", "profile", "federal_payment_profile_revisions", profile.payments],
+    ["output_package_preferences", "preferences", "output_package_preference_revisions", profile.formPackage],
+  ] as const;
+  for (const [table, column, revisionTable, section] of sections) {
+    const saved = await client.query<{ version: number }>(`INSERT INTO ${table}(tax_year_id,${column},version) VALUES($1,$2::jsonb,1) ON CONFLICT(tax_year_id) DO UPDATE SET ${column}=EXCLUDED.${column},version=${table}.version+1 RETURNING version`, [taxYearId, JSON.stringify(section)]);
+    const version = saved.rows[0]?.version;
+    if (!version) throw new Error("Advanced federal import did not persist.");
+    await client.query(`INSERT INTO ${revisionTable}(tax_year_id,${column},version,changed_by_id,change_source) VALUES($1,$2::jsonb,$3,$4,$5)`, [taxYearId, JSON.stringify(section), version, changedById, changeSource]);
+  }
+  await client.query("UPDATE due_diligence_signatures SET invalidated_at=COALESCE(invalidated_at,now()),invalidation_reason=COALESCE(invalidation_reason,'Canonical import changed the certified return') WHERE tax_year_id=$1 AND invalidated_at IS NULL", [taxYearId]);
+  return true;
+}
+
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function moneyString(value: unknown): string { return typeof value === "string" && /^\d+\.\d{2}$/.test(value) ? value : "0.00"; }
+function withDefaults<T>(fallback: T, value: unknown): T {
+  if (Array.isArray(fallback)) return (Array.isArray(value) ? value : fallback) as T;
+  if (fallback && typeof fallback === "object") {
+    const supplied = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    return Object.fromEntries(Object.entries(fallback as Record<string, unknown>).map(([key, child]) => [key, withDefaults(child, supplied[key])])) as T;
+  }
+  return (value === undefined ? fallback : value) as T;
+}

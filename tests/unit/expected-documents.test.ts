@@ -17,4 +17,10 @@ describe("2025 expected-document registry", () => {
     expect(registry.find(({ id }) => id === "marketplace_1095a")?.suggested).toBe(true);
     expect(registry.find(({ id }) => id === "retirement_statement")?.suggested).toBe(false);
   });
+
+  it("keeps supported Schedule E/F evidence separate from unsupported pass-through evidence", () => {
+    const registry = expectedDocumentRegistryForAnswers(new Map([["income.rental_farm_k1", "yes"], ["income.pass_through_k1", "yes"]]));
+    expect(registry.find(({ id }) => id === "rental_farm_k1_support")?.suggested).toBe(true);
+    expect(registry.find(({ id }) => id === "k1_support")?.suggested).toBe(true);
+  });
 });

@@ -1,0 +1,20 @@
+{
+  "form": "SSA-1099",
+  "tax_year": 2025,
+  "revision": "2025",
+  "registry_version": "2025.1.0-review",
+  "source_url": "https://www.ssa.gov/manage-benefits/get-tax-form-1099-1042s",
+  "source_revision": "2025 Social Security Benefit Statement",
+  "fields": [
+    { "key": "benefitsPaid", "label": "3 Benefits paid", "type": "money", "calculation": "supported" },
+    { "key": "benefitsRepaid", "label": "4 Benefits repaid", "type": "money", "calculation": "supported" },
+    { "key": "netBenefits", "label": "5 Net benefits", "type": "money", "calculation": "supported" },
+    { "key": "federalWithholding", "label": "6 Voluntary federal income tax withheld", "type": "money", "calculation": "supported" },
+    { "key": "medicarePartBPremiums", "label": "Description — Medicare Part B premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "medicarePartCPremiums", "label": "Description — Medicare Advantage premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "medicarePartDPremiums", "label": "Description — Medicare Part D premiums", "type": "money", "calculation": "not_applicable" },
+    { "key": "lumpSumElectionApplies", "label": "Reviewed treatment — prior-year lump-sum election applies", "type": "boolean", "calculation": "blocking_when_true" }
+  ],
+  "pdf_output": "form_1040_social_security_review",
+  "integration": "social_security_benefits_worksheet"
+}

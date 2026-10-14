@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, requireSafeMutationRequest } from "@/server/api-guards";
 import { saveReturnProfile } from "@/server/return-profile-service";
 import { requestAuthorizationContext } from "@/server/request-auth";
+import { standardDeductionFactsSchema2025 } from "@/domain/standard-deduction-2025";
 
 const paramsSchema = z.object({ clientId: z.string().uuid(), year: z.coerce.number().int().min(2025).max(2200) });
 const money = z.string().regex(/^\d+\.\d{2}$/, "Use a nonnegative amount with exactly two decimal places.");
@@ -16,7 +17,7 @@ const scheduleA = z.object({
 const bodySchema = z.object({
   expectedRevision: z.number().int().positive(), expectedVersion: z.number().int().positive(),
   filingStatus: z.enum(["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"]),
-  filingStatusEligibilityConfirmed: z.boolean(), scheduleA,
+  filingStatusEligibilityConfirmed: z.boolean(), standardDeductionFacts: standardDeductionFactsSchema2025, scheduleA,
   dependents: z.array(z.object({
     id: z.string().uuid(), legalName: z.string().trim().min(1).max(200), dateOfBirth: z.iso.date(), relationship: z.string().trim().min(1).max(100),
     monthsLivedWithTaxpayer: z.number().int().min(0).max(12), qualifiesAsDependent: z.boolean(), qualifiesForChildTaxCredit: z.boolean(),

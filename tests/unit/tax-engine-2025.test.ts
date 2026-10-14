@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { emptyFederalCreditProfile2025, type FederalCreditProfile2025 } from "../../src/domain/federal-credits-2025";
+import { emptyAdvancedFederalProfile2025 } from "../../src/domain/advanced-federal-2025";
 import {
   calculateFederalReturn2025,
   ordinaryIncomeTax2025,
@@ -101,6 +102,10 @@ function creditProfile(overrides: { eitc?: Partial<FederalCreditProfile2025["eit
   };
 }
 
+function advancedProfile(overrides: Partial<NonNullable<CalculationInput2025["advancedFederal"]>> = {}): NonNullable<CalculationInput2025["advancedFederal"]> {
+  return { ...structuredClone(emptyAdvancedFederalProfile2025), dueDiligenceSignatureCurrent: false, valid1095ARecordIds: [], valid1098ERecordIds: [], validActivityIds: [], ...overrides };
+}
+
 describe("2025 tax method registry", () => {
   it("terminates dependency evaluation and reports cycles", () => {
     expect(resolveDependencyGraph({ a: ["b"], b: ["c"], c: [] })).toEqual({ order: ["c", "b", "a"], cycles: [] });
@@ -179,7 +184,7 @@ describe("2025 supported return graph", () => {
     }));
     expect(result.status).toBe("calculated_draft");
     expect(result.forms?.form2441).toMatchObject({ required: true, qualifiedExpenses: "3000", applicablePercentage: "0.20", credit: "600" });
-    expect(result.forms?.schedule3).toEqual({ dependentCareCredit: "600", educationCredit: "0", totalNonrefundableCredits: "600" });
+    expect(result.forms?.schedule3).toMatchObject({ dependentCareCredit: "600", educationCredit: "0", totalNonrefundableCredits: "600" });
   });
 
   it("calculates AOTC refundable and nonrefundable portions through Form 8863", () => {
@@ -236,6 +241,96 @@ describe("2025 supported return graph", () => {
       expect(result.forms?.filingStatus).toBe(filingStatus);
       expect(result.forms?.form1040.standardDeduction).toBe(standardDeduction);
     }
+  });
+
+  it("applies the 2025 dependent standard-deduction worksheet using supported earned income", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-dependent", owner: "taxpayer", wages: "5000.00", federalWithholding: "0.00", socialSecurityWages: "5000.00" }],
+      eligibility: { ...supportedInput().eligibility, claimableAsDependent: true, form8615ApplicabilityReviewed: true, form8615Required: false },
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form1040).toMatchObject({ basicStandardDeduction: "5450", additionalStandardDeduction: "0", standardDeduction: "5450" });
+    expect(result.trace).toContainEqual(expect.objectContaining({ nodeId: "form-1040.standard-deduction", ruleId: "DEPENDENT-STANDARD-DEDUCTION-WORKSHEET" }));
+  });
+
+  it("uses the dependent minimum and adds reviewed age/blindness amounts", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [],
+      eligibility: {
+        ...supportedInput().eligibility,
+        claimableAsDependent: true,
+        form8615ApplicabilityReviewed: true,
+        form8615Required: false,
+        taxpayerAge65OrOlder: true,
+        taxpayerBlind: true,
+        ageBlindnessFactsReviewed: true,
+      },
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form1040).toMatchObject({ basicStandardDeduction: "1350", additionalStandardDeduction: "4000", standardDeduction: "5350" });
+  });
+
+  it("counts all four reviewed MFJ age/blindness boxes at the married rate", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "married_filing_jointly",
+      hasSpouse: true,
+      eligibility: {
+        ...supportedInput().eligibility,
+        taxpayerAge65OrOlder: true,
+        taxpayerBlind: true,
+        spouseAge65OrOlder: true,
+        spouseBlind: true,
+        ageBlindnessFactsReviewed: true,
+      },
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form1040).toMatchObject({ basicStandardDeduction: "31500", additionalStandardDeduction: "6400", standardDeduction: "37900" });
+  });
+
+  it("keeps a reviewed dependent return blocked when Form 8615 is required", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      eligibility: { ...supportedInput().eligibility, claimableAsDependent: true, form8615ApplicabilityReviewed: true, form8615Required: true },
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "FORM_8615_REQUIRED" }));
+  });
+
+  it("calculates the 2025 Social Security Benefits Worksheet through the 0%, 50%, and 85% tiers", () => {
+    const benefit = (netBenefits: string) => [{ id: "ssa-1", owner: "taxpayer" as const, sourceType: "SSA-1099" as const, benefitsPaid: netBenefits, benefitsRepaid: "0.00", netBenefits, federalWithholding: "500.00", workersCompensationOffset: "0.00", lumpSumElectionApplies: false }];
+    const belowBase = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-ss-low", owner: "taxpayer", wages: "20000.00", federalWithholding: "0.00", socialSecurityWages: "20000.00" }],
+      socialSecurityBenefits: benefit("10000.00"),
+    }));
+    expect(belowBase.forms?.form1040).toMatchObject({ socialSecurityBenefits: "10000", taxableSocialSecurityBenefits: "0", federalWithholding: "500" });
+
+    const fiftyPercentTier = calculateFederalReturn2025(supportedInput({
+      filingStatus: "married_filing_jointly", hasSpouse: true,
+      wages: [{ id: "w2-ss-mid", owner: "taxpayer", wages: "30000.00", federalWithholding: "0.00", socialSecurityWages: "30000.00" }],
+      socialSecurityBenefits: benefit("20000.00"),
+    }));
+    expect(fiftyPercentTier.forms?.form1040).toMatchObject({ socialSecurityBenefits: "20000", taxableSocialSecurityBenefits: "4000", totalIncome: "34000" });
+
+    const eightyFivePercentTier = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-ss-high", owner: "taxpayer", wages: "30000.00", federalWithholding: "0.00", socialSecurityWages: "30000.00" }],
+      socialSecurityBenefits: benefit("20000.00"),
+    }));
+    expect(eightyFivePercentTier.forms?.form1040).toMatchObject({ socialSecurityBenefits: "20000", taxableSocialSecurityBenefits: "9600", totalIncome: "39600" });
+    expect(eightyFivePercentTier.trace).toContainEqual(expect.objectContaining({ nodeId: "form-1040.social-security-benefits", ruleId: "SOCIAL-SECURITY-BENEFITS-WORKSHEET-2025", result: "9600" }));
+  });
+
+  it("fails closed for unsupported Social Security statement and filing-status treatments", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      filingStatus: "married_filing_separately", hasSpouse: true,
+      scheduleA: scheduleA({ marriedFilingSeparatelySpouseItemizes: false }),
+      socialSecurityBenefits: [{ id: "rrb-unsupported", owner: "taxpayer", sourceType: "RRB-1099", benefitsPaid: "12000.00", benefitsRepaid: "1000.00", netBenefits: "12000.00", federalWithholding: "0.00", workersCompensationOffset: "500.00", lumpSumElectionApplies: true }],
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining([
+      "SOCIAL_SECURITY_STATEMENT_RECONCILIATION_REQUIRED",
+      "RRB_WORKERS_COMPENSATION_OFFSET_UNSUPPORTED",
+      "SOCIAL_SECURITY_LUMP_SUM_ELECTION_UNSUPPORTED",
+      "MFS_SOCIAL_SECURITY_WORKSHEET_UNSUPPORTED",
+    ]));
   });
 
   it("calculates Schedule A medical, SALT, interest, charity, casualty and other deductions", () => {
@@ -389,12 +484,12 @@ describe("2025 supported return graph", () => {
       { owner: "taxpayer", netProfit: "10000", netEarnings: "9235", socialSecurityWages: "170000", socialSecurityTax: "756", medicareTax: "268", selfEmploymentTax: "1024", deductibleHalf: "512" },
       { owner: "spouse", netProfit: "8000", netEarnings: "7388", socialSecurityWages: "20000", socialSecurityTax: "916", medicareTax: "214", selfEmploymentTax: "1130", deductibleHalf: "565" },
     ]);
-    expect(result.forms?.schedule1).toEqual({ businessIncome: "18000", rentalRealEstateRoyalties: "0", farmIncome: "0", unemploymentCompensation: "0", deductiblePartOfSelfEmploymentTax: "1077" });
-    expect(result.forms?.schedule2).toEqual({ selfEmploymentTax: "2154", additionalHsaTax: "0" });
+    expect(result.forms?.schedule1).toMatchObject({ businessIncome: "18000", rentalRealEstateRoyalties: "0", farmIncome: "0", unemploymentCompensation: "0", deductiblePartOfSelfEmploymentTax: "1077", totalAdjustments: "1077" });
+    expect(result.forms?.schedule2).toMatchObject({ selfEmploymentTax: "2154", additionalHsaTax: "0", excessAdvancePtcRepayment: "0" });
     expect(result.forms?.form8995).toEqual({ qbi: "16923", section199ADividends: "0", incomeLimitationBase: "178023", deduction: "3385" });
     expect(result.forms?.scheduleB.required).toBe(true);
     expect(result.forms?.form1040).toMatchObject({ taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000", qbiDeduction: "3385" });
-    expect(result.forms?.form1040).toEqual({
+    expect(result.forms?.form1040).toMatchObject({
       wages: "190000", taxExemptInterest: "300", taxableInterest: "1600", qualifiedDividends: "4000", ordinaryDividends: "5000",
       iraDistributions: "0", taxableIraDistributions: "0", pensionsAndAnnuities: "0", taxablePensionsAndAnnuities: "0", capitalGainOrLoss: "0", schedule1AdditionalIncome: "18000",
       totalIncome: "214600", adjustedGrossIncome: "213523", standardDeduction: "31500", qbiDeduction: "3385", taxableIncome: "178638",
@@ -503,5 +598,129 @@ describe("2025 supported return graph", () => {
     expect(result.forms).toBeNull();
     expect(result.diagnostics.some(({ code }) => code === "FORM_8995_A_REQUIRED")).toBe(true);
     expect(result.diagnostics.some(({ code }) => code === "ADDITIONAL_MEDICARE_TAX_REQUIRED")).toBe(true);
+  });
+
+  it("calculates reviewed Schedule 1 adjustments, full HSA facts, and payment reconciliation", () => {
+    const source1098E = "10000000-0000-4000-8000-000000000101";
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-advanced", owner: "taxpayer", wages: "80000.00", federalWithholding: "7000.00", socialSecurityWages: "80000.00", socialSecurityTaxWithheld: "4960.00" }],
+      advancedFederal: advancedProfile({
+        adjustments: {
+          ...structuredClone(emptyAdvancedFederalProfile2025.adjustments),
+          educator: { enabled: true, expenses: { taxpayer: "350.00", spouse: "0.00" }, reimbursements: { taxpayer: "25.00", spouse: "0.00" }, eligible: { taxpayer: true, spouse: false } },
+          ira: { enabled: true, contributions: { taxpayer: "1000.00", spouse: "0.00" }, workplacePlanCovered: { taxpayer: false, spouse: false }, age50OrOlder: { taxpayer: false, spouse: false }, eligibilityReviewed: true, nondeductibleBasisApplies: false },
+          studentLoan: { enabled: true, interestPaid: "500.00", form1098ERecordId: source1098E, eligibilityReviewed: true },
+          hsa: { enabled: true, owner: "taxpayer", coverageType: "self", eligibleMonths: 12, age55OrOlder: false, personalContributions: "2000.00", employerContributions: "0.00", qualifiedDistributions: "0.00", nonqualifiedDistributions: "0.00", excessContributions: "0.00", lastMonthRuleUsed: false, testingPeriodSatisfied: false, additionalTaxException: "none", additionalTaxExceptionReviewed: false },
+        },
+        payments: { schemaVersion: "2025.1", excessSocialSecurityReviewed: true, payments: [{ id: "10000000-0000-4000-8000-000000000102", type: "estimated", amount: "1500.00", paidOn: "2025-06-15", appliedTaxYear: 2025, owner: "taxpayer", confirmationReference: "IRS synthetic confirmation", sourceDocumentId: null, evidenceReviewed: true, status: "current" }] },
+        valid1098ERecordIds: [source1098E],
+      }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.schedule1).toMatchObject({ educatorExpenses: "300", iraDeduction: "1000", studentLoanInterestDeduction: "500", hsaDeduction: "2000" });
+    expect(result.forms?.form8889Summary).toMatchObject({ required: true, deductibleContribution: "2000", additionalTax: "0" });
+    expect(result.forms?.form1040).toMatchObject({ estimatedTaxPayments: "1500", federalWithholding: "7000" });
+    expect(result.forms?.schedule3.totalOtherPayments).toBe("0");
+  });
+
+  it("prorates the HSA catch-up limit and applies only a reviewed additional-tax exception", () => {
+    const result = calculateFederalReturn2025(supportedInput({
+      hsaDistributions: [{ id: "hsa-exception", owner: "taxpayer", grossDistribution: "600.00", qualifiedMedicalExpenses: "0.00", earningsOnExcessContributions: "0.00", distributionCode: "1", accountType: "HSA" }],
+      advancedFederal: advancedProfile({ adjustments: { ...structuredClone(emptyAdvancedFederalProfile2025.adjustments), hsa: { ...structuredClone(emptyAdvancedFederalProfile2025.adjustments.hsa), enabled: true, coverageType: "family", eligibleMonths: 6, age55OrOlder: true, nonqualifiedDistributions: "600.00", additionalTaxException: "age65", additionalTaxExceptionReviewed: true } } }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8889Summary).toMatchObject({ contributionLimit: "4775", taxableDistribution: "600", additionalTax: "0" });
+  });
+
+  it("limits a reviewed self-employed SEP deduction to 20 percent of net compensation", () => {
+    const activityId = "10000000-0000-4000-8000-000000000111";
+    const result = calculateFederalReturn2025(supportedInput({
+      scheduleCActivities: [{ id: activityId, name: "Synthetic SEP business", owner: "taxpayer", grossReceipts: "50000.00", expenses: {}, qbiEligible: true, receiptBasis: "source_plus_additional_receipts" }],
+      advancedFederal: advancedProfile({ adjustments: { ...structuredClone(emptyAdvancedFederalProfile2025.adjustments), retirementPlan: { enabled: true, planType: "sep", contributions: { taxpayer: "20000.00", spouse: "0.00" }, activityId, limitReviewed: true } }, validActivityIds: [activityId] }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.schedule1.retirementPlanDeduction).toBe("9293");
+  });
+
+  it("calculates Form 6251 and carries AMT through Schedule 2 and Form 1040", () => {
+    const eligibility = structuredClone(supportedInput().eligibility);
+    eligibility.treatmentScreens.alternativeMinimumTax = "applies";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.alternativeMinimumTax = {
+      ...adjustments.alternativeMinimumTax,
+      enabled: true,
+      applicabilityReviewed: true,
+      incentiveStockOptionAdjustment: "200000.00",
+    };
+    const result = calculateFederalReturn2025(supportedInput({
+      eligibility,
+      wages: [{ id: "w2-amt", owner: "taxpayer", wages: "150000.00", federalWithholding: "30000.00", socialSecurityWages: "150000.00" }],
+      advancedFederal: advancedProfile({ adjustments }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form6251).toMatchObject({ required: true, preferenceAdjustments: "200000" });
+    expect(Number(result.forms?.form6251.alternativeMinimumTax)).toBeGreaterThan(0);
+    expect(result.forms?.schedule2.alternativeMinimumTax).toBe(result.forms?.form6251.alternativeMinimumTax);
+    expect(result.forms?.form1040.alternativeMinimumTax).toBe(result.forms?.form6251.alternativeMinimumTax);
+    expect(result.trace.some(({ nodeId }) => nodeId === "form-6251.alternative-minimum-tax")).toBe(true);
+  });
+
+  it("blocks unsupported Form 6251 adjustments and prior-year minimum tax credits", () => {
+    const eligibility = structuredClone(supportedInput().eligibility);
+    eligibility.treatmentScreens.alternativeMinimumTax = "applies";
+    const adjustments = structuredClone(emptyAdvancedFederalProfile2025.adjustments);
+    adjustments.alternativeMinimumTax = {
+      ...adjustments.alternativeMinimumTax,
+      enabled: true,
+      applicabilityReviewed: true,
+      unsupportedAdjustmentApplies: true,
+      unsupportedAdjustmentDescription: "Synthetic unsupported negative adjustment",
+      priorYearMinimumTaxCreditApplies: true,
+    };
+    const result = calculateFederalReturn2025(supportedInput({ eligibility, advancedFederal: advancedProfile({ adjustments }) }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["AMT_UNSUPPORTED_ADJUSTMENT", "FORM_8801_REQUIRED"]));
+  });
+
+  it("reconciles Form 1095-A monthly amounts through Form 8962", () => {
+    const source1095A = "10000000-0000-4000-8000-000000000103";
+    const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, enrollmentPremium: "1000.00", slcspPremium: "833.33", advancePtc: "500.00" }));
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-ptc", owner: "taxpayer", wages: "40000.00", federalWithholding: "3000.00", socialSecurityWages: "40000.00" }],
+      advancedFederal: advancedProfile({ premiumTaxCredit: { schemaVersion: "2025.1", enabled: true, householdSize: 1, householdModifiedAgiOther: "0.00", federalPovertyLine: "20000.00", stateCode: "IL", householdMembersReconciled: true, sharedPoliciesReviewed: true, marriageAlternativeApplies: false, marriageAlternativeReviewed: false, policies: [{ id: "10000000-0000-4000-8000-000000000104", form1095ARecordId: source1095A, marketplaceIdentifier: "Synthetic Marketplace", policyNumberLast4: "1234", coveredPersonIds: ["10000000-0000-4000-8000-000000000105"], allocationPercentage: "100.00", allocationReviewed: true, months }] }, valid1095ARecordIds: [source1095A] }),
+    }));
+    expect(result.status).toBe("calculated_draft");
+    expect(result.forms?.form8962).toMatchObject({ required: true, totalPremium: "12000", totalAdvancePtc: "6000" });
+    expect(Number(result.forms?.form8962.premiumTaxCredit)).toBeGreaterThan(0);
+    expect(result.forms?.form1040.premiumTaxCredit).toBe(result.forms?.form8962.premiumTaxCredit);
+    expect(result.forms?.schedule3.totalOtherPayments).toBe(result.forms?.form8962.premiumTaxCredit);
+  });
+
+  it("blocks below-poverty Form 8962 exceptions instead of silently granting PTC", () => {
+    const source1095A = "10000000-0000-4000-8000-000000000108";
+    const result = calculateFederalReturn2025(supportedInput({
+      wages: [{ id: "w2-ptc-low-income", owner: "taxpayer", wages: "9000.00", federalWithholding: "0.00", socialSecurityWages: "9000.00" }],
+      advancedFederal: advancedProfile({ premiumTaxCredit: { schemaVersion: "2025.1", enabled: true, householdSize: 1, householdModifiedAgiOther: "0.00", federalPovertyLine: "15000.00", stateCode: "IL", householdMembersReconciled: true, sharedPoliciesReviewed: true, marriageAlternativeApplies: false, marriageAlternativeReviewed: false, policies: [{ id: "10000000-0000-4000-8000-000000000109", form1095ARecordId: source1095A, marketplaceIdentifier: "Synthetic Marketplace", policyNumberLast4: "5678", coveredPersonIds: ["10000000-0000-4000-8000-000000000110"], allocationPercentage: "100.00", allocationReviewed: true, months: [{ month: 1, enrollmentPremium: "500.00", slcspPremium: "450.00", advancePtc: "400.00" }] }] }, valid1095ARecordIds: [source1095A] }),
+    }));
+    expect(result.status).toBe("blocked");
+    expect(result.diagnostics.map(({ code }) => code)).toContain("FORM_8962_BELOW_FPL_EXCEPTION_UNSUPPORTED");
+  });
+
+  it("blocks a paid-preparer credit claim until Form 8867 is completed and signed", () => {
+    const dependent = qualifyingChild();
+    const due = structuredClone(emptyAdvancedFederalProfile2025.dueDiligence);
+    due.paidPreparer = true;
+    due.clientInterviewDate = "2026-02-01";
+    due.preparerNotes = "Reviewed the synthetic client's residency, relationship, income, and supporting records.";
+    due.sections.eitc = { applies: true, interviewComplete: true, knowledgeDocumented: true, documentsReviewed: true, consistencyResolved: true, notes: "Qualifying-child rules reviewed." };
+    due.sections.childTaxCredits = { applies: true, interviewComplete: true, knowledgeDocumented: true, documentsReviewed: true, consistencyResolved: true, notes: "Child-credit eligibility reviewed." };
+    due.evidence = [{ id: "10000000-0000-4000-8000-000000000106", sourceDocumentId: null, page: null, description: "Synthetic residency evidence", verified: true }];
+    const input = supportedInput({ dependents: [dependent], eligibility: { ...supportedInput().eligibility, hasDependents: true }, wages: [{ id: "w2-eitc-8867", owner: "taxpayer", wages: "18000.00", federalWithholding: "0.00", socialSecurityWages: "18000.00" }], federalCredits: creditProfile({ eitc: { enabled: true, eligibilityReviewed: true, taxpayerAgeAtYearEnd: 30, taxpayerWorkEligibleIdentifier: true, notQualifyingChildOfAnother: true, investmentIncome: "0.00", noForm2555: true, noPriorDisallowance: true, noCombatPayElection: true, qualifyingChildren: [{ id: "10000000-0000-4000-8000-000000000107", dependentId: dependent.id, relationshipTest: true, ageTest: true, residencyTest: true, jointReturnTest: true, validWorkEligibleIdentifier: true, notClaimedByOther: true, disabilityException: false }] } }), advancedFederal: advancedProfile({ dueDiligence: due }) });
+    const blocked = calculateFederalReturn2025(input);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.diagnostics.map(({ code }) => code)).toEqual(expect.arrayContaining(["FORM_8867_SIGNATURE_REQUIRED"]));
+    const signed = calculateFederalReturn2025({ ...input, advancedFederal: { ...input.advancedFederal!, dueDiligenceSignatureCurrent: true } });
+    expect(signed.status).toBe("calculated_draft");
+    expect(signed.forms?.form8867).toEqual({ required: true, signedForCurrentRevision: true });
   });
 });

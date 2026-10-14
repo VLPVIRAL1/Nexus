@@ -7,6 +7,7 @@ const workflow = [
   { href: "taxpayer-profile", title: "Taxpayer & spouse", description: "Create or edit the identity, date of birth, occupation and address used by the return.", icon: ContactRound },
   { href: "return-profile", title: "Filing status, dependents & Schedule A", description: "Select one of five statuses, classify dependents and enter reviewed itemized deductions.", icon: Users },
   { href: "credits", title: "Federal credits", description: "Complete EITC, child/dependent care and education interviews with Schedule EIC, Form 2441 and Form 8863 facts.", icon: BadgeDollarSign },
+  { href: "advanced", title: "Advanced federal modules", description: "Complete Form 6251, Form 8867, marketplace coverage, Schedule 1 adjustments, Form 8889, payments and print controls.", icon: ShieldCheck },
   { href: "intake", title: "Intake & completeness", description: "Answer required eligibility questions and attest expected-document evidence.", icon: ClipboardCheck },
   { href: "sources", title: "Source documents", description: "Upload, scan, encrypt and inspect PDF/JPEG/PNG source evidence.", icon: FileUp },
   { href: "source-entry", title: "Typed source entry", description: "Edit every registered field across W-2, Form 1098-T and all nine supported 1099 families.", icon: TableProperties },

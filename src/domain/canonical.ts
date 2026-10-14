@@ -1,3 +1,5 @@
+import type { AdvancedFederalProfile2025 } from "./advanced-federal-2025";
+
 export type UUID = string;
 export type DecimalString = `${number}.${number}`;
 export type OwnerRole = "taxpayer" | "spouse" | "joint" | "dependent" | "unknown";
@@ -191,6 +193,21 @@ export interface Form1099SA extends PayerRecipientForm {
   boxes: { grossDistribution: DecimalString | null; earningsOnExcessContributions: DecimalString | null; distributionCode: string | null; fairMarketValueAtDeath: DecimalString | null; accountType: "HSA" | "Archer MSA" | "Medicare Advantage MSA" | null; qualifiedMedicalExpenses: DecimalString | null };
 }
 
+export interface SocialSecurityBenefitStatement extends PayerRecipientForm {
+  formType: "SSA-1099" | "RRB-1099";
+  boxes: {
+    benefitsPaid: DecimalString | null;
+    benefitsRepaid: DecimalString | null;
+    netBenefits: DecimalString | null;
+    federalWithholding: DecimalString | null;
+    workersCompensationOffset?: DecimalString | null;
+    medicarePartBPremiums: DecimalString | null;
+    medicarePartCPremiums: DecimalString | null;
+    medicarePartDPremiums: DecimalString | null;
+    lumpSumElectionApplies: boolean | null;
+  };
+}
+
 export interface Form1098T extends SourceFormBase {
   formType: "1098-T";
   institution: { name: string | null; tin: string | null; phone: string | null; address: Address };
@@ -198,7 +215,8 @@ export interface Form1098T extends SourceFormBase {
   boxes: Record<string, DecimalString | string | boolean | null>;
 }
 
-export type SourceForm = W2Record | Form1098T | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV | Form1099B | Form1099G | Form1099K | Form1099R | Form1099SA;
+export interface AdditionalRegisteredSourceForm extends PayerRecipientForm { formType: "1095-A" | "1098-E" | "5498" | "5498-SA"; boxes: Record<string, DecimalString | string | boolean | Record<string, unknown> | null>; }
+export type SourceForm = W2Record | Form1098T | AdditionalRegisteredSourceForm | Form1099NEC | Form1099MISC | Form1099INT | Form1099DIV | Form1099B | Form1099G | Form1099K | Form1099R | Form1099SA | SocialSecurityBenefitStatement;
 
 export interface IntakeAnswer {
   id: UUID;
@@ -239,7 +257,7 @@ export interface SourceMapping {
 }
 
 export interface CanonicalTaxReturnData {
-  schemaVersion: "1.0.0" | "1.1.0";
+  schemaVersion: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0" | "1.4.0";
   taxYear: 2025;
   returnType: "1040";
   firmId: UUID;
@@ -247,8 +265,10 @@ export interface CanonicalTaxReturnData {
   taxYearId: UUID;
   revision: number;
   filingProfile?: { status: "single" | "married_filing_jointly" | "married_filing_separately" | "head_of_household" | "qualifying_surviving_spouse"; eligibilityConfirmed: boolean };
+  standardDeductionFacts?: Record<string, unknown>;
   scheduleA?: Record<string, unknown>;
   credits?: Record<string, unknown>;
+  advancedFederal?: AdvancedFederalProfile2025;
   taxpayer: Record<string, unknown>;
   spouse: Record<string, unknown> | null;
   dependents: Array<Record<string, unknown>>;

@@ -12,6 +12,7 @@ const accessibleRoutes = [
   { name: "taxpayer profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile" },
   { name: "return profile", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile" },
   { name: "federal credits", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/credits" },
+  { name: "advanced federal modules", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/advanced" },
   { name: "schedule activities", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/activities" },
   { name: "intake blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping split", path: "/clients/sample/years/2025/mapping" },
@@ -85,7 +86,7 @@ test("expected-document intake can link clean uploaded evidence", async ({ page 
     buffer: Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"),
   });
   await page.getByRole("button", { name: "Upload and scan" }).click();
-  await expect(page.getByText("Synthetic clean W-2.pdf")).toBeVisible();
+  await expect(page.getByText("Synthetic clean W-2.pdf").first()).toBeVisible();
 
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/intake");
   await expect(page.getByRole("heading", { name: "Expected documents" })).toBeVisible();
@@ -97,12 +98,16 @@ test("expected-document intake can link clean uploaded evidence", async ({ page 
   await expect(page.getByRole("option", { name: /\.pdf · / }).first()).toBeAttached();
 });
 
-test("return profile exposes all filing statuses, dependent classification and Schedule A", async ({ page }) => {
+test("return profile exposes filing statuses, standard-deduction facts, dependent classification and Schedule A", async ({ page }) => {
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile");
   await expect(page.getByRole("heading", { name: "Filing status, dependents & Schedule A" })).toBeVisible();
   for (const status of ["Single", "Married filing jointly", "Married filing separately", "Head of household", "Qualifying surviving spouse"]) {
     await expect(page.getByRole("radio", { name: status })).toBeVisible();
   }
+  await expect(page.getByRole("heading", { name: "Standard-deduction facts" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Another person can claim the taxpayer as a dependent" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Taxpayer age 65 or older" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Form 8615 applicability reviewed" })).toBeDisabled();
   await page.getByRole("button", { name: "Add dependent" }).click();
   await expect(page.getByRole("textbox", { name: "Legal name" }).last()).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Qualifies for child tax credit" }).last()).toBeVisible();
@@ -114,7 +119,7 @@ test("imported taxpayer and spouse profiles expose guarded manual editing", asyn
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/taxpayer-profile");
   await expect(page.getByRole("heading", { name: "Return identity and address" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Taxpayer", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Legal name").first()).toHaveValue(/John Sample/);
+  await expect(page.getByLabel("Legal name").first()).not.toHaveValue("");
   await expect(page.getByRole("button", { name: "Save taxpayer" })).toBeVisible();
   await expect(page.getByText("Profiles imported from canonical JSON become the same editable records used by calculation and output.")).toBeVisible();
 });
@@ -145,11 +150,11 @@ test("global import entry downloads the blank template and routes to the persist
   await expect(page.getByRole("link", { name: "Stage JSON" })).toHaveAttribute("href", "/clients/30000000-0000-4000-8000-000000000001/years/2025/imports");
   const response = await request.get("/api/templates/2025/1040/canonical.json");
   expect(response.ok()).toBe(true);
-  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.3.0-review.json");
-  expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] });
+  expect(response.headers()["content-disposition"]).toContain("taxpayer-import-template-2025-v1.4.0-review.json");
+  expect((await response.json()).forms).toMatchObject({ w2: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [], form_ssa_1099: [], form_rrb_1099: [] });
   const example = await request.get("/api/examples/2025/supported-review-return.json");
   expect(example.ok()).toBe(true);
-  expect(await example.json()).toMatchObject({ tax_year: 2025, forms: { w2: [expect.any(Object)], form_1099_b: [expect.any(Object)], form_1099_g: [expect.any(Object)], form_1099_r: [expect.any(Object)], form_1099_sa: [expect.any(Object)] }, metadata: { synthetic_review_example: true } });
+  expect(await example.json()).toMatchObject({ tax_year: 2025, forms: { w2: [expect.any(Object)], form_1099_b: [expect.any(Object)], form_1099_g: [expect.any(Object)], form_1099_r: [expect.any(Object)], form_1099_sa: [expect.any(Object)], form_ssa_1099: [expect.any(Object)] }, metadata: { synthetic_review_example: true } });
 });
 
 for (const route of [

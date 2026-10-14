@@ -1,4 +1,5 @@
 import type { FederalCreditProfile2025 } from "@/domain/federal-credits-2025";
+import type { AdvancedFederalProfile2025 } from "@/domain/advanced-federal-2025";
 
 export type FilingStatus2025 =
   | "single"
@@ -151,6 +152,18 @@ export interface GovernmentPaymentInput2025 {
   federalWithholding: DollarInput;
 }
 
+export interface SocialSecurityBenefitInput2025 {
+  id: string;
+  owner: PersonRole2025;
+  sourceType: "SSA-1099" | "RRB-1099";
+  benefitsPaid: DollarInput;
+  benefitsRepaid: DollarInput;
+  netBenefits: DollarInput;
+  federalWithholding: DollarInput;
+  workersCompensationOffset: DollarInput;
+  lumpSumElectionApplies: boolean;
+}
+
 export interface PaymentCardInput2025 {
   id: string;
   grossPaymentAmount: DollarInput;
@@ -171,11 +184,15 @@ export interface HsaDistributionInput2025 {
 export interface EligibilityInput2025 {
   fullYearUsResident: boolean;
   claimableAsDependent: boolean;
+  form8615ApplicabilityReviewed?: boolean;
+  form8615Required?: boolean;
   hasDependents: boolean;
   taxpayerAge65OrOlder: boolean;
   taxpayerBlind: boolean;
   spouseAge65OrOlder: boolean;
   spouseBlind: boolean;
+  ageBlindnessFactsReviewed?: boolean;
+  mfsSpouseAdditionalDeductionEligible?: boolean;
   usesItemizedDeductions: boolean;
   allRequiredIntakeAnswered: boolean;
   documentsCompleteAttested: boolean;
@@ -219,9 +236,11 @@ export interface CalculationInput2025 {
   brokerTransactions?: BrokerTransactionInput2025[];
   retirementDistributions?: RetirementDistributionInput2025[];
   governmentPayments?: GovernmentPaymentInput2025[];
+  socialSecurityBenefits?: SocialSecurityBenefitInput2025[];
   paymentCardReceipts?: PaymentCardInput2025[];
   hsaDistributions?: HsaDistributionInput2025[];
   federalCredits?: FederalCreditProfile2025 & { employerDependentCareBenefits: DollarInput; valid1098TRecordIds: string[] };
+  advancedFederal?: AdvancedFederalProfile2025 & { dueDiligenceSignatureCurrent: boolean; valid1095ARecordIds: string[]; valid1098ERecordIds: string[]; validActivityIds: string[] };
   approvedOverrides?: { form1040IncomeTax?: DollarInput };
 }
 
@@ -296,14 +315,18 @@ export interface CalculationOutput2025 {
     form8949: Array<{ transactionId: string; description: string; term: "short" | "long"; proceeds: string; costBasis: string; adjustment: string; gainOrLoss: string; basisReportedToIrs: boolean }>;
     scheduleD: { shortTermGainOrLoss: string; longTermGainOrLoss: string; netGainOrLoss: string; deductibleLoss: string };
     form8889: Array<{ owner: PersonRole2025; grossDistribution: string; qualifiedMedicalExpenses: string; taxableDistribution: string }>;
+    form8889Summary: { required: boolean; contributionLimit: string; deductibleContribution: string; taxableDistribution: string; additionalTax: string };
+    form6251: { required: boolean; taxableIncomeBeforeQbi: string; standardOrItemizedTaxAddback: string; preferenceAdjustments: string; alternativeMinimumTaxableIncome: string; exemption: string; taxableExcess: string; tentativeMinimumTax: string; regularTax: string; alternativeMinimumTax: string };
     scheduleSE: ScheduleSEOutput2025[];
     form8995: { qbi: string; section199ADividends: string; incomeLimitationBase: string; deduction: string };
-    schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string };
-    schedule2: { selfEmploymentTax: string; additionalHsaTax: string };
+    schedule1: { businessIncome: string; rentalRealEstateRoyalties: string; farmIncome: string; unemploymentCompensation: string; deductiblePartOfSelfEmploymentTax: string; educatorExpenses: string; iraDeduction: string; studentLoanInterestDeduction: string; hsaDeduction: string; selfEmployedHealthInsuranceDeduction: string; retirementPlanDeduction: string; totalAdjustments: string };
+    schedule2: { alternativeMinimumTax: string; selfEmploymentTax: string; additionalHsaTax: string; excessAdvancePtcRepayment: string; part1AdditionalTax: string; part2OtherTaxes: string; totalAdditionalTaxes: string };
     scheduleEic: { required: boolean; qualifyingChildren: Array<{ dependentId: string }>; earnedIncome: string; adjustedGrossIncome: string; investmentIncome: string; credit: string };
     form2441: { required: boolean; providerCount: number; qualifyingPersonCount: number; qualifiedExpenses: string; earnedIncomeLimit: string; applicablePercentage: string; credit: string; employerBenefits: string };
     form8863: { required: boolean; students: Array<{ studentId: string; creditType: "aotc" | "llc"; adjustedExpenses: string; tentativeCredit: string }>; tentativeAmericanOpportunityCredit: string; tentativeLifetimeLearningCredit: string; phaseoutFactor: string; nonrefundableCredit: string; refundableAmericanOpportunityCredit: string };
-    schedule3: { dependentCareCredit: string; educationCredit: string; totalNonrefundableCredits: string };
+    form8867: { required: boolean; signedForCurrentRevision: boolean };
+    form8962: { required: boolean; householdIncome: string; householdIncomePercentFpl: string; applicablePercentage: string; annualContribution: string; totalPremium: string; totalSlcsp: string; totalAdvancePtc: string; premiumTaxCredit: string; excessAdvancePtcRepayment: string };
+    schedule3: { dependentCareCredit: string; educationCredit: string; premiumTaxCredit: string; extensionPayment: string; excessSocialSecurity: string; totalNonrefundableCredits: string; totalOtherPayments: string };
     form1040: {
       wages: string;
       taxExemptInterest: string;
@@ -314,16 +337,21 @@ export interface CalculationOutput2025 {
       taxableIraDistributions: string;
       pensionsAndAnnuities: string;
       taxablePensionsAndAnnuities: string;
+      socialSecurityBenefits: string;
+      taxableSocialSecurityBenefits: string;
       capitalGainOrLoss: string;
       schedule1AdditionalIncome: string;
       totalIncome: string;
       adjustedGrossIncome: string;
+      basicStandardDeduction: string;
+      additionalStandardDeduction: string;
       standardDeduction: string;
       itemizedDeductions: string;
       deductionUsed: string;
       qbiDeduction: string;
       taxableIncome: string;
       incomeTax: string;
+      alternativeMinimumTax: string;
       childTaxCreditAndOtherDependentCredit: string;
       dependentCareCredit: string;
       educationCredit: string;
@@ -331,6 +359,12 @@ export interface CalculationOutput2025 {
       selfEmploymentTax: string;
       totalTax: string;
       federalWithholding: string;
+      estimatedTaxPayments: string;
+      extensionPayment: string;
+      priorYearAndOtherPayments: string;
+      excessSocialSecurity: string;
+      premiumTaxCredit: string;
+      excessAdvancePtcRepayment: string;
       additionalChildTaxCredit: string;
       earnedIncomeCredit: string;
       refundableAmericanOpportunityCredit: string;

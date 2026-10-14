@@ -1,4 +1,7 @@
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface TaxFormLine {
   line: string;
@@ -12,6 +15,7 @@ export interface TaxFormData {
   title: string;
   instanceLabel?: string;
   lines: TaxFormLine[];
+  validationErrors?: string[];
 }
 
 export interface TaxFormRenderer {
@@ -51,6 +55,44 @@ export class InternalPreviewTaxFormRenderer implements TaxFormRenderer {
     });
 
     return document.save({ useObjectStreams: false, addDefaultPage: false });
+  }
+}
+
+const officialTemplates: Record<string, { file: string; sha256: string }> = {
+  "Form 1040": { file: "f1040--2025.pdf", sha256: "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982" },
+  "Schedule 1": { file: "f1040s1--2025.pdf", sha256: "8dafec719f6a4716c259a2bdaca546d9bb9e262d1eabef885fe116a7327458fa" },
+  "Schedule 2": { file: "f1040s2--2025.pdf", sha256: "64d867b683334cfc533993e37ccb0d143449ec29428a78206be2e4de333941e8" },
+  "Schedule B": { file: "f1040sb--2025.pdf", sha256: "dd1ec3719954532bd219343d81385a2ada3c8e9573fc755a3893f1fbbecc63e2" },
+  "Schedule C": { file: "f1040sc--2025.pdf", sha256: "ddf401dbe060467d39f90ad2abf645df1de31512821a150dc68a3882bbf19716" },
+  "Schedule SE": { file: "f1040sse--2025.pdf", sha256: "05bc2b3e1dfca65d8c6fc6d652af4fa3736e953c6575d6e9f82590484677d347" },
+  "Form 8995": { file: "f8995--2025.pdf", sha256: "55380ad230303e1586ce97f0f224265b8337ad18c9204f0fb7325e95a76b5cde" },
+};
+
+/** Official IRS page artwork plus a controlled calculated-values appendix.
+ * Filing remains disabled: this renderer never writes barcodes, signatures, or e-file fields. */
+export class OfficialLayoutReviewRenderer implements TaxFormRenderer {
+  constructor(private readonly fallback: TaxFormRenderer = new InternalPreviewTaxFormRenderer()) {}
+  async render(formData: TaxFormData, taxYear: number): Promise<Uint8Array> {
+    const template = officialTemplates[formData.formName];
+    if (!template) return this.fallback.render(formData, taxYear);
+    const bytes = await readFile(join(process.cwd(), "src", "tax-engine", "2025", "sources", template.file));
+    if (createHash("sha256").update(bytes).digest("hex") !== template.sha256) throw new Error(`Official template integrity check failed for ${formData.formName}.`);
+    const official = await PDFDocument.load(bytes);
+    const output = await PDFDocument.create();
+    const bold = await output.embedFont(StandardFonts.HelveticaBold);
+    const copied = await output.copyPages(official, official.getPageIndices());
+    copied.forEach((page, index) => {
+      output.addPage(page);
+      page.drawRectangle({ x: 16, y: page.getHeight() - 35, width: 580, height: 20, color: rgb(1, .94, .89), opacity: .9 });
+      page.drawText(`OFFICIAL IRS LAYOUT REVIEW · DRAFT — NOT FOR FILING · page ${index + 1}`, { x: 25, y: page.getHeight() - 29, size: 9, font: bold, color: rgb(.65, .12, .06) });
+      page.drawText("DRAFT — NOT FOR FILING", { x: 90, y: 300, size: 40, font: bold, color: rgb(.82, .82, .82), opacity: .35, rotate: degrees(32) });
+    });
+    const appendix = await PDFDocument.load(await this.fallback.render({ ...formData, title: `${formData.title} · calculated-values appendix` }, taxYear));
+    const appendixPages = await output.copyPages(appendix, appendix.getPageIndices());
+    appendixPages.forEach((page) => output.addPage(page));
+    output.setTitle(`${taxYear} ${formData.formName} — official-layout review draft`);
+    output.setSubject("DRAFT — NOT FOR FILING; official IRS artwork with controlled calculation appendix");
+    return output.save({ useObjectStreams: false });
   }
 }
 

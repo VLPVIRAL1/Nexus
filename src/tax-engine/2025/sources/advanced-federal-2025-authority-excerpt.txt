@@ -1,0 +1,55 @@
+NEXUS TAX — 2025 ADVANCED FEDERAL RESEARCH AUTHORITY RECORD
+Retrieved and reviewed for implementation on 2026-10-13. This is a compact
+implementation record, not a substitute for the complete official publications
+or qualified independent tax review.
+
+Official sources:
+- Form 8867 and instructions: https://www.irs.gov/forms-pubs/about-form-8867
+- Form 8962 and instructions: https://www.irs.gov/forms-pubs/about-form-8962
+- Revenue Procedure 2024-40 (2025 inflation adjustments):
+  https://www.irs.gov/pub/irs-drop/rp-24-40.pdf
+- Publication 970, education and student-loan interest:
+  https://www.irs.gov/forms-pubs/about-publication-970
+- Publication 590-A, IRA contributions and deductions:
+  https://www.irs.gov/forms-pubs/about-publication-590-a
+- Publication 969 and Form 8889 instructions, HSAs:
+  https://www.irs.gov/forms-pubs/about-publication-969
+- Schedule 1 and instructions: https://www.irs.gov/forms-pubs/about-schedule-1-form-1040
+- Form 1040 and instructions, payments and refundable credits:
+  https://www.irs.gov/forms-pubs/about-form-1040
+- Form 6251 and instructions, Alternative Minimum Tax:
+  https://www.irs.gov/forms-pubs/about-form-6251
+
+Implemented 2025 research constants and guarded assumptions:
+- Educator expense maximum: $300 per eligible educator; two eligible educators
+  on a joint return are calculated separately.
+- Traditional IRA base limit: $7,000 per owner, plus $1,000 when age 50 or older.
+- Active-participant IRA deduction phaseouts: $79,000–$89,000 for Single/HOH,
+  $126,000–$146,000 for MFJ, and $0–$10,000 for MFS. The MFJ nonparticipant
+  spouse of an active participant uses $236,000–$246,000.
+- Student-loan interest maximum: $2,500; phaseout $85,000–$100,000 other than
+  joint/MFS, $170,000–$200,000 joint; MFS is ineligible.
+- HSA contribution limits: self-only $4,300, family $8,550, with $1,000 age-55
+  catch-up. The total limit is month-prorated unless the reviewed last-month
+  rule applies. Nonqualified distributions use the 20 percent additional-tax
+  rule unless a reviewed death, disability, or age-65 exception applies.
+- Defined-contribution limit used as a hard upper guard: $70,000. The supported
+  self-employed SEP deduction uses the self-employed 20-percent rate and a
+  reviewed activity/limit; SIMPLE and qualified-plan calculations block until
+  plan-specific inputs are implemented.
+- Premium-tax-credit applicable percentages are represented by the 2025
+  research interpolation table, with explicit Form 1095-A, household, SLCSP,
+  shared-policy, below-poverty-exception, and MFS blockers. Repayment limitation bands are
+  $375/$750, $975/$1,950, and $1,625/$3,250 before the 400-percent band.
+- Social Security wage base: $176,100; employee maximum withholding $10,918.20.
+- Form 6251 exemption amounts: $88,100 for Single/HOH, $137,000 for MFJ/QSS,
+  and $68,500 for MFS. Phaseout begins at $626,350 except $1,252,700 for
+  MFJ/QSS. The 26-percent rate breakpoint is $239,100, or $119,550 for MFS.
+  The supported slice adds back the standard deduction or reviewed itemized
+  taxes, accepts enumerated nonnegative preference adjustments, applies an
+  AMT-specific QBI limitation and the preferential-income computation, and
+  blocks dependent-child worksheets, Form 8801 and unrepresented adjustments.
+
+All rules remain research_unapproved. Filing, barcodes, and e-file output must
+remain disabled until independent professional review approves a new immutable
+rule package and corresponding official-template coordinate maps.

@@ -25,6 +25,10 @@ and education-credit constants consumed by research package 0.5.0 and links to
 IRS Publications 596, 503 and 970 retrieved on October 13, 2026. It likewise
 requires independent professional review before package approval.
 
+`advanced-federal-2025-authority-excerpt.txt` records the guarded constants and
+official-source links used by research package 0.9.0 for standard-deduction, Social Security Benefits Worksheet, Form 6251, Form 8867, Form 8962,
+Schedule 1 adjustments, Form 8889, and federal payment reconciliation.
+
 To reproduce `../data/tax-table.json`, run:
 
 ```bash

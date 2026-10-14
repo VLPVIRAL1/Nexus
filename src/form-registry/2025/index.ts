@@ -9,11 +9,17 @@ import payments from "./1099-k.json";
 import retirement from "./1099-r.json";
 import hsa from "./1099-sa.json";
 import tuition from "./1098-t.json";
+import marketplace from "./1095-a.json";
+import studentLoan from "./1098-e.json";
+import ira from "./5498.json";
+import hsaContribution from "./5498-sa.json";
+import socialSecurity from "./ssa-1099.json";
+import railroadBenefits from "./rrb-1099.json";
 
 export type RegistryFieldType="money"|"string"|"boolean"|"repeatable_state"|"repeatable_local"|"repeatable_code_money"|"repeatable_open_label_money"|"checkbox_group";
 export interface RegistryField{key:string;label:string;type:RegistryFieldType;calculation:string}
 export interface FormRegistry{form:string;tax_year:number;revision:string;registry_version:string;source_url?:string;source_revision?:string;fields:RegistryField[];pdf_output:string;integration:string}
-export const formRegistries2025:Record<string,FormRegistry>={W2:w2 as FormRegistry,"1098-T":tuition as FormRegistry,"1099-NEC":nec as FormRegistry,"1099-MISC":misc as FormRegistry,"1099-INT":interest as FormRegistry,"1099-DIV":dividends as FormRegistry,"1099-B":brokerage as FormRegistry,"1099-G":government as FormRegistry,"1099-K":payments as FormRegistry,"1099-R":retirement as FormRegistry,"1099-SA":hsa as FormRegistry};
+export const formRegistries2025:Record<string,FormRegistry>={W2:w2 as FormRegistry,"1095-A":marketplace as FormRegistry,"1098-E":studentLoan as FormRegistry,"1098-T":tuition as FormRegistry,"5498":ira as FormRegistry,"5498-SA":hsaContribution as FormRegistry,"1099-NEC":nec as FormRegistry,"1099-MISC":misc as FormRegistry,"1099-INT":interest as FormRegistry,"1099-DIV":dividends as FormRegistry,"1099-B":brokerage as FormRegistry,"1099-G":government as FormRegistry,"1099-K":payments as FormRegistry,"1099-R":retirement as FormRegistry,"1099-SA":hsa as FormRegistry,"SSA-1099":socialSecurity as FormRegistry,"RRB-1099":railroadBenefits as FormRegistry};
 const addressFields=(prefix:string):RegistryField[]=>[
   {key:`${prefix}.name`,label:`${title(prefix)} name`,type:"string",calculation:"not_applicable"},
   {key:`${prefix}.tin`,label:`${title(prefix)} TIN`,type:"string",calculation:"not_applicable"},

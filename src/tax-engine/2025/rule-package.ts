@@ -3,7 +3,7 @@ export interface RuleSource2025 {
   title: string;
   url: string;
   archivedFile: string;
-  retrievedOn: "2026-10-06" | "2026-10-11" | "2026-10-13";
+  retrievedOn: "2026-10-06" | "2026-10-11" | "2026-10-13" | "2026-10-14";
   sha256: string;
 }
 
@@ -31,17 +31,18 @@ export const ruleSources2025: RuleSource2025[] = [
   { id: "irs-publication-596-2025-excerpt", title: "2025 Earned Income Credit authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p596.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
   { id: "irs-publication-503-2025-excerpt", title: "2025 Child and Dependent Care Expenses authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p503.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
   { id: "irs-publication-970-2025-excerpt", title: "2025 Education Benefits authority excerpt", url: "https://www.irs.gov/pub/irs-pdf/p970.pdf", archivedFile: "sources/federal-credits-2025-authority-excerpt.txt", retrievedOn: "2026-10-13", sha256: "aa3751458f7c5131ea00312abacb7837bb349558441348aec4bdf4963f503c11" },
+  { id: "irs-advanced-federal-2025-excerpt", title: "2025 Form 6251, Form 8867, Form 8962, Schedule 1, Form 8889 and payment authority record", url: "https://www.irs.gov/forms-pubs/about-form-6251", archivedFile: "sources/advanced-federal-2025-authority-excerpt.txt", retrievedOn: "2026-10-14", sha256: "90ce902b7fe6c6df7539d128356a57cb78adc8b8d1e61f0fb4ff685e6f0c059f" },
 ];
 
 export const rulePackage2025 = {
-  id: "us-federal-1040-2025-supported-v5-credits-review",
+  id: "us-federal-1040-2025-supported-v9-amt-review",
   taxYear: 2025,
-  version: "0.5.0-research.1",
-  effectiveRevision: "2026-10-13-eitc-dependent-care-education",
+  version: "0.9.0-research.1",
+  effectiveRevision: "2026-10-14-form-6251-workflow",
   status: "research_unapproved" as const,
   reviewer: null,
   taxTableSha256: "349208c4f25adbdb81cc418c75843364ae15dd36fbe762bc2adf2829a238d10a",
-  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SCHEDULE-C-E-F-2025", "SUPPORTED-EITC-2025", "SUPPORTED-FORM-2441-2025", "SUPPORTED-FORM-8863-2025", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-FIVE-FORM-REVIEW"],
+  fixtureIds: ["IRS-TAX-TABLE-SAMPLE-MFJ-25300", "SUPPORTED-ALL-FIVE-FILING-STATUSES", "SUPPORTED-DEPENDENT-STANDARD-DEDUCTION-2025", "SUPPORTED-AGE-BLINDNESS-STANDARD-DEDUCTION-2025", "SUPPORTED-SOCIAL-SECURITY-BENEFITS-WORKSHEET-2025", "SUPPORTED-FORM-6251-2025", "SUPPORTED-SCHEDULE-A-2025", "SUPPORTED-SCHEDULE-8812-CTC-ODC-ACTC", "SUPPORTED-SCHEDULE-C-E-F-2025", "SUPPORTED-EITC-2025", "SUPPORTED-FORM-2441-2025", "SUPPORTED-FORM-8863-2025", "SUPPORTED-FORM-8867-2025", "SUPPORTED-FORM-8962-2025", "SUPPORTED-SCHEDULE-1-ADJUSTMENTS-2025", "SUPPORTED-FORM-8889-2025", "SUPPORTED-FEDERAL-PAYMENTS-2025", "SUPPORTED-SINGLE-WAGE", "SUPPORTED-MFJ-BUSINESS-QD", "SUPPORTED-EXPANDED-SEVENTEEN-FORM-REVIEW"],
   sources: ruleSources2025,
 };
 
@@ -53,6 +54,10 @@ export const constants2025 = {
     head_of_household: 23625,
     qualifying_surviving_spouse: 31500,
   },
+  dependentMinimumStandardDeduction: 1350,
+  dependentEarnedIncomeAddition: 450,
+  form8615UnearnedIncomeThreshold: 2700,
+  additionalStandardDeduction: { unmarried: 2000, married: 1600 },
   scheduleBThreshold: 1500,
   socialSecurityWageBase: 176100,
   qbiSimplifiedThreshold: { single: 197300, married_filing_jointly: 394600, married_filing_separately: 197300, head_of_household: 197300, qualifying_surviving_spouse: 197300 },

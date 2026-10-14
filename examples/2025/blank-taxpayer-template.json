@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.4.0",
   "tax_year": 2025,
   "return_type": "1040",
   "_instructions": {
@@ -27,10 +27,25 @@
       "For every dependent, record a reviewed dependent and credit classification; do not infer eligibility from relationship alone.",
       "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
       "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts.",
-      "Complete credits only from a reviewed EITC, dependent-care, or education interview; Form 1098-T does not by itself establish qualified expenses."
+      "Complete credits only from a reviewed EITC, dependent-care, or education interview; Form 1098-T does not by itself establish qualified expenses.",
+      "Complete advanced_federal only from reviewed Form 8867, marketplace, adjustment, HSA, payment and package-control facts.",
+      "A Form 1095-A record is source evidence; reconcile its monthly columns in advanced_federal.premiumTaxCredit before calculation."
     ]
   },
-  "client": {}, "filing_profile": { "status": "single", "eligibility_confirmed": false }, "taxpayer": {}, "spouse": null, "dependents": [],
+  "client": {}, "filing_profile": { "status": "single", "eligibility_confirmed": false },
+  "standard_deduction_facts": {
+    "schema_version": "2025.1",
+    "taxpayer_claimable_as_dependent": false,
+    "form_8615_applicability_reviewed": false,
+    "form_8615_required": false,
+    "taxpayer_age_65_or_older": false,
+    "taxpayer_blind": false,
+    "spouse_age_65_or_older": false,
+    "spouse_blind": false,
+    "age_blindness_facts_reviewed": false,
+    "mfs_spouse_additional_deduction_eligible": false
+  },
+  "taxpayer": {}, "spouse": null, "dependents": [],
   "schedule_a": {
     "enabled": false, "married_filing_separately_spouse_itemizes": null,
     "medical_and_dental_expenses": "0.00", "state_local_income_or_sales_taxes": "0.00", "real_estate_taxes": "0.00", "personal_property_taxes": "0.00", "other_taxes": "0.00",
@@ -43,16 +58,26 @@
     "dependentCare": { "enabled": false, "workRelatedExpensesConfirmed": false, "providers": [], "qualifyingPersons": [], "taxpayerStudentOrDisabledMonths": 0, "spouseStudentOrDisabledMonths": 0, "additionalEmployerBenefits": "0.00" },
     "education": { "enabled": false, "students": [] }
   },
+  "advanced_federal": {
+    "schemaVersion": "2025.1",
+    "dueDiligence": { "schemaVersion": "2025.1", "paidPreparer": false, "sections": { "eitc": { "applies": false, "interviewComplete": false, "knowledgeDocumented": false, "documentsReviewed": false, "consistencyResolved": false, "notes": "" }, "childTaxCredits": { "applies": false, "interviewComplete": false, "knowledgeDocumented": false, "documentsReviewed": false, "consistencyResolved": false, "notes": "" }, "aotc": { "applies": false, "interviewComplete": false, "knowledgeDocumented": false, "documentsReviewed": false, "consistencyResolved": false, "notes": "" }, "headOfHousehold": { "applies": false, "interviewComplete": false, "knowledgeDocumented": false, "documentsReviewed": false, "consistencyResolved": false, "notes": "" } }, "clientInterviewDate": null, "residencyDocumentsReviewed": "unknown", "relationshipDocumentsReviewed": "unknown", "incomeDocumentsReviewed": "unknown", "additionalInquiries": "", "preparerNotes": "", "evidence": [] },
+    "premiumTaxCredit": { "schemaVersion": "2025.1", "enabled": false, "householdSize": 1, "householdModifiedAgiOther": "0.00", "federalPovertyLine": "0.00", "stateCode": "IL", "householdMembersReconciled": false, "sharedPoliciesReviewed": false, "marriageAlternativeApplies": false, "marriageAlternativeReviewed": false, "policies": [] },
+    "adjustments": { "schemaVersion": "2025.1", "educator": { "enabled": false, "expenses": { "taxpayer": "0.00", "spouse": "0.00" }, "reimbursements": { "taxpayer": "0.00", "spouse": "0.00" }, "eligible": { "taxpayer": false, "spouse": false } }, "ira": { "enabled": false, "contributions": { "taxpayer": "0.00", "spouse": "0.00" }, "workplacePlanCovered": { "taxpayer": false, "spouse": false }, "age50OrOlder": { "taxpayer": false, "spouse": false }, "eligibilityReviewed": false, "nondeductibleBasisApplies": false }, "studentLoan": { "enabled": false, "interestPaid": "0.00", "form1098ERecordId": null, "eligibilityReviewed": false }, "hsa": { "enabled": false, "owner": "taxpayer", "coverageType": "self", "eligibleMonths": 0, "age55OrOlder": false, "personalContributions": "0.00", "employerContributions": "0.00", "qualifiedDistributions": "0.00", "nonqualifiedDistributions": "0.00", "excessContributions": "0.00", "lastMonthRuleUsed": false, "testingPeriodSatisfied": false, "additionalTaxException": "none", "additionalTaxExceptionReviewed": false }, "selfEmployedHealthInsurance": { "enabled": false, "premiums": "0.00", "activityId": null, "employerEligibleMonths": 0, "eligibilityReviewed": false }, "retirementPlan": { "enabled": false, "planType": "sep", "contributions": { "taxpayer": "0.00", "spouse": "0.00" }, "activityId": null, "limitReviewed": false }, "alternativeMinimumTax": { "enabled": false, "applicabilityReviewed": false, "itemizedDeductionTreatmentReviewed": false, "privateActivityBondInterest": "0.00", "incentiveStockOptionAdjustment": "0.00", "depreciationAdjustment": "0.00", "passiveActivityAdjustment": "0.00", "lossLimitationAdjustment": "0.00", "otherAdjustment": "0.00", "unsupportedAdjustmentApplies": false, "unsupportedAdjustmentDescription": "", "priorYearMinimumTaxCreditApplies": false } },
+    "payments": { "schemaVersion": "2025.1", "payments": [], "excessSocialSecurityReviewed": false },
+    "formPackage": { "schemaVersion": "2025.1", "packageMode": "internal_draft", "includeWorkpapers": true, "includeSourceSummary": true }
+  },
   "source_documents": [],
-  "forms": { "w2": [], "form_1098_t": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [] },
+  "forms": { "w2": [], "form_1095_a": [], "form_1098_e": [], "form_1098_t": [], "form_5498": [], "form_5498_sa": [], "form_1099_nec": [], "form_1099_misc": [], "form_1099_int": [], "form_1099_div": [], "form_1099_b": [], "form_1099_g": [], "form_1099_k": [], "form_1099_r": [], "form_1099_sa": [], "form_ssa_1099": [], "form_rrb_1099": [] },
   "activities": { "schedule_c": [], "schedule_e": [], "schedule_f": [], "other_income": [] },
   "mappings": [], "payments": {}, "review_points": [],
   "metadata": {
-    "template": "nexus-taxpayer-import-2025-v1.4.0-credits-review",
-    "supported_source_forms": ["W-2", "1098-T", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"],
+    "template": "nexus-taxpayer-import-2025-v1.8.0-amt-review",
+    "supported_source_forms": ["W-2", "1095-A", "1098-E", "1098-T", "5498", "5498-SA", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA", "SSA-1099", "RRB-1099"],
     "supported_dependent_forms": ["Form 1040 dependents", "Schedule 8812", "Schedule EIC", "Form 2441"],
-    "supported_deduction_forms": ["Schedule A"],
-    "supported_credit_forms": ["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"],
-    "supported_activity_forms": ["Schedule C", "Schedule E", "Schedule F"]
+    "supported_deduction_forms": ["Dependent standard-deduction worksheet", "Age/blindness additional standard deduction", "Schedule A", "Schedule 1", "Form 6251", "Form 8889"],
+    "supported_credit_forms": ["Schedule EIC", "Form 2441", "Form 8863", "Form 8962", "Schedule 3"],
+    "supported_activity_forms": ["Schedule C", "Schedule E", "Schedule F"],
+    "supported_income_worksheets": ["Social Security Benefits Worksheet"],
+    "filing_output_enabled": false
   }
 }

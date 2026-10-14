@@ -96,7 +96,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "tax_year", "return_type", "client", "filing_profile", "taxpayer", "dependents", "schedule_a", "source_documents", "forms", "activities", "mappings", "payments", "review_points", "metadata"],
   "properties": {
-    "schema_version": { "enum": ["1.0.0", "1.1.0"] },
+    "schema_version": { "enum": ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"] },
     "tax_year": { "const": 2025 },
     "return_type": { "const": "1040" },
     "_instructions": { "type": "object" },
@@ -104,6 +104,15 @@
     "filing_profile": {
       "type": "object", "additionalProperties": false, "required": ["status", "eligibility_confirmed"],
       "properties": { "status": { "enum": ["single", "married_filing_jointly", "married_filing_separately", "head_of_household", "qualifying_surviving_spouse"] }, "eligibility_confirmed": { "type": "boolean" } }
+    },
+    "standard_deduction_facts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "taxpayer_claimable_as_dependent", "form_8615_applicability_reviewed", "form_8615_required", "taxpayer_age_65_or_older", "taxpayer_blind", "spouse_age_65_or_older", "spouse_blind", "age_blindness_facts_reviewed", "mfs_spouse_additional_deduction_eligible"],
+      "properties": {
+        "schema_version": { "const": "2025.1" }, "taxpayer_claimable_as_dependent": { "type": "boolean" }, "form_8615_applicability_reviewed": { "type": "boolean" }, "form_8615_required": { "type": "boolean" },
+        "taxpayer_age_65_or_older": { "type": "boolean" }, "taxpayer_blind": { "type": "boolean" }, "spouse_age_65_or_older": { "type": "boolean" }, "spouse_blind": { "type": "boolean" },
+        "age_blindness_facts_reviewed": { "type": "boolean" }, "mfs_spouse_additional_deduction_eligible": { "type": "boolean" }
+      }
     },
     "taxpayer": { "$ref": "#/$defs/personProfile" },
     "spouse": { "oneOf": [{ "$ref": "#/$defs/personProfile" }, { "type": "null" }] },
@@ -153,6 +162,7 @@
         "education": { "type": "object", "additionalProperties": false, "required": ["enabled", "students"], "properties": { "enabled": { "type": "boolean" }, "students": { "type": "array", "maxItems": 20, "items": { "type": "object", "additionalProperties": false, "required": ["id", "personRole", "dependentId", "name", "institutionName", "form1098TRecordId", "creditType", "qualifiedExpenses", "taxFreeAssistance", "eligibleInstitution", "firstFourYears", "atLeastHalfTime", "degreeCandidate", "noFelonyDrugConviction", "priorAotcYears", "refundabilityConfirmed"], "properties": { "id": { "type": "string", "format": "uuid" }, "personRole": { "enum": ["taxpayer", "spouse", "dependent"] }, "dependentId": { "type": ["string", "null"], "format": "uuid" }, "name": { "type": "string", "minLength": 1 }, "institutionName": { "type": "string", "minLength": 1 }, "form1098TRecordId": { "type": ["string", "null"], "format": "uuid" }, "creditType": { "enum": ["aotc", "llc"] }, "qualifiedExpenses": { "$ref": "#/$defs/money" }, "taxFreeAssistance": { "$ref": "#/$defs/money" }, "eligibleInstitution": { "type": "boolean" }, "firstFourYears": { "type": "boolean" }, "atLeastHalfTime": { "type": "boolean" }, "degreeCandidate": { "type": "boolean" }, "noFelonyDrugConviction": { "type": "boolean" }, "priorAotcYears": { "type": "integer", "minimum": 0, "maximum": 4 }, "refundabilityConfirmed": { "type": "boolean" } } } } } }
       }
     },
+    "advanced_federal": { "type": "object" },
     "source_documents": { "type": "array" },
     "forms": {
       "type": "object",
@@ -168,7 +178,9 @@
         "form_1099_g": { "type": "array" },
         "form_1099_k": { "type": "array" },
         "form_1099_r": { "type": "array" },
-        "form_1099_sa": { "type": "array" }
+        "form_1099_sa": { "type": "array" },
+        "form_ssa_1099": { "type": "array" },
+        "form_rrb_1099": { "type": "array" }
       },
       "additionalProperties": false
     },

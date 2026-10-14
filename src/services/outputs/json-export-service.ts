@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { CanonicalTaxReturnData } from "@/domain/canonical";
 import { parseActivityForm2025 } from "@/domain/activity-forms-2025";
 import { emptyFederalCreditProfile2025 } from "@/domain/federal-credits-2025";
+import { emptyAdvancedFederalProfile2025 } from "@/domain/advanced-federal-2025";
 
 export type JsonExportMode = "complete" | "source_only" | "blank_template";
 
@@ -14,7 +15,7 @@ export interface JsonExportResult {
 
 export function createBlankCanonicalTemplate2025() {
   return {
-    schema_version: "1.1.0",
+    schema_version: "1.4.0",
     tax_year: 2025,
     return_type: "1040",
     _instructions: {
@@ -43,9 +44,13 @@ export function createBlankCanonicalTemplate2025() {
         "Schedule A values must be reviewed deductible amounts, with the limitation confirmations completed.",
         "Schedule C, E, and F activities use form_data from the 2025.1 activity contract; mapped source receipts are not repeated as additional_receipts.",
         "Complete credits only from a reviewed EITC, dependent-care, or education interview; Form 1098-T does not by itself establish qualified expenses.",
+        "Complete advanced_federal only from reviewed Form 8867, marketplace, adjustment, HSA, payment and package-control facts.",
+        "A Form 1095-A record is source evidence; reconcile its monthly columns in advanced_federal.premiumTaxCredit before calculation.",
       ],
     },
-    client: {}, filing_profile: { status: "single", eligibility_confirmed: false }, taxpayer: {}, spouse: null, dependents: [],
+    client: {}, filing_profile: { status: "single", eligibility_confirmed: false },
+    standard_deduction_facts: { schema_version: "2025.1", taxpayer_claimable_as_dependent: false, form_8615_applicability_reviewed: false, form_8615_required: false, taxpayer_age_65_or_older: false, taxpayer_blind: false, spouse_age_65_or_older: false, spouse_blind: false, age_blindness_facts_reviewed: false, mfs_spouse_additional_deduction_eligible: false },
+    taxpayer: {}, spouse: null, dependents: [],
     schedule_a: {
       enabled: false, married_filing_separately_spouse_itemizes: null,
       medical_and_dental_expenses: "0.00", state_local_income_or_sales_taxes: "0.00", real_estate_taxes: "0.00", personal_property_taxes: "0.00", other_taxes: "0.00",
@@ -53,11 +58,12 @@ export function createBlankCanonicalTemplate2025() {
       casualty_and_theft_losses: "0.00", other_itemized_deductions: "0.00", salt_eligibility_confirmed: false, mortgage_limits_applied: false, charity_limits_applied: false, casualty_limits_applied: false,
     },
     credits: emptyFederalCreditProfile2025,
+    advanced_federal: emptyAdvancedFederalProfile2025,
     source_documents: [],
-    forms: { w2: [], form_1098_t: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] },
+    forms: { w2: [], form_1095_a: [], form_1098_e: [], form_1098_t: [], form_5498: [], form_5498_sa: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [], form_ssa_1099: [], form_rrb_1099: [] },
     activities: { schedule_c: [], schedule_e: [], schedule_f: [], other_income: [] },
     mappings: [], payments: {}, review_points: [],
-    metadata: { template: "nexus-taxpayer-import-2025-v1.4.0-credits-review", supported_source_forms: ["W-2", "1098-T", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812", "Schedule EIC", "Form 2441"], supported_deduction_forms: ["Schedule A"], supported_credit_forms: ["Schedule EIC", "Form 2441", "Form 8863", "Schedule 3"], supported_activity_forms: ["Schedule C", "Schedule E", "Schedule F"] },
+    metadata: { template: "nexus-taxpayer-import-2025-v1.8.0-amt-review", supported_source_forms: ["W-2", "1095-A", "1098-E", "1098-T", "5498", "5498-SA", "1099-NEC", "1099-MISC", "1099-INT", "1099-DIV", "1099-B", "1099-G", "1099-K", "1099-R", "1099-SA", "SSA-1099", "RRB-1099"], supported_dependent_forms: ["Form 1040 dependents", "Schedule 8812", "Schedule EIC", "Form 2441"], supported_deduction_forms: ["Dependent standard-deduction worksheet", "Age/blindness additional standard deduction", "Schedule A", "Schedule 1", "Form 6251", "Form 8889"], supported_credit_forms: ["Schedule EIC", "Form 2441", "Form 8863", "Form 8962", "Schedule 3"], supported_activity_forms: ["Schedule C", "Schedule E", "Schedule F"], supported_income_worksheets: ["Social Security Benefits Worksheet"], filing_output_enabled: false },
   } as const;
 }
 
@@ -71,6 +77,7 @@ export function createSupportedReviewExample2025() {
   template.forms.form_1099_g = [{ ...base("10000000-0000-4000-8000-000000000003"), payer: { name: "Synthetic State Agency" }, boxes: { unemploymentCompensation: "2000.00", federalWithholding: "200.00" }, stateRows: [] }];
   template.forms.form_1099_r = [{ ...base("10000000-0000-4000-8000-000000000004"), payer: { name: "Synthetic Retirement Custodian" }, boxes: { grossDistribution: "5000.00", taxableAmount: "4000.00", taxableAmountNotDetermined: false, totalDistribution: true, federalWithholding: "500.00", distributionCode: "7", iraSepSimple: true }, stateRows: [] }];
   template.forms.form_1099_sa = [{ ...base("10000000-0000-4000-8000-000000000005"), payer: { name: "Synthetic HSA Custodian" }, boxes: { grossDistribution: "1000.00", earningsOnExcessContributions: "0.00", distributionCode: "1", accountType: "HSA", qualifiedMedicalExpenses: "1000.00" }, stateRows: [] }];
+  template.forms.form_ssa_1099 = [{ ...base("10000000-0000-4000-8000-000000000006"), payer: { name: "Social Security Administration" }, boxes: { benefitsPaid: "12000.00", benefitsRepaid: "0.00", netBenefits: "12000.00", federalWithholding: "600.00", medicarePartBPremiums: "0.00", medicarePartCPremiums: "0.00", medicarePartDPremiums: "0.00", lumpSumElectionApplies: false }, stateRows: [] }];
   template.metadata = { ...template.metadata, synthetic_review_example: true, warning: "Synthetic data only. Complete intake and document attestation after import; all outputs remain DRAFT — NOT FOR FILING." };
   return template;
 }
@@ -94,8 +101,8 @@ export function exportCanonicalJson(data: CanonicalTaxReturnData, mode: JsonExpo
 }
 
 function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
-  const formCollections: Record<string, unknown[]> = { w2: [], form_1098_t: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [] };
-  const collectionByType: Record<string, string> = { W2: "w2", "1098-T": "form_1098_t", "1099-NEC": "form_1099_nec", "1099-MISC": "form_1099_misc", "1099-INT": "form_1099_int", "1099-DIV": "form_1099_div", "1099-B": "form_1099_b", "1099-G": "form_1099_g", "1099-K": "form_1099_k", "1099-R": "form_1099_r", "1099-SA": "form_1099_sa" };
+  const formCollections: Record<string, unknown[]> = { w2: [], form_1095_a: [], form_1098_e: [], form_1098_t: [], form_5498: [], form_5498_sa: [], form_1099_nec: [], form_1099_misc: [], form_1099_int: [], form_1099_div: [], form_1099_b: [], form_1099_g: [], form_1099_k: [], form_1099_r: [], form_1099_sa: [], form_ssa_1099: [], form_rrb_1099: [] };
+  const collectionByType: Record<string, string> = { W2: "w2", "1095-A": "form_1095_a", "1098-E": "form_1098_e", "1098-T": "form_1098_t", "5498": "form_5498", "5498-SA": "form_5498_sa", "1099-NEC": "form_1099_nec", "1099-MISC": "form_1099_misc", "1099-INT": "form_1099_int", "1099-DIV": "form_1099_div", "1099-B": "form_1099_b", "1099-G": "form_1099_g", "1099-K": "form_1099_k", "1099-R": "form_1099_r", "1099-SA": "form_1099_sa", "SSA-1099": "form_ssa_1099", "RRB-1099": "form_rrb_1099" };
   for (const source of data.sourceForms) {
     const collection = collectionByType[source.formType];
     if (!collection) continue;
@@ -105,8 +112,9 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
   const schedule = data.scheduleA ?? {};
   const scheduleValue = (key: string, fallback: unknown) => key in schedule ? schedule[key] : fallback;
   return {
-    schema_version: "1.1.0", tax_year: 2025, return_type: "1040", client: {},
+    schema_version: "1.4.0", tax_year: 2025, return_type: "1040", client: {},
     filing_profile: { status: data.filingProfile?.status ?? "single", eligibility_confirmed: data.filingProfile?.eligibilityConfirmed ?? false },
+    standard_deduction_facts: toCanonicalStandardDeductionFacts(data.standardDeductionFacts),
     taxpayer: toCanonicalPerson(data.taxpayer), spouse: data.spouse ? toCanonicalPerson(data.spouse) : null,
     dependents: data.dependents.map((value) => {
       const row = value as Record<string, unknown>; const facts = row.facts && typeof row.facts === "object" ? row.facts as Record<string, unknown> : row;
@@ -117,6 +125,7 @@ function toCanonicalImportPayload(data: CanonicalTaxReturnData) {
       medical_and_dental_expenses: scheduleValue("medicalAndDentalExpenses", "0.00"), state_local_income_or_sales_taxes: scheduleValue("stateLocalIncomeOrSalesTaxes", "0.00"), real_estate_taxes: scheduleValue("realEstateTaxes", "0.00"), personal_property_taxes: scheduleValue("personalPropertyTaxes", "0.00"), other_taxes: scheduleValue("otherTaxes", "0.00"), home_mortgage_interest_and_points: scheduleValue("homeMortgageInterestAndPoints", "0.00"), investment_interest: scheduleValue("investmentInterest", "0.00"), cash_charitable_contributions: scheduleValue("cashCharitableContributions", "0.00"), noncash_charitable_contributions: scheduleValue("noncashCharitableContributions", "0.00"), casualty_and_theft_losses: scheduleValue("casualtyAndTheftLosses", "0.00"), other_itemized_deductions: scheduleValue("otherItemizedDeductions", "0.00"), salt_eligibility_confirmed: scheduleValue("saltEligibilityConfirmed", false), mortgage_limits_applied: scheduleValue("mortgageLimitsApplied", false), charity_limits_applied: scheduleValue("charityLimitsApplied", false), casualty_limits_applied: scheduleValue("casualtyLimitsApplied", false),
     },
     credits: data.credits ?? emptyFederalCreditProfile2025,
+    advanced_federal: data.advancedFederal ?? emptyAdvancedFederalProfile2025,
     source_documents: data.sourceDocuments, forms: formCollections,
     activities: {
       schedule_c: data.activities.filter(({ type }) => type === "schedule_c").map(toCanonicalActivity),
@@ -135,6 +144,22 @@ function toCanonicalPerson(value: Record<string, unknown>) {
     date_of_birth: value.date_of_birth ?? value.dateOfBirth ?? null,
     address: value.address && typeof value.address === "object" && !Array.isArray(value.address) ? value.address : {},
     facts,
+  };
+}
+
+function toCanonicalStandardDeductionFacts(value: Record<string, unknown> | undefined) {
+  const facts = value ?? {};
+  return {
+    schema_version: facts.schemaVersion ?? "2025.1",
+    taxpayer_claimable_as_dependent: facts.taxpayerClaimableAsDependent === true,
+    form_8615_applicability_reviewed: facts.form8615ApplicabilityReviewed === true,
+    form_8615_required: facts.form8615Required === true,
+    taxpayer_age_65_or_older: facts.taxpayerAge65OrOlder === true,
+    taxpayer_blind: facts.taxpayerBlind === true,
+    spouse_age_65_or_older: facts.spouseAge65OrOlder === true,
+    spouse_blind: facts.spouseBlind === true,
+    age_blindness_facts_reviewed: facts.ageBlindnessFactsReviewed === true,
+    mfs_spouse_additional_deduction_eligible: facts.mfsSpouseAdditionalDeductionEligible === true,
   };
 }
 

@@ -11,6 +11,6 @@
 
 ## Post-Phase-1 release tracks
 
-- Broader source/calculation coverage is added only as complete vertical slices. The October 11 review release adds 1099-B/G/K/R/SA supported subsets with fail-closed blockers; the 2025 catalog still blocks all other unimplemented information returns rather than silently ignoring them.
-- Official paper-fileable output requires approved IRS template mappings and independent line/print inspection; see `filing-readiness.md`.
+- Broader source/calculation coverage is added only as complete vertical slices. The October 14 review release has seventeen typed source families, including SSA-1099 and RRB-1099, and includes Form 6251, Form 8867, Form 8962, Schedule 1/Form 8889, payment and Social Security Benefits Worksheet vertical slices with fail-closed blockers; the 2025 catalog still blocks all other unimplemented information returns rather than silently ignoring them.
+- Official-layout review packages now use hash-verified archived IRS artwork and a controlled calculation appendix. Official paper-fileable output still requires approved coordinate mappings and independent line/print inspection; see `filing-readiness.md`.
 - IRS Modernized e-File requires provider enrollment, year-specific schemas/business rules, ATS approval and submission/acknowledgment operations. It is not enabled by the Phase 1 codebase.
