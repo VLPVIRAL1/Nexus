@@ -11,6 +11,8 @@
 
 This program preserves every existing workflow and expands the 2025 package only through complete, fail-closed vertical slices. Each item requires manual entry, canonical JSON import/export, immutable persistence, calculation trace, draft output, workpaper detail, explicit unsupported boundaries and proportionate unit/database/browser evidence before it can be checked.
 
+The binding execution sequence and twelve-part completion gate for all remaining feature and release-closure items are defined in [`end-to-end-module-completion-plan.md`](./end-to-end-module-completion-plan.md). The plan requires coverage-ledger enforcement, input/calculation/PDF/XLSX tie-out, focused and comprehensive regression returns, approved Supabase/Hostinger release evidence, and separate technical, tax-review, official-output, production and external-authorization statuses. No item below may be checked merely because its input screen or calculation exists.
+
 - [x] Stabilize the existing baseline by reconciling conditionally supported Form 8962, federal-payment and Schedule E/F intake answers with their persisted profiles/activities; separate unsupported pass-through K-1 applicability; and use one support evaluator for intake attestation and calculation assembly.
 - [x] Implement the claimable-taxpayer standard-deduction worksheet and a fail-closed Form 8615 applicability boundary, including manual entry, canonical JSON 1.3 round trips, immutable persistence, calculated line trace and controlled output detail.
 - [x] Implement person-specific age-65/blindness additional standard deductions, including the MFS spouse eligibility condition, manual/import parity, calculated line trace and controlled output detail.
