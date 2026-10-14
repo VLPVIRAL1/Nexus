@@ -7,6 +7,20 @@
 **Last updated:** October 14, 2026
 **Overall Phase 1 status:** In progress — the federal technical package now includes the core return, business/rental/farm completion, complex QBI, additional taxes, retirement, capital, credits and controlled review outputs; production infrastructure, independent tax/output approval and official filing authorization remain incomplete.
 
+### October 14, 2026 Drake-inspired preparer-workspace simplification plan
+
+The implementation sequence, preservation rules, route-parity ledger, keyboard/search behavior, accessibility gates and controlled rollout criteria are defined in [`drake-inspired-preparer-workspace-plan.md`](./drake-inspired-preparer-workspace-plan.md). The target is a familiar professional-tax workflow with a return tree, compact consistent inputs, fast form access, a persistent diagnostics/source panel and integrated calculation/output access. It must use original Nexus branding and must not copy Drake Tax branding or proprietary screen design. Existing screens, data, APIs, controls and tax results remain authoritative until each replacement passes parity and acceptance.
+
+- [ ] Phase 0 — Inventory every existing field, action, state and route; record usability and accessibility baselines.
+- [ ] Phase 1 — Implement the feature-flagged Return Workbench shell, return tree, context panel and stable topic routing.
+- [ ] Phase 2 — Implement keyboard-first form/topic search, shortcuts and diagnostic navigation.
+- [ ] Phase 3 — Implement and verify the shared compact input component system and safe draft/conflict behavior.
+- [ ] Phase 4 — Migrate all current federal input modules in controlled slices without removing legacy pages.
+- [ ] Phase 5 — Connect field-level source context, provenance, notes, diagnostics and exact error navigation.
+- [ ] Phase 6 — Integrate calculation trace, draft forms and PDF/XLSX/JSON outputs into the workbench.
+- [ ] Phase 7 — Complete preparer onboarding, help, density and pane preferences.
+- [ ] Phase 8 — Pass functional parity, tax/output regression, WCAG, browser, performance and representative-preparer acceptance before default rollout.
+
 ### October 14, 2026 comprehensive tax-coverage expansion program
 
 This program preserves every existing workflow and expands the 2025 package only through complete, fail-closed vertical slices. Each item requires manual entry, canonical JSON import/export, immutable persistence, calculation trace, draft output, workpaper detail, explicit unsupported boundaries and proportionate unit/database/browser evidence before it can be checked.
