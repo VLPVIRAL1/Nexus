@@ -1,9 +1,23 @@
 # Comprehensive Federal Diagnostics and Commercial-Workflow Parity Plan
 
-**Status:** Approved planning baseline; implementation not started
+**Status:** Technical foundation implemented; authority research, full condition fixtures, licensed comparisons and independent approvals remain open
 **Created:** October 15, 2026
 **First release scope:** Tax year 2025 federal preparation and review diagnostics for every form and tax treatment the Nexus coverage ledger declares supported
 **Preservation rule:** Do not delete, rename, suppress or weaken an existing diagnostic until its replacement has proven trigger, non-trigger, persistence, actionability and regression parity
+
+## Implementation checkpoint — October 15, 2026
+
+Completed in source and verified against a clean PostgreSQL database:
+
+- deterministic generated inventory of 283 literal and intake-derived 2025 federal preparation codes, with owner, source location, stage, class, severity, disposition and immutable definition hash;
+- append-only definition, authority, condition, manifest and occurrence-event persistence, including compatibility backfill for pre-registry issues;
+- one lifecycle service for create, deterministic dedupe, resolve and reopen behavior; all application issue writers now use it;
+- read-only administrator registry/API with evidence-gap and external-gate visibility;
+- preparer-context severity/search filtering plus definition version, authority state and fingerprint disclosure;
+- CI manifest-drift enforcement and unit/database regression coverage; and
+- explicit disabled/pending gates for MeF, licensed Drake/ProConnect/CCH comparison and independent tax approval.
+
+This checkpoint does not close the program. The 283 legacy definitions intentionally remain `authority_review_status=pending`, the generated legacy condition rows intentionally expose missing positive/negative fixtures, and the manifest remains `research_unapproved`. Phases 0, 1, 3–10 remain open until their human research, coverage and acceptance exit gates below are evidenced.
 
 ## 1. Outcome and honest completion standard
 

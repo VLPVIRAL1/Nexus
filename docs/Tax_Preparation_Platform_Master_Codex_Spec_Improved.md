@@ -9,11 +9,11 @@
 
 ### October 15, 2026 comprehensive federal diagnostics program
 
-The plan for IRS-authority completeness and independently authored commercial-workflow parity is defined in [`comprehensive-federal-diagnostics-plan.md`](./comprehensive-federal-diagnostics-plan.md). The current library contains at least 197 literal diagnostic codes plus dynamic intake findings, but it is not represented as a complete IRS, Drake, ProConnect or CCH diagnostic catalog. Completion is scoped and versioned by tax year, jurisdiction, supported forms/facts and filing channel. Proprietary vendor messages, codes and assets must not be copied.
+The plan for IRS-authority completeness and independently authored commercial-workflow parity is defined in [`comprehensive-federal-diagnostics-plan.md`](./comprehensive-federal-diagnostics-plan.md). The generated current baseline contains 283 literal and intake-derived 2025 federal preparation codes, but it is not represented as a complete IRS, Drake, ProConnect or CCH diagnostic catalog. Completion is scoped and versioned by tax year, jurisdiction, supported forms/facts and filing channel. Proprietary vendor messages, codes and assets must not be copied.
 
 - [ ] Phase 0 — Establish tax-content ownership, source/licensing rules, severity policy and the authorized IRS/MeF boundary.
 - [ ] Phase 1 — Inventory and classify every current diagnostic, trigger, lifecycle, authority, destination and test.
-- [ ] Phase 2 — Implement the versioned definition, authority, condition-coverage and immutable occurrence model.
+- [x] Phase 2 — Implement the versioned definition, authority, condition-coverage and immutable occurrence model. Registry records are live and append-only; authority/fixture gaps remain visible inputs to later phase gates.
 - [ ] Phase 3 — Consolidate deterministic staged evaluation, dependency-based reevaluation, dedupe, resolution and governed suppression.
 - [ ] Phase 4 — Complete foundational taxpayer, filing-status, dependent, source-form, intake, import and reconciliation diagnostics.
 - [ ] Phase 5 — Complete condition-ledger coverage for all supported federal income, deduction, credit, activity and additional-tax modules.
@@ -22,6 +22,14 @@ The plan for IRS-authority completeness and independently authored commercial-wo
 - [ ] Phase 8 — Implement IRS MeF schema/business-rule/reject diagnostics only after authorization and ATS access; keep filing disabled beforehand.
 - [ ] Phase 9 — Run licensed Drake, ProConnect and CCH comparison suites and resolve every material observed gap without copying proprietary content.
 - [ ] Phase 10 — Pass mutation/property/golden/browser/performance evidence, independent tax review and annual release-governance gates.
+
+Implemented technical foundation (these do not waive the unchecked phase exit gates):
+
+- [x] Generate and CI-check the deterministic 2025 code inventory and manifest hash.
+- [x] Backfill existing occurrences and require every new occurrence to link to a definition version and fingerprint.
+- [x] Consolidate every database issue writer behind create/dedupe/resolve/reopen lifecycle operations.
+- [x] Provide administrator registry/evidence-gap views and preparer diagnostic search, severity filtering and technical details.
+- [x] Keep MeF and licensed commercial-comparison tracks visibly disabled/pending until actual authorization and licensed evidence exist.
 
 ### October 14, 2026 Drake-inspired preparer-workspace simplification plan
 

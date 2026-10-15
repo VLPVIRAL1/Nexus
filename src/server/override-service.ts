@@ -5,6 +5,7 @@ import { money, asDecimalString } from "@/domain/money";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
+import { createDiagnosticOccurrence, resolveDiagnosticOccurrences } from "./diagnostic-lifecycle-service";
 
 interface OverrideDefinition { label: string; traceNodeId: string; unit: "USD"; downstreamPaths: string[] }
 export const overrideRegistry: Record<string, OverrideDefinition> = {
@@ -90,8 +91,8 @@ export async function getOverrideState(context: AuthorizationContext, clientId: 
 }
 
 async function replaceOverrideDiagnostic(client: pg.PoolClient, taxYearId: string, revision: number, overridePoint: string, message: string) {
-  await client.query("UPDATE validation_issues SET resolved_revision=$2,resolved_at=now(),resolution='Superseded by override workflow revision' WHERE tax_year_id=$1 AND code='OVERRIDE_RECALCULATION_REQUIRED' AND field_path=$3 AND resolved_at IS NULL", [taxYearId, revision, overridePoint]);
-  await client.query("INSERT INTO validation_issues(tax_year_id,code,severity,category,field_path,message,resolution_action,creation_revision) VALUES($1,'OVERRIDE_RECALCULATION_REQUIRED','blocking','calculation_support',$2,$3,'Run and review a new calculation snapshot for this revision.',$4)", [taxYearId, overridePoint, message, revision]);
+  await resolveDiagnosticOccurrences(client, { taxYearId, revision, origin: "manual-override", code: "OVERRIDE_RECALCULATION_REQUIRED", fieldPath: overridePoint, resolution: "Superseded by override workflow revision" });
+  await createDiagnosticOccurrence(client, { taxYearId, revision, origin: "manual-override", evaluationStage: "calculation", finding: { code: "OVERRIDE_RECALCULATION_REQUIRED", severity: "blocking", category: "calculation_support", fieldPath: overridePoint, message, resolutionAction: "Run and review a new calculation snapshot for this revision." } });
 }
 async function authorizedTaxYear(client: pg.PoolClient, context: AuthorizationContext, clientId: string, year: number, action: "client.view" | "source.modify" | "return.approve" | "review.resolve", lock: boolean) { const result = await client.query<{ id: string; revision: number; firm_id: string }>(`SELECT ty.id,ty.revision,c.firm_id FROM tax_years ty JOIN clients c ON c.id=ty.client_id WHERE c.id=$1 AND ty.tax_year=$2 AND c.firm_id=$3 AND c.archived_at IS NULL ${lock ? "FOR UPDATE OF ty" : ""}`, [clientId, year, context.firmId]); const row=result.rows[0]; if(!row) throw new WorkflowError("not_found","Tax year was not found."); if(!authorize(context,action,{firmId:row.firm_id,clientId})) throw new WorkflowError("forbidden","Override access is not permitted."); return {taxYearId:row.id,revision:row.revision}; }
 async function invalidateTaxYear(client: pg.PoolClient,taxYearId:string,revision:number){await client.query("UPDATE tax_years SET revision=$2,validation_status='not_run',calculation_status='stale',preparation_status=CASE WHEN preparation_status IN ('ready_for_review','reviewed_draft') THEN 'changes_requested' ELSE preparation_status END WHERE id=$1",[taxYearId,revision]);}

@@ -25,9 +25,11 @@
     "performance:exercise": "tsx scripts/performance-exercise.ts",
     "auth:link": "tsx scripts/link-external-identity.ts",
     "readiness:production": "tsx scripts/production-readiness.ts",
+    "diagnostics:generate": "tsx scripts/generate-diagnostic-manifest.ts",
+    "diagnostics:check": "tsx scripts/generate-diagnostic-manifest.ts --check",
     "hostinger:build": "npm run db:migrate && npm run readiness:production && npm run build",
     "hostinger:start": "node scripts/hostinger-runtime.mjs",
-    "acceptance:technical": "npm run db:migrate && npm run db:seed && npm run typecheck && npm test && npm run test:integration && npm run build && CI=true npm run test:e2e && npm audit --audit-level=high && npm run recovery:exercise && npm run performance:exercise"
+    "acceptance:technical": "npm run diagnostics:check && npm run db:migrate && npm run db:seed && npm run typecheck && npm test && npm run test:integration && npm run build && CI=true npm run test:e2e && npm audit --audit-level=high && npm run recovery:exercise && npm run performance:exercise"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

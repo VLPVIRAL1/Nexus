@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
+import { syncDiagnosticManifest } from "../src/diagnostics/manifest";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required.");
@@ -16,5 +17,10 @@ try {
     try { await client.query(sql); await client.query("INSERT INTO _migrations(name) VALUES($1)", [name]); await client.query("COMMIT"); }
     catch (error) { await client.query("ROLLBACK"); throw error; }
     process.stdout.write(`Applied ${name}\n`);
+  }
+  const diagnosticRegistry = await client.query("SELECT to_regclass('public.diagnostic_definitions') AS table_name");
+  if (diagnosticRegistry.rows[0]?.table_name) {
+    await syncDiagnosticManifest(client);
+    process.stdout.write("Synchronized the versioned diagnostic manifest.\n");
   }
 } finally { await client.end(); }

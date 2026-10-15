@@ -29,6 +29,7 @@ import { createSupportedReviewExample2025 } from "../../src/services/outputs/jso
 import { getReturnProfileState, saveReturnProfile } from "../../src/server/return-profile-service";
 import { getFederalCreditState, saveFederalCreditProfile } from "../../src/server/federal-credit-service";
 import { getAdvancedFederalState, saveAdvancedFederalProfile, signDueDiligence } from "../../src/server/advanced-federal-service";
+import { getDiagnosticAdministrationState } from "../../src/server/diagnostic-administration-service";
 
 const importCollections = {
   W2: "w2",
@@ -126,10 +127,36 @@ suite("PostgreSQL foundation", () => {
       expect((await client.query("SELECT name FROM _migrations WHERE name='0025_activity_form_revisions.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0031_form_template_registry.sql'")).rowCount).toBe(1);
       expect((await client.query("SELECT name FROM _migrations WHERE name='0032_standard_deduction_facts.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0033_diagnostic_governance.sql'")).rowCount).toBe(1);
+      expect((await client.query("SELECT name FROM _migrations WHERE name='0034_diagnostic_legacy_origins.sql'")).rowCount).toBe(1);
       const result = await client.query("SELECT tax_year, preparation_status FROM tax_years WHERE id='40000000-0000-4000-8000-000000000001'");
       expect(result.rows[0]?.tax_year).toBe(2025);
       expect(["in_preparation", "changes_requested"]).toContain(result.rows[0]?.preparation_status);
     } finally { await client.end(); }
+  });
+
+  it("versions every diagnostic definition and links occurrences to immutable lifecycle evidence", async () => {
+    const client = new pg.Client({ connectionString });
+    await client.connect();
+    try {
+      const definitions = await client.query<{ count: string }>("SELECT count(*)::text count FROM diagnostic_definitions WHERE tax_year=2025 AND filing_channel='preparation'");
+      expect(Number(definitions.rows[0].count)).toBeGreaterThanOrEqual(250);
+      expect((await client.query("SELECT 1 FROM diagnostic_manifest_releases WHERE tax_year=2025 AND release_status='research_unapproved'")).rowCount).toBe(1);
+      expect((await client.query("SELECT 1 FROM diagnostic_external_gates WHERE gate_key='irs_mef' AND status='disabled'")).rowCount).toBe(1);
+      const unlinked = await client.query("SELECT 1 FROM validation_issues WHERE definition_id IS NULL OR definition_version IS NULL OR fingerprint IS NULL LIMIT 1");
+      expect(unlinked.rowCount).toBe(0);
+      await client.query("BEGIN");
+      const definition = await client.query<{ id: string }>("SELECT id FROM diagnostic_definitions WHERE tax_year=2025 ORDER BY code LIMIT 1");
+      await expect(client.query("UPDATE diagnostic_definitions SET owner='changed' WHERE id=$1", [definition.rows[0].id])).rejects.toThrow("append-only");
+      await client.query("ROLLBACK");
+    } finally { await client.end(); }
+    const admin: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000003", firmId: "10000000-0000-4000-8000-000000000001", role: "admin", assignedClientIds: new Set() };
+    const preparer: AuthorizationContext = { userId: "20000000-0000-4000-8000-000000000001", firmId: "10000000-0000-4000-8000-000000000001", role: "preparer", assignedClientIds: new Set(["30000000-0000-4000-8000-000000000001"]) };
+    const registry = await getDiagnosticAdministrationState(admin);
+    expect(registry.canManage).toBe(true);
+    expect(registry.summary.definitionCount).toBeGreaterThanOrEqual(250);
+    expect(registry.externalGates.find(({ key }) => key === "irs_mef")?.status).toBe("disabled");
+    expect(await getDiagnosticAdministrationState(preparer)).toMatchObject({ canManage: false, definitions: [], externalGates: [] });
   });
 
   it("enforces append-only audit history", async () => {

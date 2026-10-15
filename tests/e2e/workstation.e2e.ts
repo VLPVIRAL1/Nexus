@@ -24,6 +24,7 @@ const accessibleRoutes = [
   { name: "source entry", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry" },
   { name: "administration access", path: "/administration" },
   { name: "release closure", path: "/administration/release-closure" },
+  { name: "diagnostic administration", path: "/administration/diagnostics" },
 ];
 
 for (const route of accessibleRoutes) {

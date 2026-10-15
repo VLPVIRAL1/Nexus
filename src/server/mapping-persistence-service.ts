@@ -9,6 +9,7 @@ import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { reconcileMappings, type MappingStatus } from "@/services/mapping-service";
 import { WorkflowError } from "./client-workflow-service";
 import { databasePool } from "./database";
+import { replaceDiagnosticSet, type DiagnosticOccurrenceInput } from "./diagnostic-lifecycle-service";
 
 export type ActivityType = "schedule_c" | "schedule_e" | "schedule_f" | "schedule_1_other";
 export type ReceiptBasis = "source_plus_additional_receipts" | "total_books_receipts";
@@ -214,24 +215,22 @@ async function readMappingState(client: pg.PoolClient, taxYearId: string, revisi
 }
 
 export async function refreshMappingDiagnosticsForTaxYear(client: pg.PoolClient, taxYearId: string, revision: number): Promise<number> {
-  await client.query("UPDATE validation_issues SET resolved_revision=$2,resolved_at=now(),resolution='Superseded by mapping revision' WHERE tax_year_id=$1 AND category IN ('mapping','calculation_support') AND resolved_at IS NULL", [taxYearId, revision]);
   const state = await readMappingState(client, taxYearId, revision);
-  let blockers = 0;
+  const findings: DiagnosticOccurrenceInput[] = [];
   const activityById = new Map(state.activities.map((activity) => [activity.id, activity]));
   for (const source of state.sources) {
     if (source.reconciliation.unresolvedAmount !== "0.00") {
-      blockers += 1;
-      await client.query("INSERT INTO validation_issues(tax_year_id,code,severity,category,record_id,field_path,message,resolution_action,creation_revision) VALUES($1,'MAPPING_UNRESOLVED','blocking','mapping',$2,$3,$4,'Allocate or substantiate the entire effective source amount.',$5)", [taxYearId, source.id, source.field, `${source.formType} ${source.label} has ${source.reconciliation.unresolvedAmount} unresolved.`, revision]);
+      findings.push({ code: "MAPPING_UNRESOLVED", severity: "blocking", category: "mapping", recordId: source.id, fieldPath: source.field, message: `${source.formType} ${source.label} has ${source.reconciliation.unresolvedAmount} unresolved.`, resolutionAction: "Allocate or substantiate the entire effective source amount." });
     }
     for (const mapping of source.mappings) {
       const activity = mapping.targetActivityId ? activityById.get(mapping.targetActivityId) : undefined;
       if (mapping.targetType !== "excluded" && activity?.implementationStatus === "mapping_only" && mapping.status !== "suggested") {
-        blockers += 1;
-        await client.query("INSERT INTO validation_issues(tax_year_id,code,severity,category,record_id,field_path,message,resolution_action,creation_revision) VALUES($1,'MAPPING_TARGET_UNSUPPORTED','blocking','calculation_support',$2,$3,$4,'Retain the allocation and issue a partial draft until the destination calculation is implemented.',$5)", [taxYearId, source.id, source.field, `${activity.name} is a mapping-only destination.`, revision]);
+        findings.push({ code: "MAPPING_TARGET_UNSUPPORTED", severity: "blocking", category: "calculation_support", recordId: source.id, fieldPath: source.field, message: `${activity.name} is a mapping-only destination.`, resolutionAction: "Retain the allocation and issue a partial draft until the destination calculation is implemented.", operands: { activityId: activity.id } });
       }
     }
   }
-  return blockers;
+  await replaceDiagnosticSet(client, { taxYearId, revision, origin: "source-mapping", evaluationStage: "mapping", findings, resolution: "Superseded by mapping revision" });
+  return findings.length;
 }
 
 function computeAllocationAmounts(sourceAmount: Decimal, allocations: AllocationInput[]): { amounts: DecimalString[]; residualRecipientIndex: number | null } {

@@ -36,6 +36,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run diagnostics:check
       - run: npm run db:migrate
       - run: npm run db:seed
       - run: npm run typecheck
@@ -64,4 +65,5 @@ jobs:
           node -e 'const value=JSON.parse(require("node:fs").readFileSync("/tmp/nexus-template.json","utf8"));if(value.schema_version!=="1.4.0"||!Array.isArray(value.forms?.form_ssa_1099)||!Array.isArray(value.forms?.form_rrb_1099))process.exit(1)'
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/imports/new
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/administration/release-closure
+          curl --fail --silent --output /dev/null http://127.0.0.1:3000/administration/diagnostics
           curl --fail --silent --output /dev/null http://127.0.0.1:3000/clients/sample/years/2025

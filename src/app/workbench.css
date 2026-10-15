@@ -104,6 +104,8 @@
 .context-summary dl div { display: flex; justify-content: space-between; gap: 8px; }
 .context-summary dt { color: #718090; }
 .context-summary dd { margin: 0; text-align: right; }
+.context-diagnostic-filters { display: grid; gap: 5px; margin-top: 8px; }
+.context-diagnostic-filters input, .context-diagnostic-filters select { width: 100%; min-height: 29px; padding: 4px 6px; border: 1px solid #b8c2cc; background: #fff; font-size: 8px; }
 .context-card-list { display: grid; gap: 6px; padding: 8px; }
 .context-loading, .context-error, .context-empty { margin: 8px; padding: 9px; border: 1px solid #d0d6dc; background: white; font-size: 8.5px; }
 .context-error { border-color: #e0aaa5; color: #8d312b; background: #fff1f0; }
@@ -118,6 +120,9 @@
 .context-issue small, .context-source small { margin-top: 2px; color: #526171; font-size: 7.3px; }
 .context-issue p { margin: 5px 0; color: #5c6976; font-size: 7.7px; line-height: 1.4; }
 .context-issue a, .context-source a, .context-full-link { display: inline-flex; align-items: center; gap: 2px; color: #155b86; text-decoration: none; font-size: 8px; font-weight: 700; }
+.diagnostic-technical { margin-top: 6px; padding-top: 5px; border-top: 1px solid #d8dde2; }
+.diagnostic-technical summary { color: #536273; cursor: pointer; font-size: 7.5px; }
+.diagnostic-technical code { display: block; margin-top: 3px; color: #536273; font-size: 7px; }
 .context-source > svg { flex: 0 0 auto; color: #386885; }
 .context-source > div { min-width: 0; flex: 1; }
 .context-source strong { overflow-wrap: anywhere; }

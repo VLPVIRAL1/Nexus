@@ -6,6 +6,7 @@ import { emptyStandardDeductionFacts2025, parseStandardDeductionFacts2025 } from
 import { expectedDocumentRegistry2025, expectedDocumentRegistryForAnswers } from "@/domain/expected-documents";
 import { authorize, type AuthorizationContext } from "@/services/authorization";
 import { databasePool } from "./database";
+import { replaceDiagnosticSet, type DiagnosticOccurrenceInput } from "./diagnostic-lifecycle-service";
 import { WorkflowError } from "./client-workflow-service";
 
 export type IntakeAnswerValue = "yes" | "no" | "unknown";
@@ -170,22 +171,17 @@ async function readIntakeState(client: pg.PoolClient, taxYearId: string, revisio
 }
 
 async function refreshIntakeDiagnostics(client: pg.PoolClient, taxYearId: string, revision: number): Promise<number> {
-  await client.query("UPDATE validation_issues SET resolved_revision=$2,resolved_at=now(),resolution='Superseded by intake revision' WHERE tax_year_id=$1 AND category='intake' AND resolved_at IS NULL", [taxYearId, revision]);
   const state = await readIntakeState(client, taxYearId, revision);
+  const findings: DiagnosticOccurrenceInput[] = [];
   for (const questionId of state.missingQuestionIds) {
-    await client.query(
-      "INSERT INTO validation_issues(tax_year_id,code,severity,category,field_path,message,resolution_action,creation_revision) VALUES($1,'INTAKE_REQUIRED_UNKNOWN','blocking','intake',$2,$3,'Answer the required intake question with evidence.',$4)",
-      [taxYearId, questionId, `Required intake question is unanswered or unknown: ${questionId}.`, revision],
-    );
+    findings.push({ code: "INTAKE_REQUIRED_UNKNOWN", severity: "blocking", category: "intake", fieldPath: questionId, message: `Required intake question is unanswered or unknown: ${questionId}.`, resolutionAction: "Answer the required intake question with evidence." });
   }
   for (const questionId of state.blockingQuestionIds) {
     const question = phase1IntakeQuestions.find(({ id }) => id === questionId);
-    await client.query(
-      "INSERT INTO validation_issues(tax_year_id,code,severity,category,field_path,message,resolution_action,creation_revision) VALUES($1,'INTAKE_TREATMENT_UNSUPPORTED','blocking','intake',$2,$3,'Implement the required treatment or keep the return partial.',$4)",
-      [taxYearId, questionId, `${question?.affirmativeTreatment ?? questionId} is incomplete, inconsistent, or outside the supported calculation profile.`, revision],
-    );
+    findings.push({ code: "INTAKE_TREATMENT_UNSUPPORTED", severity: "blocking", category: "intake", fieldPath: questionId, message: `${question?.affirmativeTreatment ?? questionId} is incomplete, inconsistent, or outside the supported calculation profile.`, resolutionAction: "Implement the required treatment or keep the return partial." });
   }
-  return state.missingQuestionIds.length + state.blockingQuestionIds.length;
+  await replaceDiagnosticSet(client, { taxYearId, revision, origin: "intake-2025", evaluationStage: "intake", findings, resolution: "Superseded by intake revision" });
+  return findings.length;
 }
 
 async function authorizedTaxYear(client: pg.PoolClient, context: AuthorizationContext, clientId: string, year: number, action: "client.view" | "intake.modify", lock: boolean) {
