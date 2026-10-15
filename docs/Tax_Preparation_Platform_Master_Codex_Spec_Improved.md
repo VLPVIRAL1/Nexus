@@ -7,6 +7,22 @@
 **Last updated:** October 15, 2026
 **Overall Phase 1 status:** In progress — the federal technical package now includes the core return, business/rental/farm completion, complex QBI, additional taxes, retirement, capital, credits and controlled review outputs; production infrastructure, independent tax/output approval and official filing authorization remain incomplete.
 
+### October 15, 2026 comprehensive federal diagnostics program
+
+The plan for IRS-authority completeness and independently authored commercial-workflow parity is defined in [`comprehensive-federal-diagnostics-plan.md`](./comprehensive-federal-diagnostics-plan.md). The current library contains at least 197 literal diagnostic codes plus dynamic intake findings, but it is not represented as a complete IRS, Drake, ProConnect or CCH diagnostic catalog. Completion is scoped and versioned by tax year, jurisdiction, supported forms/facts and filing channel. Proprietary vendor messages, codes and assets must not be copied.
+
+- [ ] Phase 0 — Establish tax-content ownership, source/licensing rules, severity policy and the authorized IRS/MeF boundary.
+- [ ] Phase 1 — Inventory and classify every current diagnostic, trigger, lifecycle, authority, destination and test.
+- [ ] Phase 2 — Implement the versioned definition, authority, condition-coverage and immutable occurrence model.
+- [ ] Phase 3 — Consolidate deterministic staged evaluation, dependency-based reevaluation, dedupe, resolution and governed suppression.
+- [ ] Phase 4 — Complete foundational taxpayer, filing-status, dependent, source-form, intake, import and reconciliation diagnostics.
+- [ ] Phase 5 — Complete condition-ledger coverage for all supported federal income, deduction, credit, activity and additional-tax modules.
+- [ ] Phase 6 — Complete cross-module, due-diligence, review, calculation and output/package diagnostics.
+- [ ] Phase 7 — Complete the actionable, accessible preparer diagnostic experience and independent usability acceptance.
+- [ ] Phase 8 — Implement IRS MeF schema/business-rule/reject diagnostics only after authorization and ATS access; keep filing disabled beforehand.
+- [ ] Phase 9 — Run licensed Drake, ProConnect and CCH comparison suites and resolve every material observed gap without copying proprietary content.
+- [ ] Phase 10 — Pass mutation/property/golden/browser/performance evidence, independent tax review and annual release-governance gates.
+
 ### October 14, 2026 Drake-inspired preparer-workspace simplification plan
 
 The implementation sequence, preservation rules, route-parity ledger, keyboard/search behavior, accessibility gates and controlled rollout criteria are defined in [`drake-inspired-preparer-workspace-plan.md`](./drake-inspired-preparer-workspace-plan.md). The target is a familiar professional-tax workflow with a return tree, compact consistent inputs, fast form access, a persistent diagnostics/source panel and integrated calculation/output access. It must use original Nexus branding and must not copy Drake Tax branding or proprietary screen design. Existing screens, data, APIs, controls and tax results remain authoritative until each replacement passes parity and acceptance.
