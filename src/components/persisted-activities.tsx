@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Plus, Save, Trash2 } from "lucide-react";
 import {
   scheduleCCogsKeys, scheduleCExpenseKeys, scheduleCIncomeKeys, scheduleEExpenseKeys, scheduleEIncomeKeys,
@@ -14,8 +15,11 @@ interface ActivityState { id:string;type:ActivityType;name:string;ownerRole:"tax
 interface Props { clientId:string;year:number;clientName:string;initial:{revision:number;activities:ActivityState[]} }
 
 export function PersistedActivities({clientId,year,clientName,initial}:Props){
+  const searchParams=useSearchParams();
   const active=initial.activities.filter((item)=>item.active);
-  const [selectedId,setSelectedId]=useState(active[0]?.id??"");
+  const requestedType=searchParams.get("type") as ActivityType|null;
+  const initiallySelected=active.find((item)=>item.type===requestedType)??active[0];
+  const [selectedId,setSelectedId]=useState(initiallySelected?.id??"");
   const selected=active.find((item)=>item.id===selectedId)??null;
   const [draft,setDraft]=useState<ActivityState|null>(selected?structuredClone(selected):null);
   const [changeReason,setChangeReason]=useState("Reviewed Schedule activity data.");
@@ -23,6 +27,7 @@ export function PersistedActivities({clientId,year,clientName,initial}:Props){
   const [busy,setBusy]=useState(false); const [error,setError]=useState("");
   const gross=useMemo(()=>draft?(Number(draft.mappedReceipts)+Number(draft.additionalReceipts||0)).toFixed(2):"0.00",[draft]);
   function choose(id:string){const found=active.find((item)=>item.id===id);setSelectedId(id);setDraft(found?structuredClone(found):null);setError("");}
+  useEffect(()=>{const found=active.find((item)=>item.type===requestedType);if(found&&found.id!==selectedId)choose(found.id);},[requestedType]);
   async function request(url:string,method:string,body:unknown){setBusy(true);setError("");try{const response=await fetch(url,{method,headers:{"content-type":"application/json"},body:JSON.stringify(body)});const payload=await response.json();if(!response.ok)throw new Error(payload.error??"Unable to save activity.");window.location.reload();}catch(value){setError(value instanceof Error?value.message:"Unable to save activity.");setBusy(false);}}
   const base=`/api/clients/${clientId}/years/${year}/activities`;
   async function create(){await request(base,"POST",{expectedRevision:initial.revision,type:newType,name:newName,ownerRole:newOwner});}

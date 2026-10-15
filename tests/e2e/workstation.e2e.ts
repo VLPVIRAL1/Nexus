@@ -67,6 +67,74 @@ test("authorized client search keeps the query out of the URL and supports the k
   await expect(page.getByRole("listbox", { name: "Client search results" })).toBeHidden();
 });
 
+test("persisted return workbench provides keyboard-first form access and stable deep links", async ({ page }) => {
+  const base = "/clients/30000000-0000-4000-8000-000000000001/years/2025";
+  await page.goto(base);
+  await expect(page.getByRole("complementary", { name: "Return topics" })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
+  await page.keyboard.press("Control+k");
+  const search = page.getByRole("combobox", { name: "Search forms and topics" });
+  await expect(search).toBeFocused();
+  await search.fill("8962");
+  await expect(page.getByRole("option", { name: /Premium Tax Credit/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`${base}/advanced\\?section=premiumTaxCredit`));
+  await expect(page.getByRole("heading", { name: "Form 1095-A and Form 8962" })).toBeVisible();
+
+  await page.keyboard.press("Control+Enter");
+  await expect(page).toHaveURL(`${base}/calculation/summary`);
+  await expect(page.getByRole("heading", { name: "Federal tax summary" })).toBeVisible();
+
+  await page.goto(base);
+  await expect(page).toHaveURL(`${base}/calculation/summary`);
+  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await expect(page.getByText("Open next / previous diagnostic")).toBeVisible();
+});
+
+test("workbench preferences, pane controls, and source context are accessible", async ({ page }) => {
+  const base = "/clients/30000000-0000-4000-8000-000000000001/years/2025";
+  const sourceByteRequests: string[] = [];
+  page.on("request", (request) => { if (/\/sources\/[^/]+\/download/.test(request.url())) sourceByteRequests.push(request.url()); });
+  await page.goto(`${base}/taxpayer-profile`);
+  const separator = page.getByRole("separator", { name: "Resize return tree" });
+  await separator.focus();
+  const before = Number(await separator.getAttribute("aria-valuenow"));
+  await page.keyboard.press("ArrowRight");
+  await expect(separator).toHaveAttribute("aria-valuenow", String(before + 10));
+
+  await page.getByRole("tab", { name: "Sources" }).click();
+  await expect(page.getByRole("heading", { name: "Source evidence" })).toBeVisible();
+  expect(sourceByteRequests).toEqual([]);
+
+  await page.getByRole("button", { name: "Compact density" }).click();
+  await expect(page.locator(".preparer-workbench")).toHaveClass(/density-compact/);
+  await page.getByRole("button", { name: "Classic page view" }).click();
+  await expect(page.getByRole("button", { name: "Open Return Workbench" })).toBeVisible();
+  await page.getByRole("button", { name: "Open Return Workbench" }).click();
+  await expect(page.getByRole("complementary", { name: "Return topics" })).toBeVisible();
+});
+
+test("workbench return tree and context become labeled drawers on small screens", async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 });
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025");
+  await page.getByRole("button", { name: "Open return tree" }).click();
+  await expect(page.getByRole("complementary", { name: "Return topics" })).toBeVisible();
+  await page.getByRole("button", { name: "Close return topics" }).click();
+  await page.getByRole("button", { name: "Open return context" }).click();
+  await expect(page.getByRole("complementary", { name: "Return context" })).toBeVisible();
+  await page.getByRole("button", { name: "Close return context" }).click();
+});
+
+test("workbench retains its primary workflow at a 200-percent-equivalent viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 500 });
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/return-profile");
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open return tree" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open return context" })).toBeVisible();
+  await page.getByRole("button", { name: "Open return tree" }).click();
+  await expect(page.getByRole("link", { name: /Filing status and dependents/ }).first()).toBeVisible();
+});
+
 test("registered repeatable fields are keyboard-operable", async ({ page }) => {
   await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/source-entry");
   await expect(page.locator(".registry-add-row").first()).toBeVisible();
@@ -138,7 +206,11 @@ test("advanced federal workflow exposes editable Forms 8959 and 8960 interviews"
 });
 
 test("Schedule C exposes vehicle, home-office, depreciation and loss workpapers", async ({ page }) => {
-  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/activities");
+  await page.goto("/clients/30000000-0000-4000-8000-000000000001/years/2025/activities?type=schedule_c");
+  if (await page.getByRole("heading", { name: "Create the first Schedule activity" }).isVisible()) {
+    await page.getByRole("textbox", { name: "New activity name" }).fill("Synthetic Schedule C");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+  }
   await expect(page.getByRole("heading", { name: "Part IV · Vehicle deduction" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Deduction method" }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Form 8829 · Home office" })).toBeVisible();
@@ -203,6 +275,7 @@ for (const route of [
   { name: "dashboard", path: "/dashboard?fixture=visual" },
   { name: "clients", path: "/clients?fixture=visual" },
   { name: "return-workspace", path: "/clients/sample/years/2025" },
+  { name: "persisted-workbench", path: "/clients/30000000-0000-4000-8000-000000000001/years/2025" },
   { name: "intake-blockers", path: "/clients/sample/years/2025/intake" },
   { name: "mapping-split", path: "/clients/sample/years/2025/mapping" },
   { name: "review-blockers", path: "/clients/sample/years/2025/review" },
@@ -219,6 +292,7 @@ for (const route of [
 async function stabilize(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator("main")).toBeVisible();
+  if (await page.locator(".preparer-workbench").count()) await expect(page.getByRole("heading", { name: "Current diagnostics" })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 }
 

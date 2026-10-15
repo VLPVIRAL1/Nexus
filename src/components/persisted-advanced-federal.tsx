@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, BadgeCheck, Calculator, FileCheck2, Save, ShieldCheck } from "lucide-react";
 import type { AdvancedFederalProfile2025 } from "@/domain/advanced-federal-2025";
 import type { AdvancedFederalState } from "@/server/advanced-federal-service";
@@ -12,11 +12,14 @@ const sectionLabels: Record<SectionKey, string> = { dueDiligence: "Form 8867", p
 
 export function PersistedAdvancedFederal({ clientId, year, clientName, initial }: { clientId: string; year: number; clientName: string; initial: AdvancedFederalState }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState(initial.profile);
-  const [active, setActive] = useState<SectionKey>("dueDiligence");
+  const requestedSection = searchParams.get("section");
+  const [active, setActive] = useState<SectionKey>(isSectionKey(requestedSection) ? requestedSection : "dueDiligence");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [certification, setCertification] = useState("I certify that I completed the applicable due-diligence inquiries, documented the information provided, and reviewed the return for consistency.");
+  useEffect(() => { if (isSectionKey(requestedSection)) setActive(requestedSection); }, [requestedSection]);
   const replace = <K extends SectionKey>(key: K, value: AdvancedFederalProfile2025[K]) => setProfile((current) => ({ ...current, [key]: value }));
   async function save() {
     setBusy(true); setError(null);
@@ -44,6 +47,8 @@ export function PersistedAdvancedFederal({ clientId, year, clientName, initial }
     {active === "formPackage" ? <PackagePreferences value={profile.formPackage} onChange={(value) => replace("formPackage", value)}/> : null}
   </div>;
 }
+
+function isSectionKey(value: string | null): value is SectionKey { return value !== null && value in sectionLabels; }
 
 function DueDiligence({ value, onChange, signatureCurrent, certification, setCertification, sign, busy, history }: { value: AdvancedFederalProfile2025["dueDiligence"]; onChange: (value: AdvancedFederalProfile2025["dueDiligence"]) => void; signatureCurrent: boolean; certification: string; setCertification: (value: string) => void; sign: () => void; busy: boolean; history: AdvancedFederalState["signatures"] }) {
   const set = (key: keyof typeof value, next: unknown) => onChange({ ...value, [key]: next });

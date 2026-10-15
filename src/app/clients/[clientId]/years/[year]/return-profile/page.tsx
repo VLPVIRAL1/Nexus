@@ -13,5 +13,5 @@ export default async function ReturnProfilePage({ params }: { params: Promise<{ 
   const context = await requestAuthorizationContext();
   const [workspace, state] = await Promise.all([getTaxYearWorkspace(context, clientId, year), getReturnProfileState(context, clientId, year)]);
   if (!workspace) notFound();
-  return <main><PersistedReturnProfile clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))} /></main>;
+  return <PersistedReturnProfile clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))} />;
 }

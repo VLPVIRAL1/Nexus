@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/inter";
 import "./globals.css";
+import "./workbench.css";
 
 export const metadata: Metadata = {
   title: "Nexus Tax | Professional Preparation",

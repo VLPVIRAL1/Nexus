@@ -13,5 +13,5 @@ export default async function TaxpayerProfilePage({ params }: { params: Promise<
   const context = await requestAuthorizationContext();
   const [workspace, state] = await Promise.all([getTaxYearWorkspace(context, clientId, year), getPeopleState(context, clientId, year)]);
   if (!workspace) notFound();
-  return <main><PersistedPeople key={state.revision} clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))}/></main>;
+  return <PersistedPeople key={state.revision} clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))}/>;
 }

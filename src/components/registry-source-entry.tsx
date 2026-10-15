@@ -1,8 +1,8 @@
 "use client";
 import { AlertCircle, ArrowLeft, CheckCircle2, Database, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { formRegistries2025, readPath, registryEntryFields, registryFieldPath, type RegistryField } from "@/form-registry/2025";
 
 type EvidenceMode = "attached_document" | "manual_attestation";
@@ -12,8 +12,11 @@ interface State { revision: number; canRevealIdentifiers: boolean; documents: Do
 
 export function RegistrySourceEntry({ clientId, year, clientName, initial }: { clientId: string; year: number; clientName: string; initial: State }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const records = useMemo(() => initial.records.filter((record) => record.effective && ["original", "corrected"].includes(record.disposition) && formRegistries2025[record.formType]), [initial.records]);
-  const [selectedId, setSelectedId] = useState(records[0]?.id ?? "");
+  const requestedForm = searchParams.get("form");
+  const initiallySelected = records.find((record) => record.formType === requestedForm) ?? records[0];
+  const [selectedId, setSelectedId] = useState(initiallySelected?.id ?? "");
   const selected = records.find((record) => record.id === selectedId) ?? records[0];
   const registry = selected ? formRegistries2025[selected.formType] : null;
   const fields = selected ? registryEntryFields(selected.formType) : [];
@@ -41,6 +44,8 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
     setEvidenceNote("");
     setError(null);
   }
+
+  useEffect(() => { const match = records.find((record) => record.formType === requestedForm); if (match && match.id !== selectedId) select(match); }, [requestedForm]);
 
   async function save() {
     if (!selected || !registry) return;
@@ -102,7 +107,7 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <div className="registry-entry-layout">
       <aside className="panel registry-record-list"><div className="panel-heading"><div><h2>Effective records</h2><p>{records.length} supported source forms</p></div></div>{records.map((record) => <button className={record.id === selected?.id ? "active" : ""} key={record.id} onClick={() => select(record)}><Database size={14}/><span><b>{record.formType} · {issuer(record)}</b><small>{record.ownerRole} · v{record.version} · {record.sourceFileName ?? "no attached original"}</small></span>{record.unmappedFieldCount ? <AlertCircle size={13}/> : <CheckCircle2 size={13}/>}</button>)}</aside>
-      <main className="panel registry-fields">{selected && registry ? <>
+      <div className="panel registry-fields">{selected && registry ? <>
         <div className="panel-heading"><div><h2>{selected.formType} · version {selected.version}</h2><p>{fields.length} metadata and year-defined fields · raw {selected.rawFieldCount} · unmapped {selected.unmappedFieldCount}</p></div><span className="registry-support">PDF {registry.pdf_output.replaceAll("_", " ")}</span></div>
         {!initial.canRevealIdentifiers ? <p className="registry-privacy">TIN and account values are masked and preserved unchanged. Sensitive-identifier permission is required to edit them.</p> : null}
         <label className="registry-owner"><span>Source owner</span><select value={ownerRole} onChange={(event) => setOwnerRole(event.target.value)}><option value="taxpayer">Taxpayer</option><option value="spouse">Spouse</option><option value="joint">Joint</option><option value="dependent">Dependent</option><option value="unknown">Unknown / requires review</option></select></label>
@@ -113,7 +118,7 @@ export function RegistrySourceEntry({ clientId, year, clientName, initial }: { c
           {evidenceMode === "attached_document" ? <label><span>Corrected source document</span><select value={evidenceDocumentId} onChange={(event) => setEvidenceDocumentId(event.target.value)}><option value="">Select a clean compatible document</option>{evidenceDocuments.map((document) => <option key={document.id} value={document.id}>{document.fileName} · {document.documentType}</option>)}</select></label> : <label><span>Evidence attestation</span><textarea value={evidenceNote} onChange={(event) => setEvidenceNote(event.target.value)} maxLength={2000} placeholder="Describe the authoritative evidence reviewed, its date, and where it is retained."/></label>}
         </section>
         <label className="registry-reason"><span>Correction reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} placeholder="Required; explain what changed and why"/></label>
-      </> : <p className="empty-panel">No effective W-2 or supported 1099 source records are available.</p>}</main>
+      </> : <p className="empty-panel">No effective W-2 or supported 1099 source records are available.</p>}</div>
     </div>
   </div>;
 }

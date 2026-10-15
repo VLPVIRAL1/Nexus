@@ -39,6 +39,10 @@ export interface TaxYearWorkspaceRecord {
   spouse: string | null;
   reviewer: string | null;
   calculationStatus: string;
+  blockerCount: number;
+  warningCount: number;
+  openReviewPointCount: number;
+  sourceDocumentCount: number;
 }
 
 export async function listDashboardClients(context: AuthorizationContext, options: { query?: string; limit?: number } = {}): Promise<ClientSummary[]> {
@@ -120,6 +124,17 @@ export async function getTaxYearWorkspace(context: AuthorizationContext, clientI
   const profile = await getClientProfile(context, clientId);
   const taxYear = profile?.years.find((item) => item.year === year);
   if (!profile || !taxYear) return null;
+  const summary = await databasePool().query<{ blocker_count: string; warning_count: string; review_count: string; source_count: string }>(`
+    SELECT
+      (SELECT count(*)::text FROM validation_issues vi WHERE vi.tax_year_id=ty.id AND vi.resolved_at IS NULL AND vi.severity IN ('blocking','error')) AS blocker_count,
+      (SELECT count(*)::text FROM validation_issues vi WHERE vi.tax_year_id=ty.id AND vi.resolved_at IS NULL AND vi.severity='warning') AS warning_count,
+      (SELECT count(*)::text FROM review_points rp WHERE rp.tax_year_id=ty.id AND rp.review_status IN ('open','waiting')) AS review_count,
+      (SELECT count(*)::text FROM source_documents sd WHERE sd.tax_year_id=ty.id) AS source_count
+    FROM tax_years ty
+    JOIN clients c ON c.id=ty.client_id
+    WHERE c.id=$1 AND ty.tax_year=$2 AND c.firm_id=$3
+    LIMIT 1`, [clientId, year, context.firmId]);
+  const counts = summary.rows[0];
   return {
     clientId: profile.id,
     code: profile.code,
@@ -131,6 +146,10 @@ export async function getTaxYearWorkspace(context: AuthorizationContext, clientI
     spouse: taxYear.spouse,
     reviewer: taxYear.reviewer,
     calculationStatus: taxYear.calculationStatus,
+    blockerCount: Number(counts?.blocker_count ?? 0),
+    warningCount: Number(counts?.warning_count ?? 0),
+    openReviewPointCount: Number(counts?.review_count ?? 0),
+    sourceDocumentCount: Number(counts?.source_count ?? 0),
   };
 }
 

@@ -1,4 +1,15 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
+
+const projects: NonNullable<PlaywrightTestConfig["projects"]> = [
+  { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } },
+];
+
+if (process.env.PLAYWRIGHT_CROSS_BROWSER === "true") {
+  projects.push(
+    { name: "webkit", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 1000 } } },
+    { name: "edge", use: { ...devices["Desktop Edge"], channel: "msedge", viewport: { width: 1440, height: 1000 } } },
+  );
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -18,7 +29,7 @@ export default defineConfig({
     colorScheme: "light",
     reducedMotion: "reduce",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
+  projects,
   webServer: {
     command: process.env.CI ? "npm start -- --port 3100" : "npm run dev -- --port 3100",
     url: "http://127.0.0.1:3100/api/health",

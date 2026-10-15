@@ -13,5 +13,5 @@ export default async function CreditsPage({ params }: { params: Promise<{ client
   const context = await requestAuthorizationContext();
   const [workspace, state] = await Promise.all([getTaxYearWorkspace(context, clientId, year), getFederalCreditState(context, clientId, year)]);
   if (!workspace) notFound();
-  return <main><PersistedFederalCredits clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))}/></main>;
+  return <PersistedFederalCredits clientId={clientId} year={year} clientName={workspace.displayName} initial={JSON.parse(JSON.stringify(state))}/>;
 }

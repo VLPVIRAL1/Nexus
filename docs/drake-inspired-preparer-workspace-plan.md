@@ -1,6 +1,6 @@
 # Drake-Inspired Preparer Workspace — UI/UX Simplification Plan
 
-**Status:** Approved planning baseline; implementation not started  
+**Status:** Technical implementation complete; independent human acceptance and default-rollout approval pending
 **Created:** October 14, 2026  
 **Scope:** Simplify access to every existing federal input, processing, review and output workflow without removing or weakening current functionality  
 **Design intent:** Provide the speed, density and predictable navigation professional preparers expect from desktop tax software while retaining the Nexus identity and avoiding a pixel-for-pixel copy of Drake Tax branding, proprietary artwork or trade dress
@@ -187,6 +187,20 @@ No legacy screen will be removed until field, action, authorization, validation,
 
 ## 7. Implementation phases
 
+### Implementation record — October 15, 2026
+
+| Phase | Technical status | Implemented result |
+|---|---|---|
+| 0 | Complete | The route/action/field-family parity ledger, classic/workbench task paths, protected data-loading boundaries and automated visual/accessibility baseline are recorded in [`preparer-workbench-parity-ledger.md`](./preparer-workbench-parity-ledger.md). Human timing and confidence measurements remain part of controlled Phase 8 acceptance rather than invented evidence. |
+| 1 | Complete | The feature-flagged, authorization-preserving three-pane Return Workbench provides stable route links, browser navigation, remembered topics, resizable panes, mobile drawers and a one-click classic fallback. Navigation has a database test proving it does not mutate revision or calculation identity. |
+| 2 | Complete | Form/topic search covers common names, form numbers and synonyms; keyboard save/calculate/context/output, next/previous diagnostic and pane-navigation commands are documented in an accessible shortcut dialog; recent and bookmarked topics are scoped per firm/user. |
+| 3 | Complete | Shared currency, bounded-number, date, tri-state, protected-identifier and explicitly non-sensitive session-draft primitives are implemented with formatting/security tests. Existing persisted editors and their optimistic conflict handling remain authoritative during the compatibility period. |
+| 4 | Complete | Every current federal persisted editor is composed into the workbench by the route mapping below. Query/anchor deep links select source families, Schedule C/E/F, credit sections and advanced modules while retaining manual/import editing, validation, audit history and invalidation behavior. |
+| 5 | Complete | The context panel reads current diagnostics, review points, source metadata/mappings, explicit source previews, calculation trace and audit history. Diagnostic links select a topic and request field focus; when no direct control exists, the live region says that the topic was opened without claiming an exact field jump. |
+| 6 | Complete | Calculate, diagnostics and the draft output center are available from every topic. The existing guarded calculation, PDF/XLSX/JSON generation, hashes, current/stale status and draft-only filing controls are unchanged. |
+| 7 | Complete | First-use help, searchable form/topic reference, shortcut help, compact/comfortable density, pane sizes, collapse state, bookmarks, recents and classic mode are implemented without storing tax values in browser preferences. |
+| 8 | Technical suite complete; external gate pending | Unit/integration, production build, Chromium end-to-end/accessibility/visual, effective-200%-viewport, browser-compatibility and performance evidence is recorded in the parity ledger. The manual screen-reader and representative-preparer sessions and product-owner sign-off must still be recorded through Administration → Release closure before legacy removal or filing-readiness claims. |
+
 ### Phase 0 — Inventory and baseline
 
 - Build a field-and-action parity ledger for every existing persisted screen.
@@ -334,4 +348,4 @@ This program is complete only when:
 7. Manual assistive-technology and representative-preparer acceptance is independently recorded.
 8. The rollout flag has a tested fallback and the product owner approves making the new workbench the default.
 
-Until all eight conditions pass, this document remains a plan and the existing application remains the authoritative user interface.
+The technical implementation is now a controlled rollout candidate. Until the two independent human acceptance conditions in items 7 and 8 pass, the retained persisted editors remain authoritative, the classic fallback remains available and the workbench must not be represented as independently accepted or filing-ready.

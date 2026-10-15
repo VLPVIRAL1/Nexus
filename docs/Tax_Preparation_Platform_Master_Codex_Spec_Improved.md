@@ -4,22 +4,22 @@
 
 **Tracking policy:** This checklist is updated in the same commit as the implementation it describes. An item is marked complete only after its required code and proportionate verification pass. A checked item does not imply that its containing milestone or the Phase 1 release is complete. The binding requirements below remain unchanged.
 
-**Last updated:** October 14, 2026
+**Last updated:** October 15, 2026
 **Overall Phase 1 status:** In progress — the federal technical package now includes the core return, business/rental/farm completion, complex QBI, additional taxes, retirement, capital, credits and controlled review outputs; production infrastructure, independent tax/output approval and official filing authorization remain incomplete.
 
 ### October 14, 2026 Drake-inspired preparer-workspace simplification plan
 
 The implementation sequence, preservation rules, route-parity ledger, keyboard/search behavior, accessibility gates and controlled rollout criteria are defined in [`drake-inspired-preparer-workspace-plan.md`](./drake-inspired-preparer-workspace-plan.md). The target is a familiar professional-tax workflow with a return tree, compact consistent inputs, fast form access, a persistent diagnostics/source panel and integrated calculation/output access. It must use original Nexus branding and must not copy Drake Tax branding or proprietary screen design. Existing screens, data, APIs, controls and tax results remain authoritative until each replacement passes parity and acceptance.
 
-- [ ] Phase 0 — Inventory every existing field, action, state and route; record usability and accessibility baselines.
-- [ ] Phase 1 — Implement the feature-flagged Return Workbench shell, return tree, context panel and stable topic routing.
-- [ ] Phase 2 — Implement keyboard-first form/topic search, shortcuts and diagnostic navigation.
-- [ ] Phase 3 — Implement and verify the shared compact input component system and safe draft/conflict behavior.
-- [ ] Phase 4 — Migrate all current federal input modules in controlled slices without removing legacy pages.
-- [ ] Phase 5 — Connect field-level source context, provenance, notes, diagnostics and exact error navigation.
-- [ ] Phase 6 — Integrate calculation trace, draft forms and PDF/XLSX/JSON outputs into the workbench.
-- [ ] Phase 7 — Complete preparer onboarding, help, density and pane preferences.
-- [ ] Phase 8 — Pass functional parity, tax/output regression, WCAG, browser, performance and representative-preparer acceptance before default rollout.
+- [x] Phase 0 — Inventory every existing field, action, state and route; record route/task, visual and automated accessibility baselines. Representative human timing remains governed by Phase 8.
+- [x] Phase 1 — Implement the feature-flagged Return Workbench shell, return tree, context panel, remembered topic and stable topic routing.
+- [x] Phase 2 — Implement keyboard-first form/topic search, shortcuts, next/previous diagnostic navigation, recents and bookmarks.
+- [x] Phase 3 — Implement and verify the shared compact input component system, protected-identifier behavior and explicitly non-sensitive draft support while preserving existing optimistic conflict handling.
+- [x] Phase 4 — Compose all current federal input modules into controlled workbench slices without removing the persisted editors or legacy URLs.
+- [x] Phase 5 — Connect source metadata/preview, mapping notes, provenance, calculation trace, diagnostics and field/topic error navigation.
+- [x] Phase 6 — Integrate calculation access, draft forms and PDF/XLSX/JSON outputs into the workbench without changing calculation/output behavior.
+- [x] Phase 7 — Complete preparer onboarding, shortcut help, density, pane and firm/user-scoped preferences.
+- [ ] Phase 8 — Technical regression, WCAG, browser, visual and performance checks are implemented; independent screen-reader/representative-preparer evidence and product-owner default-rollout approval must still be recorded before this gate can close.
 
 ### October 14, 2026 comprehensive tax-coverage expansion program
 
