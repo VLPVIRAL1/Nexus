@@ -284,6 +284,15 @@ for (const route of [
   { name: "outputs-stale", path: "/workpapers" },
 ]) {
   test(`${route.name} visual baseline`, async ({ page }) => {
+    if (route.name === "persisted-workbench") {
+      await page.route(/\/api\/clients\/[^/]+\/years\/2025\/review$/, async (requestRoute) => {
+        await requestRoute.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ revision: 1, issues: [], points: [], auditEvents: [] }),
+        });
+      });
+    }
     await stabilize(page, route.path);
     await expect(page).toHaveScreenshot(`${route.name}.png`, { fullPage: true });
   });

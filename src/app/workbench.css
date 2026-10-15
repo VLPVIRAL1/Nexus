@@ -115,7 +115,7 @@
 .context-issue.blocking > svg, .context-issue.error > svg { color: #a63a32; }
 .context-issue strong, .context-issue small, .context-source strong, .context-source small { display: block; }
 .context-issue strong, .context-source strong { font-size: 8.5px; line-height: 1.35; }
-.context-issue small, .context-source small { margin-top: 2px; color: #738090; font-size: 7.3px; }
+.context-issue small, .context-source small { margin-top: 2px; color: #526171; font-size: 7.3px; }
 .context-issue p { margin: 5px 0; color: #5c6976; font-size: 7.7px; line-height: 1.4; }
 .context-issue a, .context-source a, .context-full-link { display: inline-flex; align-items: center; gap: 2px; color: #155b86; text-decoration: none; font-size: 8px; font-weight: 700; }
 .context-source > svg { flex: 0 0 auto; color: #386885; }
