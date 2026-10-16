@@ -1,6 +1,7 @@
 import "server-only";
 import { isIP } from "node:net";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import QRCode from "qrcode";
 import type { IssuedSession } from "./session-service";
 import { AuthenticationError, issueSessionFromVerifiedIdentity } from "./session-service";
 import { enforceAuthenticationAttemptLimit } from "./auth-attempt-service";
@@ -11,7 +12,7 @@ export interface AuthenticationFactorOption { id: string; label: string }
 export type BeginLoginResult =
   | { status: "authenticated"; session: IssuedSession }
   | { status: "mfa_required"; flowCookie: string; factors: AuthenticationFactorOption[]; enrollment: null }
-  | { status: "mfa_enrollment_required"; flowCookie: string; factors: AuthenticationFactorOption[]; enrollment: { factorId: string; secret: string; uri: string } };
+  | { status: "mfa_enrollment_required"; flowCookie: string; factors: AuthenticationFactorOption[]; enrollment: { factorId: string; secret: string; qrCode: string } };
 
 interface LoginInput { email: string; password: string; firmId?: string | null; networkIdentifier: string; userAgent: string | null }
 interface CompleteMfaInput { flowCookie: string; factorId: string; code: string; networkIdentifier: string; userAgent: string | null }
@@ -29,13 +30,15 @@ export async function beginSupabasePasswordLogin(input: LoginInput, now = new Da
   }
 
   const verified = (data.user.factors ?? []).filter((factor) => factor.factor_type === "totp" && factor.status === "verified");
-  let enrollment: { factorId: string; secret: string; uri: string } | null = null;
+  let enrollment: { factorId: string; secret: string; qrCode: string } | null = null;
   let enrollmentFactorId: string | null = null;
   if (!verified.length) {
-    const enrolled = await provider.auth.mfa.enroll({ factorType: "totp", friendlyName: "Nexus Tax" });
+    const enrolled = await provider.auth.mfa.enroll({ factorType: "totp", friendlyName: "BAT Tax" });
     if (enrolled.error || !enrolled.data?.totp) throw new AuthenticationError();
     enrollmentFactorId = enrolled.data.id;
-    enrollment = { factorId: enrolled.data.id, secret: enrolled.data.totp.secret, uri: enrolled.data.totp.uri };
+    const uri = authenticatorUri("BAT Tax", data.user.email, enrolled.data.totp.secret);
+    const qrCode = await QRCode.toDataURL(uri, { errorCorrectionLevel: "M", margin: 2, width: 240 });
+    enrollment = { factorId: enrolled.data.id, secret: enrolled.data.totp.secret, qrCode };
   }
 
   const flow: PendingAuthenticationFlow = {
@@ -68,7 +71,8 @@ export async function completeSupabaseMfa(input: CompleteMfaInput, now = new Dat
   if (verified.error || !verified.data?.access_token || verified.data.user?.id !== flow.subject) throw new AuthenticationError();
   const assurance = await provider.auth.mfa.getAuthenticatorAssuranceLevel(verified.data.access_token);
   if (assurance.error || assurance.data?.currentLevel !== "aal2") throw new AuthenticationError();
-  return issueProvisionedExternalIdentitySession(flow.provider, flow.subject, flow.firmId, recentMfaTime(assurance.data.currentAuthenticationMethods, now), input.userAgent, now);
+  const completedAt = new Date(Math.max(now.getTime(), Date.now()));
+  return issueProvisionedExternalIdentitySession(flow.provider, flow.subject, flow.firmId, recentMfaTime(assurance.data.currentAuthenticationMethods, completedAt), input.userAgent, completedAt);
 }
 
 export async function requestSupabasePasswordRecovery(email: string, networkIdentifier: string, now = new Date()): Promise<void> {
@@ -106,15 +110,25 @@ export async function issueProvisionedExternalIdentitySession(provider: string, 
 
 function recentMfaTime(methods: ReadonlyArray<string | { method: string; timestamp: number }> | undefined, now: Date): Date {
   const timestamp = Math.max(0, ...(methods ?? []).flatMap((entry) => typeof entry === "object" && entry.method !== "password" && Number.isFinite(entry.timestamp) ? [entry.timestamp] : []));
-  const verifiedAt = new Date(timestamp * 1000);
-  if (!timestamp || verifiedAt.getTime() > now.getTime() || now.getTime() - verifiedAt.getTime() > 5 * 60 * 1000) throw new AuthenticationError("A recent MFA verification is required.");
-  return verifiedAt;
+  // Supabase documents AMR timestamps as epoch seconds, while some deployed
+  // Auth versions emit epoch milliseconds. Normalize both without weakening
+  // the five-minute recency requirement.
+  const verifiedAt = new Date(timestamp >= 100_000_000_000 ? timestamp : timestamp * 1000);
+  const futureSkewMs = verifiedAt.getTime() - now.getTime();
+  if (!timestamp || futureSkewMs > 30_000 || now.getTime() - verifiedAt.getTime() > 5 * 60 * 1000) throw new AuthenticationError("A recent MFA verification is required.");
+  return futureSkewMs > 0 ? now : verifiedAt;
 }
 
 function supabaseProvider(): SupabaseClient {
   return createClient(requiredEnvironment("SUPABASE_URL"), requiredEnvironment("SUPABASE_PUBLISHABLE_KEY"), {
     auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
   });
+}
+
+function authenticatorUri(issuer: string, account: string, secret: string): string {
+  const label = `${issuer}:${account}`;
+  const query = new URLSearchParams({ secret, issuer, algorithm: "SHA1", digits: "6", period: "30" });
+  return `otpauth://totp/${encodeURIComponent(label)}?${query.toString()}`;
 }
 
 function requiredEnvironment(name: string): string {

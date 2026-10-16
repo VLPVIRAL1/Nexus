@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 interface Factor { id: string; label: string }
-interface Enrollment { factorId: string; secret: string; uri: string }
+interface Enrollment { factorId: string; secret: string; qrCode: string }
 
 export function AuthenticationForm() {
   const [email, setEmail] = useState("");
@@ -54,7 +54,7 @@ export function AuthenticationForm() {
       <button className="button primary" disabled={busy}>{busy ? "Signing in…" : "Continue"}</button>
       <Link href="/auth/recovery">Forgot password?</Link>
     </form> : <form className="auth-form" onSubmit={submitMfa}>
-      {enrollment ? <div className="auth-enrollment"><strong>Add Nexus Tax to your authenticator</strong><p>Enter this setup key manually, then provide the six-digit code. Do not share or retain the key after enrollment.</p><code>{enrollment.secret}</code><details><summary>Authenticator URI</summary><code>{enrollment.uri}</code></details></div> : factors.length > 1 ? <label><span>Authenticator</span><select value={factorId} onChange={(event) => setFactorId(event.target.value)}>{factors.map((factor) => <option value={factor.id} key={factor.id}>{factor.label}</option>)}</select></label> : null}
+      {enrollment ? <div className="auth-enrollment"><strong>Add BAT Tax to your authenticator</strong><p>Scan this QR code with Google Authenticator, Microsoft Authenticator, or another authenticator app.</p><img className="auth-qr-code" src={enrollment.qrCode} width="240" height="240" alt="QR code for adding BAT Tax to an authenticator app"/><details><summary>Can&apos;t scan the QR code?</summary><p>Enter this setup key manually, then return here with the six-digit code.</p><code>{enrollment.secret}</code></details></div> : factors.length > 1 ? <label><span>Authenticator</span><select value={factorId} onChange={(event) => setFactorId(event.target.value)}>{factors.map((factor) => <option value={factor.id} key={factor.id}>{factor.label}</option>)}</select></label> : null}
       <label><span>Six-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
       {error ? <p className="auth-error" role="alert">{error}</p> : null}
       <button className="button primary" disabled={busy || code.length !== 6 || !factorId}>{busy ? "Verifying…" : "Verify and sign in"}</button>
